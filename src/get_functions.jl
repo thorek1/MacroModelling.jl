@@ -75,6 +75,138 @@ function build_obs_index(data::AbstractMatrix{<:Real})
     return obs, has_missing
 end
 
+"""
+    informative_period_range(data) -> UnitRange{Int}
+
+Return the smallest contiguous column range that contains every period with at
+least one finite observable. Leading and trailing columns with no finite
+entries are dropped. If every period is fully unobserved, return `1:0`.
+"""
+function informative_period_range(obs_idx_per_t::Vector{Vector{Int}})
+    first_t = findfirst(idx -> !isempty(idx), obs_idx_per_t)
+    first_t === nothing && return 1:0
+    last_t = findlast(idx -> !isempty(idx), obs_idx_per_t)
+    last_t === nothing && return 1:0
+    return first_t:last_t
+end
+
+function informative_period_range(data::AbstractMatrix{<:Real})
+    obs_idx_per_t, _ = build_obs_index(data)
+    return informative_period_range(obs_idx_per_t)
+end
+
+informative_period_range(data::KeyedArray) = informative_period_range(collect(data))
+
+function adjust_initial_state(initial_state,
+                              algorithm::Symbol,
+                              nVars::Int,
+                              SSS_delta::AbstractVector{<:Real},
+                              reference_steady_state::AbstractVector{<:Real})
+    R = promote_type(eltype(SSS_delta), eltype(reference_steady_state))
+
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) != nVars
+            if algorithm == :pruned_second_order
+                return [zeros(R, nVars), zeros(R, nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                return [zeros(R, nVars), zeros(R, nVars) - SSS_delta, zeros(R, nVars)]
+            else
+                return zeros(R, nVars) - SSS_delta
+            end
+        end
+
+        if algorithm == :pruned_second_order
+            return [initial_state - reference_steady_state[1:nVars], zeros(R, nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            return [initial_state - reference_steady_state[1:nVars], zeros(R, nVars) - SSS_delta, zeros(R, nVars)]
+        else
+            return initial_state - reference_steady_state[1:nVars]
+        end
+    end
+
+    if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+        @assert initial_state isa AbstractVector{<:Real} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+    end
+
+    return initial_state
+end
+
+function adjust_initial_state(initial_state,
+                              algorithm::Symbol,
+                              𝓂::ℳ,
+                              SSS_delta::AbstractVector{<:Real},
+                              reference_steady_state::AbstractVector{<:Real})
+    return adjust_initial_state(initial_state, algorithm, 𝓂.constants.post_model_macro.nVars, SSS_delta, reference_steady_state)
+end
+
+function report_informative_trim(period_range::UnitRange{Int}, n_periods::Int; maxlog::Int = DEFAULT_MAXLOG)
+    n_leading = isempty(period_range) ? n_periods : first(period_range) - 1
+    n_trailing = isempty(period_range) ? 0 : n_periods - last(period_range)
+    if n_leading > 0 || n_trailing > 0
+        period_summary = if n_leading > 0 && n_trailing > 0
+            "$(n_leading) leading and $(n_trailing) trailing"
+        elseif n_leading > 0
+            "$(n_leading) leading"
+        else
+            "$(n_trailing) trailing"
+        end
+        @warn "The data has $(period_summary) fully unobserved periods. Those periods are disregarded." maxlog = maxlog
+    end
+    return nothing
+end
+
+function trim_informative_sample(data::AbstractMatrix{<:Real};
+                                         warn_on_trim::Bool = true,
+                                         maxlog::Int = DEFAULT_MAXLOG,
+                                         presample_periods::Int = 0,
+                                         require_informative_periods::Bool = false)::Tuple{AbstractMatrix{<:Real}, Vector{Vector{Int}}, Bool, UnitRange{Int}}
+    obs_idx_per_t, _ = build_obs_index(data)
+    period_range = informative_period_range(obs_idx_per_t)
+    warn_on_trim && report_informative_trim(period_range, size(data, 2); maxlog = maxlog)
+    presample_periods = normalize_presample_periods(presample_periods, length(period_range); maxlog = maxlog)
+    if require_informative_periods
+        @assert !isempty(period_range) "The data contains no informative periods after removing fully unobserved boundaries."
+    end
+    trimmed_data = data[:, period_range]
+    if isempty(period_range)
+        return (trimmed_data, Vector{Vector{Int}}(), false, period_range)
+    end
+    trimmed_obs_idx = obs_idx_per_t[period_range]
+    has_missing = any(length(idx) < size(data, 1) for idx in trimmed_obs_idx)
+    return (trimmed_data, trimmed_obs_idx, has_missing, period_range)
+end
+
+function trim_informative_sample(data::KeyedArray;
+                                         warn_on_trim::Bool = true,
+                                         maxlog::Int = DEFAULT_MAXLOG,
+                                         presample_periods::Int = 0,
+                                         require_informative_periods::Bool = false)::Tuple{KeyedArray, Vector{Vector{Int}}, Bool, UnitRange{Int}}
+    raw = collect(data)
+    _, trimmed_obs_idx, has_missing, period_range = trim_informative_sample(raw;
+                                                                            warn_on_trim = warn_on_trim,
+                                                                            maxlog = maxlog,
+                                                                            presample_periods = presample_periods,
+                                                                            require_informative_periods = require_informative_periods)
+    trimmed_data = data[:, period_range]
+    return (trimmed_data, trimmed_obs_idx, has_missing, period_range)
+end
+
+
+function prepare_trimmed_data_in_deviations(data::KeyedArray,
+                                            𝓂::ℳ,
+                                            steady_state::AbstractVector{<:Real};
+                                            data_in_levels::Bool = true,
+                                            maxlog::Int = DEFAULT_MAXLOG)
+    sorted_data = data(sort(axiskeys(data, 1)))
+    obs_axis = collect(axiskeys(sorted_data, 1))
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
+    raw_data = missing_data_to_nan(sorted_data)
+    data_in_deviations = data_in_levels ? raw_data .- steady_state[obs_idx] : raw_data
+    trimmed_data, _, _, _ = trim_informative_sample(data_in_deviations; maxlog = maxlog)
+    return trimmed_data
+end
+
 
 """
 $(SIGNATURES)
@@ -160,7 +292,7 @@ And data, 4×2×40 Array{Float64, 3}:
 ```
 """
 @unstable function get_shock_decomposition(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray{D};
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -175,7 +307,7 @@ And data, 4×2×40 Array{Float64, 3}:
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                 caching::Bool = DEFAULT_CACHING,
-                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray where {D <: Union{Missing,Nothing,Real}}
     # @nospecialize # reduce compile time
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -204,27 +336,9 @@ And data, 4×2×40 Array{Float64, 3}:
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
-    data = data(sort(axiskeys(data,1)))
-
-    obs_axis = collect(axiskeys(data,1))
-
-    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
-
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
-
-    if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
-    else
-        data_in_deviations = data
-    end
+    data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
     extra_kw = marginal_contribution ? (; marginal_contribution = true) : NamedTuple()
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
-                                                                                    warmup_iterations = warmup_iterations, 
-                                                                                    opts = opts,
-                                                                                    smooth = smooth;
-                                                                                    extra_kw...)
-    
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
@@ -235,10 +349,22 @@ And data, 4×2×40 Array{Float64, 3}:
         axis2 = vcat(exo_axis, :Initial_values)
     end
 
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return KeyedArray(zeros(eltype(NSSS), length(axis1), length(axis2), 0); Variables = axis1, Shocks = axis2, Periods = 1:0)
+    end
+
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
+                                                                                    warmup_iterations = warmup_iterations, 
+                                                                                    opts = opts,
+                                                                                    smooth = smooth;
+                                                                                    extra_kw...)
+
     if pruning
         if marginal_contribution
             decomposition[:, end - 1, :] .+= SSS_delta
         else
+            # decomposition[:,end - 1,:]                  .+= SSS_delta * (size(decomposition,2) - 3)
             decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
             decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
         end
@@ -246,7 +372,7 @@ And data, 4×2×40 Array{Float64, 3}:
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
-    return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
+    return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data_in_deviations,2))
 end
 
 
@@ -311,7 +437,7 @@ And data, 1×40 Matrix{Float64}:
 ```
 """
 @unstable function get_estimated_shocks(𝓂::ℳ,
-                            data::KeyedArray{Float64};
+                            data::KeyedArray{D};
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -325,7 +451,7 @@ And data, 1×40 Matrix{Float64}:
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             caching::Bool = DEFAULT_CACHING,
-                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray where {D <: Union{Missing,Nothing,Real}}
     # @nospecialize # reduce compile time
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -349,31 +475,24 @@ And data, 1×40 Matrix{Float64}:
     
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
-    data = data(sort(axiskeys(data,1)))
-    
-    obs_axis = collect(axiskeys(data,1))
+    data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
-    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+    ensure_name_display_constants!(𝓂)
+    axis1 = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
-
-    if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
-    else
-        data_in_deviations = data
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Shocks = axis1, Periods = 1:0)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
                                                                                     smooth = smooth)
-    
-    ensure_name_display_constants!(𝓂)
-    axis1 = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
-    return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
+    return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data_in_deviations,2))
 end
 
 
@@ -444,7 +563,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 @unstable function get_estimated_variables(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray{D};
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -459,7 +578,7 @@ And data, 4×40 Matrix{Float64}:
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                 caching::Bool = DEFAULT_CACHING,
-                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray where {D <: Union{Missing,Nothing,Real}}
     # @nospecialize # reduce compile time                         
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -483,18 +602,14 @@ And data, 4×40 Matrix{Float64}:
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
-    data = data(sort(axiskeys(data,1)))
-    
-    obs_axis = collect(axiskeys(data,1))
+    data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
-    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+    ensure_name_display_constants!(𝓂)
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
-
-    if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
-    else
-        data_in_deviations = data
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Variables = axis1, Periods = 1:0)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
@@ -502,10 +617,7 @@ And data, 4×40 Matrix{Float64}:
                                                                                     opts = opts,
                                                                                     smooth = smooth)
 
-    ensure_name_display_constants!(𝓂)
-    axis1 = 𝓂.constants.post_complete_parameters.var_axis
-
-    result = KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
+    result = KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data_in_deviations,2))
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
@@ -581,7 +693,7 @@ And data, 5×40 Matrix{Float64}:
 ```
 """
 @unstable function get_model_estimates(𝓂::ℳ,
-                             data::KeyedArray{Float64};
+                             data::KeyedArray{D};
                              parameters::ParameterType = nothing,
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -596,7 +708,7 @@ And data, 5×40 Matrix{Float64}:
                              sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                              lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                              caching::Bool = DEFAULT_CACHING,
-                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray
+                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::KeyedArray where {D <: Union{Missing,Nothing,Real}}
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
@@ -699,7 +811,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 @unstable function get_estimated_variable_standard_deviations(𝓂::ℳ,
-                                                    data::KeyedArray{Float64};
+                                                    data::KeyedArray{D};
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
@@ -709,7 +821,7 @@ And data, 4×40 Matrix{Float64}:
                                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                                                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                                     caching::Bool = DEFAULT_CACHING,
-                                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
+                                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Missing,Nothing,Real}}
     # @nospecialize # reduce compile time                                               
 
     if !caching; invalidate_cache_validity!(𝓂); end
@@ -730,30 +842,23 @@ And data, 4×40 Matrix{Float64}:
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
-    data = data(sort(axiskeys(data,1)))
-    
-    obs_axis = collect(axiskeys(data,1))
+    data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
-    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+    ensure_name_display_constants!(𝓂)
+    axis1 = 𝓂.constants.post_complete_parameters.var_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
-
-    if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
-    else
-        data_in_deviations = data
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Standard_deviations = axis1, Periods = 1:0)
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
                                                                                     smooth = smooth, 
                                                                                     opts = opts)
 
-    ensure_name_display_constants!(𝓂)
-    axis1 = 𝓂.constants.post_complete_parameters.var_axis
-
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
-    return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
+    return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data_in_deviations,2))
 end
 
 
@@ -959,33 +1064,8 @@ The same can be achieved with the other input formats:
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
-
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
@@ -1417,7 +1497,7 @@ function get_irf(𝓂::ℳ,
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
+        return fill(S(NaN), length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
     nExo = 𝓂.constants.post_model_macro.nExo
@@ -1578,35 +1658,11 @@ And data, 4×40×1 Array{Float64, 3}:
 
     # @timeit_debug timer "Get relevant steady state" begin
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    reference_steady_state, _, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     # end # timeit_debug
 
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
@@ -4241,14 +4297,11 @@ function get_statistics(𝓂::ℳ,
     return ret
 end
 
-
-
-
 """
 $(SIGNATURES)
 Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
+This function is differentiable and supports both the Kalman and inversion likelihoods.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4260,8 +4313,10 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
-- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
-- `initial_covariance` [Default: `:theoretical`, Type: `Symbol`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`).
+- $WARMUP_ITERATIONS®
+- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the retained data sample for which the loglikelihood is discarded. Values above the retained sample length are clamped down automatically with an informational message.
+- `initial_covariance` [Default: `:theoretical`, Type: `Union{Symbol,AbstractMatrix{<:Real}}`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix of appropriate size (number of observables and states).
+- $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
 - $QME®
 - $SYLVESTER®
@@ -4309,7 +4364,7 @@ function get_loglikelihood(𝓂::ℳ,
                             on_failure_loglikelihood::U = -Inf,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
-                            initial_covariance::Symbol = :theoretical,
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             tol::Tolerances = Tolerances(), 
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂), 
@@ -4318,7 +4373,46 @@ function get_loglikelihood(𝓂::ℳ,
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
-                            # timer::TimerOutput = TimerOutput(),
+    # Convenience method: no `initial_state` argument; uses the internal default.
+    # To override the initial state (and get AD tangents through it), call the
+    # positional method `get_loglikelihood(𝓂, data, p, initial_state; ...)`.
+    return get_loglikelihood(𝓂, data, parameter_values, DEFAULT_INITIAL_STATE;
+                             steady_state_function = steady_state_function,
+                             algorithm = algorithm,
+                             filter = filter,
+                             on_failure_loglikelihood = on_failure_loglikelihood,
+                             warmup_iterations = warmup_iterations,
+                             presample_periods = presample_periods,
+                             initial_covariance = initial_covariance,
+                             filter_algorithm = filter_algorithm,
+                             tol = tol,
+                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                             lyapunov_algorithm = lyapunov_algorithm,
+                             sylvester_algorithm = sylvester_algorithm,
+                             verbose = verbose,
+                             caching = caching,
+                             use_workspaces = use_workspaces)
+end
+
+function get_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{T},
+                            parameter_values::Vector{S},
+                            initial_state::InitialState;
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = DEFAULT_ALGORITHM,
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                            on_failure_loglikelihood::U = -Inf,
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                            filter_algorithm::Symbol = :LagrangeNewton,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, InitialStateScalar) where {T <: Union{Float64,Missing,Nothing}, S <: Real, InitialStateScalar <: Real, InitialState <: Union{AbstractVector{InitialStateScalar}, AbstractVector{<:AbstractVector{InitialStateScalar}}}, U <: AbstractFloat}
 
     if !caching; invalidate_cache_validity!(𝓂); end
     orig_ws = 𝓂.workspaces
@@ -4344,8 +4438,18 @@ function get_loglikelihood(𝓂::ℳ,
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
-    @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
+    @assert initial_covariance isa AbstractMatrix || initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix."
 
+    if initial_state != DEFAULT_INITIAL_STATE
+        nVars = 𝓂.constants.post_model_macro.nVars
+        if eltype(initial_state) <: Real
+            @assert length(initial_state) == nVars "initial_state must have length equal to the total number of variables ($nVars, see `show(model)`), got $(length(initial_state))."
+        else
+            @assert length(initial_state[1]) == nVars "Each vector in initial_state must have length equal to the total number of variables ($nVars, see `show(model)`), got $(length(initial_state[1]))."
+            @assert all(v -> length(v) == length(initial_state[1]), initial_state) "All vectors in initial_state must have the same length, got lengths $(length.(initial_state))."
+        end
+    end
+    
     filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
@@ -4380,6 +4484,29 @@ function get_loglikelihood(𝓂::ℳ,
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return on_failure_loglikelihood 
     end
+
+    # Overwrite the solver-produced `state` with the user-supplied `initial_state`
+    # (semantics match get_irf: Vector{Float64} = levels, Vector{Vector{Float64}} =
+    # deviations from NSSS). The downstream filter recursions consume `state`
+    # directly, so this is the only place initial_state needs to be applied.
+    nVars = 𝓂.constants.post_model_macro.nVars
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
  
     data_keyed::KeyedArray = collect(axiskeys(data, 1)) isa Vector{String} ?
         rekey(data, 1 => axiskeys(data, 1) .|> Meta.parse .|> replace_indices) :
@@ -4387,14 +4514,33 @@ function get_loglikelihood(𝓂::ℳ,
 
     # Canonicalise the raw observations to Float64 with NaN sentinels for
     # missing/nothing entries, then preserve the promoted element type after
-    # subtracting steady-state values so AD inputs can flow through.
+    # subtracting steady-state values so AD inputs can flow through. Fully
+    # unobserved periods at the sample boundaries are trimmed before the
+    # filter kernels see the data.
     dt::Matrix{Float64} = missing_data_to_nan(collect(data_keyed(observables)))
 
-    data_in_deviations = dt .- SS_and_pars[obs_indices]
+    data_in_deviations, obs_idx_per_t, has_missing, _ = trim_informative_sample(dt .- SS_and_pars[obs_indices])
+
+    # Keep the solution, data, and user-supplied state on one scalar type so
+    # Dual numbers introduced solely through `initial_state` reach the filter.
+    R = promote_type(S, InitialStateScalar)
+    if 𝐒 isa AbstractVector{<:AbstractMatrix} && R !== eltype(eltype(𝐒))
+        𝐒 = AbstractMatrix{R}[R.(Sᵢ) for Sᵢ in 𝐒]
+    elseif 𝐒 isa AbstractMatrix && R !== eltype(𝐒)
+        𝐒 = convert(Matrix{R}, 𝐒)
+    end
+    if R !== eltype(data_in_deviations)
+        data_in_deviations = convert(Matrix{R}, data_in_deviations)
+    end
+
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
+
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return zero(S)
+    end
 
     # @timeit_debug timer "Filter" begin
-
-    obs_idx_per_t, has_missing = build_obs_index(data_in_deviations)
 
     llh = if has_missing
         calculate_loglikelihood_with_missing(Val(filter),
@@ -4435,6 +4581,541 @@ function get_loglikelihood(𝓂::ℳ,
 
     return llh
 end
+
+"""
+$(SIGNATURES)
+Return the *filter-free* loglikelihood of the model given the data, parameters, and a path of latent structural shocks. Unlike [`get_loglikelihood`](@ref) — which integrates out the latent shocks via a Kalman or inversion filter — this function evaluates the joint likelihood of data and shocks by forward-simulating the model with the supplied `shocks` and comparing the implied observable path to the data under a Gaussian measurement-error model. This is the building block needed to estimate (potentially nonlinear, non-Gaussian) DSGE models with HMC samplers by treating the shocks as additional latent parameters (Childers, Fernández-Villaverde, Perla, Rackauckas & Wu, 2025).
+
+Only the *measurement* part of the joint loglikelihood is returned. The prior on the shocks (typically standard Normal) and the prior on `measurement_error_std` are expected to be declared by the user in their probabilistic-programming model.
+
+The filter-free primal path and its analytical reverse-mode `rrule` are implemented for `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`.
+
+# Arguments
+- $MODEL®
+- $DATA®
+- If fully unobserved leading or trailing periods are discarded, any separately supplied shock path and any matrix-valued `measurement_error_std` input are aligned to the retained sample automatically.
+- `parameter_values` [Type: `Vector`]: Parameter values.
+- `shocks` [Type: `AbstractMatrix`]: Matrix of latent structural shocks with shape `nExo × (T + max(warmup_iterations - 1, 0))`, where `T` matches the number of observations in `data`. When `warmup_iterations > 1`, the leading `warmup_iterations - 1` shock columns are used only to warm the latent state before the first scored observation.
+- `measurement_error_std` [Type: `Real`, `AbstractVector`, or `AbstractMatrix`]: Standard deviation(s) of the Gaussian measurement error added to each observable. Pass a scalar to use the same measurement-error std-dev on every observable, a vector of length equal to the number of observables for observable-specific std-devs, or a matrix of shape `(n_observables, n_periods)` for period-specific measurement error. If fully unobserved leading or trailing periods are discarded, matrix-valued inputs are trimmed to the same retained sample automatically.
+
+# Keyword Arguments
+- $STEADY_STATE_FUNCTION®
+- `algorithm` [Default: `:second_order`, Type: `Symbol`]: solution algorithm. Supported perturbation algorithms are `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, and `:pruned_third_order`.
+- `warmup_iterations` [Default: `DEFAULT_WARMUP_ITERATIONS`, Type: `Int`]: Number of filter-style warmup iterations. In the filter-free case this prepends `max(warmup_iterations - 1, 0)` latent-shock periods before the first scored observation.
+- $INITIAL_STATE®
+- `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails (e.g. solution did not converge or measurement-error std-dev is non-positive).
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `<:AbstractFloat` loglikelihood
+"""
+function get_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{D},
+                            parameter_values::Vector{S},
+                            shocks::AbstractMatrix{T},
+                            measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = :second_order,
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            on_failure_loglikelihood::U = -Inf,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
+    # Convenience method: no `initial_state` argument; uses the internal default.
+    # To override the initial state (and get AD tangents through it), call the
+    # positional method `get_loglikelihood(𝓂, data, p, shocks, me_std, initial_state; ...)`.
+    return get_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE;
+                            steady_state_function = steady_state_function,
+                            algorithm = algorithm,
+                            warmup_iterations = warmup_iterations,
+                            on_failure_loglikelihood = on_failure_loglikelihood,
+                            tol = tol,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
+end
+
+
+
+function get_loglikelihood(𝓂::ℳ,
+                            data::KeyedArray{D},
+                            parameter_values::Vector{S},
+                            shocks::AbstractMatrix{T},
+                            measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}},
+                            initial_state::Union{AbstractVector{IT}, AbstractVector{<:AbstractVector{IT}}};
+                            steady_state_function::SteadyStateFunctionType = missing,
+                            algorithm::Symbol = :second_order,
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            on_failure_loglikelihood::U = -Inf,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            caching::Bool = DEFAULT_CACHING,
+                            use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64, IT) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat, IT <: Real}
+
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+
+    @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
+
+    if initial_state != DEFAULT_INITIAL_STATE
+        nVars_check = 𝓂.constants.post_model_macro.nVars
+        if eltype(initial_state) <: Real
+            @assert length(initial_state) == nVars_check "initial_state must have length equal to the total number of variables ($nVars_check, see `show(model)`), got $(length(initial_state))."
+        else
+            @assert length(initial_state[1]) == nVars_check "Each vector in initial_state must have length equal to the total number of variables ($nVars_check, see `show(model)`), got $(length(initial_state[1]))."
+            @assert all(v -> length(v) == length(initial_state[1]), initial_state) "All vectors in initial_state must have the same length, got lengths $(length.(initial_state))."
+        end    
+    end
+    
+    R = promote_type(S, T, Float64, IT)
+
+    if !caching; invalidate_cache_validity!(𝓂); end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            lyapunov_algorithm = lyapunov_algorithm)
+
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
+
+    solve!(𝓂,
+           opts = opts,
+           steady_state_function = steady_state_function,
+           algorithm = algorithm)
+
+    bounds_violated = check_bounds(parameter_values, 𝓂)
+
+    if bounds_violated
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return convert(R, on_failure_loglikelihood)
+    end
+
+    me_std_is_vec = measurement_error_std isa AbstractVector
+    me_std_is_mat = measurement_error_std isa AbstractMatrix
+    n_obs = length(observables)
+    nT_input = size(data, 2)
+    @assert warmup_iterations >= 0 "`warmup_iterations` must be non-negative."
+    n_warm = max(warmup_iterations - 1, 0)
+    nT_total = nT_input + n_warm
+    if me_std_is_vec
+        @assert length(measurement_error_std) == n_obs "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs)."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    elseif me_std_is_mat
+        @assert size(measurement_error_std) == (n_obs, nT_input) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs, $nT_input); got $(size(measurement_error_std))."
+        if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    else
+        if !isfinite(measurement_error_std) || measurement_error_std <= zero(T)
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            return convert(R, on_failure_loglikelihood)
+        end
+    end
+
+    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
+
+    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = true)
+
+    if !solved
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return convert(R, on_failure_loglikelihood)
+    end
+
+    # Overwrite the solver-produced `state` with any user-supplied `initial_state`
+    # before any kept_rows reduction; the existing reduce_filter_free_surface then
+    # handles slicing transparently.
+    nVars = 𝓂.constants.post_model_macro.nVars
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
+
+    if collect(axiskeys(data,1)) isa Vector{String}
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+    end
+
+    dt = missing_data_to_nan(collect(data(observables)))
+    data_in_deviations, obs_idx_per_t, _, period_range = trim_informative_sample(dt .- SS_and_pars[obs_indices])
+
+    if size(data_in_deviations, 2) == 0
+        if !use_workspaces; 𝓂.workspaces = orig_ws; end
+        return zero(R)
+    end
+
+    nExo = 𝓂.constants.post_model_macro.nExo
+    past_idx = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
+    nT = size(data_in_deviations, 2)
+
+    @assert size(shocks, 1) == nExo "`shocks` must have one row per exogenous shock (got $(size(shocks, 1)), expected $nExo)."
+    @assert size(shocks, 2) == nT_total "`shocks` must have $(nT_total) columns: $nT scored periods plus $n_warm filter-free warmup shock columns (got $(size(shocks, 2)))."
+
+    visible_cols = isempty(period_range) ? Int[] : n_warm .+ collect(period_range)
+    aligned_shocks = shocks[:, vcat(1:n_warm, visible_cols)]
+    aligned_me_std = me_std_is_mat ? measurement_error_std[:, period_range] : measurement_error_std
+
+    # Keep only the rows of the policy functions that we actually need:
+    # the past-state slots required to propagate the recursion and the
+    # observable rows required to form the residual. Everything else is
+    # discarded so that the matmul, the kron, and the higher-order terms
+    # operate on the minimum-necessary fraction of the policy functions.
+    kept_rows, past_in_kept, obs_in_kept = filter_free_reduction_indices(past_idx, obs_indices)
+    𝐒̂, statê = reduce_filter_free_surface(Val(algorithm), 𝐒, state, kept_rows)
+
+    llh_raw = filter_free_loglikelihood_loop(Val(algorithm), 𝐒̂, statê, aligned_shocks, data_in_deviations, obs_in_kept, past_in_kept, obs_idx_per_t, aligned_me_std, n_warm)
+
+    if !use_workspaces; 𝓂.workspaces = orig_ws; end
+
+    llh = convert(R, llh_raw)
+
+    if !isfinite(llh)
+        return convert(R, on_failure_loglikelihood)
+    end
+
+    return llh
+end
+
+
+function filter_free_obs_logpdf(residual::AbstractVector{R}, me_std::Real) where R <: Real
+    n = length(residual)
+    σ² = abs2(me_std)
+    return -R(0.5) * n * log(R(2π)) - n * log(me_std) - sum(abs2, residual) / (R(2) * σ²)
+end
+
+function filter_free_obs_logpdf(residual::AbstractVector{R}, me_std::AbstractVector{<:Real}) where R <: Real
+    n = length(residual)
+    ll = -R(0.5) * n * log(R(2π))
+    @inbounds for i in 1:n
+        σᵢ = me_std[i]
+        ll += -log(σᵢ) - abs2(residual[i]) / (R(2) * abs2(σᵢ))
+    end
+    return ll
+end
+
+# Keep the shape dispatch for `measurement_error_std` in one place so the
+# primal loops and the analytical pullback select the same observed subset.
+period_me_std(me_std::Real, ::AbstractVector{Int}, ::Int) = me_std
+period_me_std(me_std::AbstractVector, idx::AbstractVector{Int}, ::Int) = view(me_std, idx)
+period_me_std(me_std::AbstractMatrix, idx::AbstractVector{Int}, t::Int) = view(me_std, idx, t)
+
+
+function filter_free_reduction_indices(past_idx::Vector{Int}, obs_indices::Vector{Int})
+    kept_rows = sort(unique(vcat(past_idx, obs_indices)))
+    past_in_kept_raw = indexin(past_idx, kept_rows)
+    obs_in_kept_raw = indexin(obs_indices, kept_rows)
+
+    @assert all(!isnothing, past_in_kept_raw) "Failed to map all past-state indices into the reduced filter-free surface."
+    @assert all(!isnothing, obs_in_kept_raw) "Failed to map all observable indices into the reduced filter-free surface."
+
+    past_in_kept = Int[idx::Int for idx in past_in_kept_raw]
+    obs_in_kept = Int[idx::Int for idx in obs_in_kept_raw]
+    return kept_rows, past_in_kept, obs_in_kept
+end
+
+
+function reduce_filter_free_block(block::AbstractMatrix{S}, kept_rows::Vector{Int}) where S <: Real
+    block̂ = Matrix{S}(undef, length(kept_rows), size(block, 2))
+
+    @inbounds for j in axes(block̂, 2), i in eachindex(kept_rows)
+        block̂[i, j] = block[kept_rows[i], j]
+    end
+
+    return block̂
+end
+
+
+function reduce_filter_free_surface(::Val{:first_order},
+                                    𝐒::AbstractMatrix,
+                                    state::AbstractVector{<:AbstractVector{<:Real}},
+                                    kept_rows::Vector{Int})
+    return 𝐒[kept_rows, :], [state[1][kept_rows]]
+end
+
+
+function reduce_filter_free_surface(::Val{:second_order},
+                                    𝐒::Union{AbstractVector{M},Tuple{M,M}},
+                                    state::AbstractVector{<:Real},
+                                    kept_rows::Vector{Int}) where {S <: Real, M <: AbstractMatrix{S}}
+    @assert length(𝐒) == 2 "Expected two policy-function blocks for second-order filter-free likelihood."
+    𝐒̂₁ = reduce_filter_free_block(𝐒[1], kept_rows)
+    𝐒̂₂ = reduce_filter_free_block(𝐒[2], kept_rows)
+    return (𝐒̂₁, 𝐒̂₂), state[kept_rows]
+end
+
+
+function reduce_filter_free_surface(::Val{:third_order},
+                                    𝐒::Union{AbstractVector{M},Tuple{M,M,M}},
+                                    state::AbstractVector{<:Real},
+                                    kept_rows::Vector{Int}) where {S <: Real, M <: AbstractMatrix{S}}
+    @assert length(𝐒) == 3 "Expected three policy-function blocks for third-order filter-free likelihood."
+    𝐒̂₁ = reduce_filter_free_block(𝐒[1], kept_rows)
+    𝐒̂₂ = reduce_filter_free_block(𝐒[2], kept_rows)
+    𝐒̂₃ = reduce_filter_free_block(𝐒[3], kept_rows)
+    return (𝐒̂₁, 𝐒̂₂, 𝐒̂₃), state[kept_rows]
+end
+
+
+function reduce_filter_free_surface(::Val{:pruned_second_order},
+                                    𝐒::Union{AbstractVector{M},Tuple{M,M}},
+                                    state::AbstractVector{<:AbstractVector{<:Real}},
+                                    kept_rows::Vector{Int}) where {S <: Real, M <: AbstractMatrix{S}}
+    @assert length(𝐒) == 2 "Expected two policy-function blocks for pruned second-order filter-free likelihood."
+    𝐒̂₁ = reduce_filter_free_block(𝐒[1], kept_rows)
+    𝐒̂₂ = reduce_filter_free_block(𝐒[2], kept_rows)
+    return (𝐒̂₁, 𝐒̂₂), [s[kept_rows] for s in state]
+end
+
+
+function reduce_filter_free_surface(::Val{:pruned_third_order},
+                                    𝐒::Union{AbstractVector{M},Tuple{M,M,M}},
+                                    state::AbstractVector{<:AbstractVector{<:Real}},
+                                    kept_rows::Vector{Int}) where {S <: Real, M <: AbstractMatrix{S}}
+    @assert length(𝐒) == 3 "Expected three policy-function blocks for pruned third-order filter-free likelihood."
+    𝐒̂₁ = reduce_filter_free_block(𝐒[1], kept_rows)
+    𝐒̂₂ = reduce_filter_free_block(𝐒[2], kept_rows)
+    𝐒̂₃ = reduce_filter_free_block(𝐒[3], kept_rows)
+    return (𝐒̂₁, 𝐒̂₂, 𝐒̂₃), [s[kept_rows] for s in state]
+end
+
+
+function filter_free_loglikelihood_loop(::Val{:first_order},
+                                        𝐒::AbstractMatrix,
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        obs_idx_per_t::Vector{Vector{Int}},
+                                        me_std,
+                                        n_warm::Int) where {T <: Real}
+    𝐒₁ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state[1])
+    llh = zero(R)
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], ϵ)
+        cur_state = 𝐒₁ * aug
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        aug = vcat(cur_state[past_idx], ϵ)
+        new_state = 𝐒₁ * aug
+        idx = obs_idx_per_t[t]
+        if !isempty(idx)
+            obs_dev = new_state[obs_indices[idx]]
+            residual = data_in_deviations[idx, t] - obs_dev
+            llh += filter_free_obs_logpdf(residual, period_me_std(me_std, idx, t))
+        end
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+function filter_free_loglikelihood_loop(::Val{:second_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
+                                        state::AbstractVector{<:Real},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        obs_idx_per_t::Vector{Vector{Int}},
+                                        me_std,
+                                        n_warm::Int) where {T <: Real}
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state)
+    llh = zero(R)
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        new_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+        idx = obs_idx_per_t[t]
+        if !isempty(idx)
+            obs_dev = new_state[obs_indices[idx]]
+            residual = data_in_deviations[idx, t] - obs_dev
+            llh += filter_free_obs_logpdf(residual, period_me_std(me_std, idx, t))
+        end
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+function filter_free_loglikelihood_loop(::Val{:third_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
+                                        state::AbstractVector{<:Real},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        obs_idx_per_t::Vector{Vector{Int}},
+                                        me_std,
+                                        n_warm::Int) where {T <: Real}
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    𝐒₃ = 𝐒[3]
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
+    nT = size(data_in_deviations, 2)
+
+    cur_state = convert(Vector{R}, state)
+    llh = zero(R)
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        kaug = ℒ.kron(aug, aug)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        kaug = ℒ.kron(aug, aug)
+        new_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+        idx = obs_idx_per_t[t]
+        if !isempty(idx)
+            obs_dev = new_state[obs_indices[idx]]
+            residual = data_in_deviations[idx, t] - obs_dev
+            llh += filter_free_obs_logpdf(residual, period_me_std(me_std, idx, t))
+        end
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+function filter_free_loglikelihood_loop(::Val{:pruned_second_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        obs_idx_per_t::Vector{Vector{Int}},
+                                        me_std,
+                                        n_warm::Int) where {T <: Real}
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
+    nVars = length(state[1])
+    nT = size(data_in_deviations, 2)
+
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2])]
+    llh = zero(R)
+
+    for t in 1:n_warm
+        ϵ = collect(view(shocks, :, t))
+        cur_state = pruned_second_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂)
+    end
+
+    for t in 1:nT
+        ϵ = collect(view(shocks, :, n_warm + t))
+        new_state = pruned_second_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂)
+        idx = obs_idx_per_t[t]
+        if !isempty(idx)
+            obs_dev = new_state[1][obs_indices[idx]] + new_state[2][obs_indices[idx]]
+            residual = data_in_deviations[idx, t] - obs_dev
+            llh += filter_free_obs_logpdf(residual, period_me_std(me_std, idx, t))
+        end
+        cur_state = new_state
+    end
+
+    return llh
+end
+
+
+function filter_free_loglikelihood_loop(::Val{:pruned_third_order},
+                                        𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
+                                        state::AbstractVector{<:AbstractVector{<:Real}},
+                                        shocks::AbstractMatrix{T},
+                                        data_in_deviations::AbstractMatrix{<:Real},
+                                        obs_indices::Vector{Int},
+                                        past_idx::Vector{Int},
+                                        obs_idx_per_t::Vector{Vector{Int}},
+                                        me_std,
+                                        n_warm::Int) where {T <: Real}
+    𝐒₁ = 𝐒[1]
+    𝐒₂ = 𝐒[2]
+    𝐒₃ = 𝐒[3]
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(data_in_deviations), eltype(eltype(state)))
+    nVars = length(state[1])
+    nT = size(data_in_deviations, 2)
+
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
+    llh = zero(R)
+
+    for t in 1:n_warm
+        ϵ = collect(view(shocks, :, t))
+        cur_state = pruned_third_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+    end
+
+    for t in 1:nT
+        ϵ = collect(view(shocks, :, n_warm + t))
+        new_state = pruned_third_order_state_update(cur_state, ϵ, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+        idx = obs_idx_per_t[t]
+        if !isempty(idx)
+            obs_dev = new_state[1][obs_indices[idx]] + new_state[2][obs_indices[idx]] + new_state[3][obs_indices[idx]]
+            residual = data_in_deviations[idx, t] - obs_dev
+            llh += filter_free_obs_logpdf(residual, period_me_std(me_std, idx, t))
+        end
+        cur_state = new_state
+    end
+
+    return llh
+end
+
 
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
     if !all(isfinite,parameter_values) return true end

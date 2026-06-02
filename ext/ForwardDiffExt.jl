@@ -28,7 +28,7 @@ import MacroModelling:
     ensure_sylvester_doubling_buffers!, ensure_qme_doubling_workspace!,
     ensure_lyapunov_workspace!, evaluate_custom_steady_state_function,
     solve_nsss_wrapper, update_ss_counter!, factorize_lu!, solve_lu_left!,
-    get_initial_covariance, find_shocks,
+    get_initial_covariance, find_shocks, normalize_presample_periods,
     # Constants
     DEFAULT_SOLVER_PARAMETERS, DEFAULT_QME_ALGORITHM
 
@@ -1010,6 +1010,7 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 on_failure_loglikelihood::U = -Inf,
                                 opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
                                                 
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
@@ -1037,12 +1038,16 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
         end
     end
 
-    u = zeros(eltype(A), size(C, 2))
+    # Initial mean: honour `state[1]` (set by the get_loglikelihood
+    # `initial_state` override). Pre-edit this was unconditionally zero, which
+    # silently dropped ForwardDiff Duals supplied via `initial_state`.
+    DT = eltype(A)
+    u_raw = state[1][observables_and_states]
+    u = u_raw isa Vector{DT} ? copy(u_raw) : convert(Vector{DT}, u_raw)
     z = C * u
     loglik = zero(eltype(A))
 
     # Pre-allocate Dual-typed loop buffers
-    DT = eltype(A)
     ns = size(A, 1)
     no = size(C, 1)
     v = zeros(DT, no)
@@ -1104,7 +1109,7 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
         ℒ.mul!(z, C, u)
     end
 
-    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2π)) / 2
 end
 
 

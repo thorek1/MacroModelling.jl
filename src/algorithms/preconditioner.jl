@@ -23,7 +23,7 @@ mutable struct SparseAccum{Tv,Ti}
         new(zeros(Ti, n), Vector{Ti}(undef, n), Vector{Tv}(undef, n), zero(Ti), one(Ti))
 end
 
-@inline function _scatter!(v::SparseAccum, a, idx)
+@inline function scatter_accum!(v::SparseAccum, a, idx)
     @inbounds if v.occupied[idx] == v.gen
         v.nzval[idx] += a
     else
@@ -120,7 +120,7 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
         # --- Scatter row k of A into Ur, column k of A into Lc ---
         c = A_head[k]
         while c != 0
-            _scatter!(Ur, A.nzval[A_nxt[c]], c)
+            scatter_accum!(Ur, A.nzval[A_nxt[c]], c)
             nc = A_rnxt[c]
             A_nxt[c] += 1
             if A_nxt[c] < A.colptr[c + 1] && A.rowval[A_nxt[c]] <= c
@@ -130,7 +130,7 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
             c = nc
         end
         for idx = A_nxt[k] : A.colptr[k + 1] - 1
-            _scatter!(Lc, A.nzval[idx], A.rowval[idx])
+            scatter_accum!(Lc, A.nzval[idx], A.rowval[idx])
         end
 
         # --- Ur[k:n] -= L[k,i] * U[i, k:n]  for i < k ---
@@ -138,7 +138,7 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
         while c != 0
             a = -L.nzval[L_nxt[c]]
             for idx = U_nxt[c] : U.colptr[c + 1] - 1
-                _scatter!(Ur, a * U.nzval[idx], U.rowval[idx])
+                scatter_accum!(Ur, a * U.nzval[idx], U.rowval[idx])
             end
             nc = L_rnxt[c]
             L_nxt[c] += 1
@@ -155,7 +155,7 @@ function ilu(A::SparseMatrixCSC{ATv,Ti}; τ = 1e-3) where {ATv,Ti}
             while c != 0
                 a = -U.nzval[U_nxt[c]]
                 for idx = L_nxt[c] : L.colptr[c + 1] - 1
-                    _scatter!(Lc, a * L.nzval[idx], L.rowval[idx])
+                    scatter_accum!(Lc, a * L.nzval[idx], L.rowval[idx])
                 end
                 nc = U_rnxt[c]
                 U_nxt[c] += 1

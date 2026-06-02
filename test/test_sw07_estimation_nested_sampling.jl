@@ -2,6 +2,7 @@ using Test
 using MacroModelling
 import Turing
 using PythonCall
+using CondaPkg
 using DelimitedFiles, AxisKeys
 using FlexiChains
 using FlexiChains: Parameter, FlexiChain
@@ -64,7 +65,6 @@ ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 # Install nested-sampling Python packages into PythonCall's Python environment
 # ──────────────────────────────────────────────────────────────────────────────
 println("Installing nested-sampling Python packages...")
-using CondaPkg
 USE_NESSAI    && CondaPkg.add_pip("nessai")
 USE_DYNESTY   && CondaPkg.add_pip("dynesty")
 USE_ULTRANEST && CondaPkg.add_pip("ultranest")
@@ -130,7 +130,44 @@ informative_dists = [
 ]
 
 dists = if USE_FLAT_PRIOR
-    [Turing.Uniform(minimum(d), maximum(d)) for d in informative_dists]
+    [
+        Turing.Uniform(0.0001, 10.0),      # z_ea
+        Turing.Uniform(0.0001, 10.0),      # z_eb
+        Turing.Uniform(0.0001, 10.0),      # z_eg
+        Turing.Uniform(0.0001, 10.0),      # z_eqs
+        Turing.Uniform(0.0001, 10.0),      # z_em
+        Turing.Uniform(0.0001, 10.0),      # z_epinf
+        Turing.Uniform(0.0001, 10.0),      # z_ew
+        Turing.Uniform(0.0001, 0.9999),    # crhoa
+        Turing.Uniform(0.0001, 0.9999),    # crhob
+        Turing.Uniform(0.0001, 0.9999),    # crhog
+        Turing.Uniform(0.0001, 0.9999),    # crhoqs
+        Turing.Uniform(0.0001, 0.9999),    # crhoms
+        Turing.Uniform(0.0001, 0.9999),    # crhopinf
+        Turing.Uniform(0.0001, 0.9999),    # crhow
+        Turing.Uniform(0.0001, 0.9999),    # cmap
+        Turing.Uniform(0.0001, 0.9999),    # cmaw
+        Turing.Uniform(0.0001, 100.0),     # csadjcost
+        Turing.Uniform(0.0001, 30.0),      # csigma
+        Turing.Uniform(0.0001, 0.9999),    # chabb
+        Turing.Uniform(0.0001, 0.9999),    # cprobw
+        Turing.Uniform(0.0001, 100.0),     # csigl
+        Turing.Uniform(0.0001, 0.9999),    # cprobp
+        Turing.Uniform(0.0001, 0.9999),    # cindw
+        Turing.Uniform(0.0001, 0.9999),    # cindp
+        Turing.Uniform(0.0001, 0.9999),    # czcap
+        Turing.Uniform(0.0001, 10.0),      # cfc
+        Turing.Uniform(0.0001, 10.0),      # crpi
+        Turing.Uniform(0.0001, 0.9999),    # crr
+        Turing.Uniform(0.0001, 1.5),       # cry
+        Turing.Uniform(0.0001, 1.5),       # crdy
+        Turing.Uniform(0.0001, 5.0),       # constepinf
+        Turing.Uniform(0.0001, 5.0),       # constebeta
+        Turing.Uniform(-10.0, 10.0),       # constelab
+        Turing.Uniform(0.0001, 5.0),       # ctrend
+        Turing.Uniform(0.0001, 5.0),       # cgy
+        Turing.Uniform(0.0001, 0.9999),    # calfa
+    ]
 else
     informative_dists
 end

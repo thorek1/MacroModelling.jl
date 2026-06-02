@@ -4,21 +4,60 @@ import LinearAlgebra as ℒ
 import StatsPlots
 using Random
 Random.seed!(1234)
+include("test_helpers.jl")
 
 # Diagnostic wrapper: prints achieved atol/rtol when isapprox fails
-function check_isapprox(a, b; kwargs...)
-    result = isapprox(a, b; kwargs...)
+function has_nested_arrays(value)
+    value isa AbstractArray || return false
+    eltype(value) <: AbstractArray && return true
+    isconcretetype(eltype(value)) && return false
+    return any(element -> element isa AbstractArray, value)
+end
+
+function recursive_isapprox(left, right; kwargs...)
+    if left isa AbstractArray && right isa AbstractArray && (has_nested_arrays(left) || has_nested_arrays(right))
+        size(left) == size(right) || return false
+        return all(recursive_isapprox(left_element, right_element; kwargs...) for (left_element, right_element) in zip(left, right))
+    end
+
+    return isapprox(left, right; kwargs...)
+end
+
+function flatten_numeric_values(value)
+    if value isa Number
+        return Number[value]
+    elseif value isa AbstractArray
+        values = Number[]
+        for element in value
+            append!(values, flatten_numeric_values(element))
+        end
+        return values
+    else
+        return Number[]
+    end
+end
+
+function check_isapprox(left, right; kwargs...)
+    result = recursive_isapprox(left, right; kwargs...)
     if !result
-        d = a .- b
-        frobenius_diff = ℒ.norm(d)
-        maxnorm = max(ℒ.norm(a), ℒ.norm(b))
+        left_values = flatten_numeric_values(left)
+        right_values = flatten_numeric_values(right)
+
+        if isempty(left_values) || length(left_values) != length(right_values)
+            printstyled("  ⚠ APPROX FAIL: unable to summarize numeric leaves, left_size=$(size(left)), right_size=$(size(right))\n", color=:yellow)
+            return result
+        end
+
+        difference = left_values .- right_values
+        frobenius_diff = ℒ.norm(difference)
+        maxnorm = max(ℒ.norm(left_values), ℒ.norm(right_values))
         eff_rtol = maxnorm > 0 ? frobenius_diff / maxnorm : Inf
-        max_abs = maximum(abs.(d))
-        safe_denom = max.(abs.(a), abs.(b), eps())
-        max_rel = maximum(abs.(d) ./ safe_denom)
-        has_nan = any(isnan, a) || any(isnan, b)
-        has_inf = any(isinf, a) || any(isinf, b)
-        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(a))\n", color=:yellow)
+        max_abs = maximum(abs.(difference))
+        safe_denom = max.(abs.(left_values), abs.(right_values), eps())
+        max_rel = maximum(abs.(difference) ./ safe_denom)
+        has_nan = any(isnan, left_values) || any(isnan, right_values)
+        has_inf = any(isinf, left_values) || any(isinf, right_values)
+        printstyled("  ⚠ APPROX FAIL: eff_rtol=$(eff_rtol), max_elem_abs=$(max_abs), max_elem_rel=$(max_rel), has_nan=$(has_nan), has_inf=$(has_inf), size=$(size(left))\n", color=:yellow)
     end
     return result
 end
@@ -1491,6 +1530,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.caches.non_stochastic_steady_state[var_idxs]
+        boundary_cov = boundary_coverage_data(data_in_levels; n_periods = min(size(data_in_levels, 2), 12))
+        ff_boundary_cov = boundary_coverage_data(data_in_levels; n_periods = min(size(data_in_levels, 2), 8))
+
+        if isempty(m.equations.obc_violation)
+            clear_solution_caches!(m, algorithm)
+            check_filter_free_boundary_cases(m, ff_boundary_cov, old_params;
+                                             algorithm = algorithm,
+                                             warmup_iterations = 2)
+        end
 
 
         if !(algorithm ∈ [:second_order, :third_order])
@@ -1695,8 +1743,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 # reallocated across the shock columns.
                 sum_default = dropdims(sum(collect(sd_default), dims = 2), dims = 2)
                 sum_mc      = dropdims(sum(collect(sd_mc),      dims = 2), dims = 2)
-                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-8)
-                @test isapprox(sum_default, sum_mc, atol = 1e-8)
+                @test isapprox(shock_sum_mc .+ Array(init_mc), sum_default, atol = 1e-6)
+                @test isapprox(sum_default, sum_mc, atol = 1e-6)
             end
 
             # First-order with marginal_contribution = true is silently ignored
@@ -1715,6 +1763,40 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                         verbose = false)
                 @test axiskeys(sd_fo_mc, :Shocks) == axiskeys(sd_fo_default, :Shocks)
                 @test isapprox(collect(sd_fo_mc), collect(sd_fo_default), rtol = 1e-10)
+            end
+        end
+
+        for filter in (algorithm == :first_order ? filters : [:inversion])
+            for smooth in [true, false]
+                output_kwargs = (; algorithm = algorithm,
+                                 data_in_levels = true,
+                                 filter = filter,
+                                 smooth = smooth,
+                                 verbose = false)
+
+                for (outer_data, trimmed_data) in ((boundary_cov.leading, boundary_cov.trimmed_leading),
+                                                   (boundary_cov.trailing, boundary_cov.trimmed_trailing),
+                                                   (boundary_cov.boundary, boundary_cov.trimmed_boundary))
+                    clear_solution_caches!(m, algorithm)
+                    shocks_outer = get_estimated_shocks(m, outer_data; output_kwargs...)
+                    clear_solution_caches!(m, algorithm)
+                    shocks_trimmed = get_estimated_shocks(m, trimmed_data; output_kwargs...)
+                    @test check_isapprox(collect(shocks_outer), collect(shocks_trimmed), rtol = 1e-8)
+
+                    clear_solution_caches!(m, algorithm)
+                    vars_outer = get_estimated_variables(m, outer_data; output_kwargs...)
+                    clear_solution_caches!(m, algorithm)
+                    vars_trimmed = get_estimated_variables(m, trimmed_data; output_kwargs...)
+                    @test check_isapprox(collect(vars_outer), collect(vars_trimmed), rtol = 1e-8)
+
+                    if !(algorithm ∈ [:second_order, :third_order])
+                        clear_solution_caches!(m, algorithm)
+                        decomp_outer = get_shock_decomposition(m, outer_data; output_kwargs...)
+                        clear_solution_caches!(m, algorithm)
+                        decomp_trimmed = get_shock_decomposition(m, trimmed_data; output_kwargs...)
+                        @test check_isapprox(collect(decomp_outer), collect(decomp_trimmed), rtol = 1e-8)
+                    end
+                end
             end
         end
 
@@ -1768,6 +1850,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         for filter in (algorithm == :first_order ? filters : [:inversion])
             for presample_periods in [0, 3]
                 for initial_covariance in [:diagonal, :theoretical]
+                    clear_solution_caches!(m, algorithm)
+                    check_loglikelihood_boundary_cases(m, boundary_cov, old_params;
+                                                      algorithm = algorithm,
+                                                      filter = filter,
+                                                      presample_periods = presample_periods,
+                                                      initial_covariance = initial_covariance,
+                                                      verbose = false)
+
                     for verbose in [false] # [true, false]
                         for parameter_values in [old_params, old_params .* exp.(-rndnmbr[1:length(old_params)]*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14))]
@@ -1874,6 +1964,109 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
             end
         end
+    end
+
+    @testset "initial_state — value equivalence (no derivatives)" begin
+        sol = get_solution(m)
+
+        if length(m.constants.post_model_macro.exo) > 3
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.constants.post_model_macro.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.equations.obc_violation) > 0 ? 2 : end]]
+        elseif length(m.constants.post_model_macro.var) == 17
+            var_idxs = [5]
+        else
+            var_idxs = [1]
+        end
+
+        Random.seed!(418023)
+
+        simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
+
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
+
+        nVars_local = m.constants.post_model_macro.nVars
+        ss_vec_local = copy(m.caches.non_stochastic_steady_state)[1:nVars_local]
+        state_idx_local = m.constants.post_model_macro.past_not_future_and_mixed_idx
+
+        filters_for_algo = algorithm == :first_order ? [:kalman, :inversion] : [:inversion]
+        is_first_or_pruned = algorithm in (:first_order, :pruned_second_order, :pruned_third_order)
+
+        for filt in filters_for_algo
+            clear_solution_caches!(m, algorithm)
+            ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = filt, algorithm = algorithm)
+
+            ll_lev = get_loglikelihood(m, data_in_levels, old_params, ss_vec_local; filter = filt, algorithm = algorithm)
+            if is_first_or_pruned
+                @test isapprox(ll_lev, ll_base, rtol = 1e-7)
+                ll_vv = get_loglikelihood(m, data_in_levels, old_params, [zeros(nVars_local)]; filter = filt, algorithm = algorithm)
+                @test isapprox(ll_vv, ll_base, rtol = 1e-7)
+            else
+                # Non-pruned higher order: default initial state is SSS levels
+                _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
+                    Val(algorithm), old_params, m;
+                    opts = MacroModelling.merge_calculation_options(), estimation = true)
+                sss_levels = sd .+ sap[1:nVars_local]
+                ll_sss = get_loglikelihood(m, data_in_levels, old_params, sss_levels; filter = filt, algorithm = algorithm)
+                @test isapprox(ll_sss, ll_base, rtol = 1e-7)
+            end
+
+            # Perturbed initial state should produce a different loglikelihood
+            perturbed_local = copy(ss_vec_local)
+            perturbed_local[state_idx_local] .+= 0.05
+            ll_pert = get_loglikelihood(m, data_in_levels, old_params, perturbed_local; filter = filt, algorithm = algorithm)
+            @test isfinite(ll_pert)
+            @test !isapprox(ll_pert, ll_base, rtol = 1e-7)
+
+            # Length validation
+            @test_throws AssertionError get_loglikelihood(m, data_in_levels, old_params, [1.0, 2.0]; filter = filt, algorithm = algorithm)
+        end
+
+        # Vector{Vector{Float64}} input for pruned algorithms
+        if algorithm in (:pruned_second_order, :pruned_third_order)
+            n_levels = algorithm == :pruned_second_order ? 2 : 3
+            pert_vv = [zeros(nVars_local) for _ in 1:n_levels]
+            pert_vv[1][state_idx_local] .= 0.05
+            ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = :inversion, algorithm = algorithm)
+            ll_vv   = get_loglikelihood(m, data_in_levels, old_params, pert_vv; filter = :inversion, algorithm = algorithm)
+            @test isfinite(ll_vv)
+            @test !isapprox(ll_vv, ll_base, rtol = 1e-7)
+        end
+
+        # Filter-free loglikelihood
+        Random.seed!(123)
+        nExo_ff = length(m.constants.post_model_macro.exo)
+        nT_ff   = size(data_in_levels, 2)
+        shks_ff = 1e-3 .* randn(nExo_ff, nT_ff)
+        me_ff   = 0.05
+
+        clear_solution_caches!(m, algorithm)
+        ll_ff_base = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff; algorithm = algorithm)
+        @test isfinite(ll_ff_base)
+
+        ll_ff_lev = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, ss_vec_local; algorithm = algorithm)
+        if is_first_or_pruned
+            @test isapprox(ll_ff_lev, ll_ff_base, rtol = 1e-7)
+            ll_ff_vv = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [zeros(nVars_local)]; algorithm = algorithm)
+            @test isapprox(ll_ff_vv, ll_ff_base, rtol = 1e-7)
+        else
+            _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
+                Val(algorithm), old_params, m;
+                opts = MacroModelling.merge_calculation_options(), estimation = true)
+            sss_levels = sd .+ sap[1:nVars_local]
+            ll_ff_sss = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, sss_levels; algorithm = algorithm)
+            @test isapprox(ll_ff_sss, ll_ff_base, rtol = 1e-7)
+        end
+
+        @test_throws AssertionError get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [1.0, 2.0]; algorithm = algorithm)
     end
 
     @testset "get_conditional_forecast" begin

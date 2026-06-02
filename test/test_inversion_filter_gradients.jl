@@ -5,6 +5,7 @@ using AxisKeys
 import LinearAlgebra as ℒ
 import ForwardDiff
 import Zygote
+import ChainRulesCore
 import FiniteDifferences
 
 # -----------------------------------------------------------------------------
@@ -24,8 +25,8 @@ import FiniteDifferences
 #   * n_obs == n_shocks  (square — first_order only; higher orders cannot
 #     invert square systems on this model with LagrangeNewton)
 #   * partial + fully missing observations (public missing-data dispatch)
-#   * warmup_iterations > 0   (first_order only — codebase warns it's first-
-#     order-only and ignores it otherwise)
+#   * warmup_iterations > 0   (first_order dense path + hidden-warmup
+#     paths for missing data and higher-order inversion likelihoods)
 #   * presample_periods > 0
 #
 # Note: MacroModelling enforces n_obs ≤ n_shocks at the API level, so the
@@ -120,6 +121,57 @@ function compare_gradients(label, model, data, base_params, idx, algorithm;
     end
 end
 
+function compare_warmup_one_equivalence(label, model, data, base_params, algorithm;
+                                        llh_rtol = 1e-10,
+                                        llh_atol = 1e-12,
+                                        grad_rtol = 1e-8,
+                                        grad_atol = 1e-10)
+    @testset "$label" begin
+        llh0 = get_loglikelihood(model, data, base_params;
+                                 filter = :inversion,
+                                 algorithm = algorithm,
+                                 on_failure_loglikelihood = -Inf,
+                                 verbose = true,
+                                 warmup_iterations = 0)
+        llh1 = get_loglikelihood(model, data, base_params;
+                                 filter = :inversion,
+                                 algorithm = algorithm,
+                                 on_failure_loglikelihood = -Inf,
+                                 verbose = true,
+                                 warmup_iterations = 1)
+
+        @test isfinite(llh0)
+        @test isfinite(llh1)
+        @test isapprox(llh0, llh1; rtol = llh_rtol, atol = llh_atol)
+
+        _, pb0 = ChainRulesCore.rrule(get_loglikelihood,
+                                      model,
+                                      data,
+                                      base_params;
+                                      filter = :inversion,
+                                      algorithm = algorithm,
+                                      on_failure_loglikelihood = -Inf,
+                                      verbose = true,
+                                      warmup_iterations = 0)
+        _, pb1 = ChainRulesCore.rrule(get_loglikelihood,
+                                      model,
+                                      data,
+                                      base_params;
+                                      filter = :inversion,
+                                      algorithm = algorithm,
+                                      on_failure_loglikelihood = -Inf,
+                                      verbose = true,
+                                      warmup_iterations = 1)
+
+        grad0 = pb0(1.0)[4]
+        grad1 = pb1(1.0)[4]
+
+        @test all(isfinite, grad0)
+        @test all(isfinite, grad1)
+        @test isapprox(grad0, grad1; rtol = grad_rtol, atol = grad_atol)
+    end
+end
+
 # Build data as steady-state level + small Gaussian perturbations.  This keeps
 # the inversion filter inside its convergence basin at every perturbation
 # order, so any test failure reflects an AD problem rather than a numerical
@@ -202,38 +254,80 @@ end
     end
 
     # --- (b) FULL parameter vector — first_order only, under-identified ------
-    let algo = :first_order
-        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
-        compare_gradients("Gali :$algo (under-identified, FULL param vector)",
-                          GALI, data, base_params, collect(eachindex(base_params)), algo)
-    end
+    algo = :first_order
+    data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 12)
+    compare_gradients("Gali :$algo (under-identified, FULL param vector)",
+                      GALI, data, base_params, collect(eachindex(base_params)), algo)
 
     # --- (c) square observables (n_obs == n_shocks): first_order only -------
     #   (higher-order inversion does not converge for square systems on this
     #    model — exercising it would test the failure path, not the gradient.)
-    let algo = :first_order
-        # Use a tighter σ so that finite-difference perturbations keep the
-        # square-system inversion inside its convergence basin.
-        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
-        compare_gradients("Gali :$algo (square obs)",
-                          GALI, data, base_params, p_subset, algo)
-    end
+    algo = :first_order
+    # Use a tighter σ so that finite-difference perturbations keep the
+    # square-system inversion inside its convergence basin.
+    data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 6, σ = 1e-6, seed = 13)
+    compare_gradients("Gali :$algo (square obs)",
+                      GALI, data, base_params, p_subset, algo)
 
     # --- (c2) square observables + missing periods: first_order only -------
-    let algo = :first_order
-        data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 8, σ = 1e-6, seed = 17)
-        data_missing = data_with_missing_observations(data)
-        compare_gradients("Gali :$algo (square obs + missing periods)",
-                          GALI, data_missing, base_params, p_subset, algo)
+    algo = :first_order
+    data = ss_perturbed_data(GALI, GALI_OBS_SQUARE; periods = 8, σ = 1e-6, seed = 17)
+    data_missing = data_with_missing_observations(data)
+    compare_gradients("Gali :$algo (square obs + missing periods)",
+                      GALI, data_missing, base_params, p_subset, algo)
+
+    # --- (d) warmup_iterations > 0: dense first-order gradient path ---------
+    @testset "Gali :first_order (warmup_iterations=2)" begin
+        algo = :first_order
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
+        compare_gradients("Gali :$algo (warmup_iterations=2)",
+                          GALI, data, base_params, p_subset, algo;
+                          warmup_iterations = 2)
     end
 
-    # --- (d) warmup_iterations > 0 (first_order only, per implementation) ---
-    @testset "Gali :first_order (warmup_iterations=2)" begin
-        let algo = :first_order
-            data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 14)
-            compare_gradients("Gali :$algo (warmup_iterations=2)",
+    # --- (d1) warmup_iterations > 0: higher-order dense gradient paths -----
+    @testset "Gali higher-order warmup gradients (dense, warmup_iterations=2)" begin
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 8, σ = 1e-4, seed = 140)
+        for algo in algorithms[2:end]
+            compare_gradients("Gali :$algo (dense warmup_iterations=2)",
                               GALI, data, base_params, p_subset, algo;
                               warmup_iterations = 2)
+        end
+    end
+
+    # --- (d1b) warmup_iterations > 0: missing-data paths -------------------
+    @testset "Gali warmup gradients (missing, warmup_iterations=2)" begin
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 141)
+        data_missing = data_with_missing_observations(data)
+        for algo in algorithms
+            compare_gradients("Gali :$algo (missing warmup_iterations=2)",
+                              GALI, data_missing, base_params, p_subset, algo;
+                              warmup_iterations = 2)
+        end
+    end
+
+    # --- (d2) warmup_iterations = 1 is a no-op under hidden-prior scoring --
+    @testset "Gali inversion warmup=1 matches no warmup (dense)" begin
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 18)
+        for algo in algorithms
+            compare_warmup_one_equivalence("Gali :$algo (dense warmup=1)",
+                                           GALI,
+                                           data,
+                                           base_params,
+                                           algo)
+        end
+    end
+
+    # --- (d3) missing-data warmup_iterations = 1 is also a no-op -----------
+    @testset "Gali inversion warmup=1 matches no warmup (missing)" begin
+        data = ss_perturbed_data(GALI, GALI_OBS_UNDER; periods = 10, σ = 1e-4, seed = 19)
+        data_missing = data_with_missing_observations(data)
+        for algo in algorithms
+            compare_warmup_one_equivalence("Gali :$algo (missing warmup=1)",
+                                           GALI,
+                                           data_missing,
+                                           base_params,
+                                           algo)
         end
     end
 
@@ -279,20 +373,18 @@ end
     base_params = copy(SW07.parameter_values)
 
     # First-order: FULL parameter vector
-    let algo = :first_order
-        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 21)
-        compare_gradients("SW07 :$algo (under-identified, FULL param vector, $(length(base_params)) params)",
-                          SW07, data, base_params,
-                          collect(eachindex(base_params)), algo)
-    end
+    algo = :first_order
+    data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 21)
+    compare_gradients("SW07 :$algo (under-identified, FULL param vector, $(length(base_params)) params)",
+                      SW07, data, base_params,
+                      collect(eachindex(base_params)), algo)
 
     # Pruned-2nd: subset only
-    let algo = :pruned_second_order
-        data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 22)
-        p_subset = sw07_subset_indices()
-        compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
-                          SW07, data, base_params, p_subset, algo)
-    end
+    algo = :pruned_second_order
+    data = ss_perturbed_data(SW07, SW07_OBS; periods = 12, σ = 1e-4, seed = 22)
+    p_subset = sw07_subset_indices()
+    compare_gradients("SW07 :$algo (under-identified, $(length(p_subset))-param subset)",
+                      SW07, data, base_params, p_subset, algo)
 
     # Missing-data coverage on the SW07 paths already present in this file.
     for algo in (:first_order, :pruned_second_order)

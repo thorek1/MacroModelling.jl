@@ -24,6 +24,40 @@ observables = sort(Symbol.("log_".*names))
 # subset observables in data
 data = data(observables, :)
 
+function prepend_initial_periods(data, n_periods)
+    n_periods <= 0 && return data
+    arr = collect(data)
+    arr_prepended = hcat(arr[:, 1:n_periods], arr)
+    return KeyedArray(arr_prepended, Variable = collect(axiskeys(data, 1)), Time = axes(arr_prepended, 2))
+end
+
+function blank_outer_periods(data, n_leading, n_trailing)
+    arr = Matrix{Float64}(collect(data))
+    n_leading > 0 && (arr[:, 1:n_leading] .= NaN)
+    n_trailing > 0 && (arr[:, end-n_trailing+1:end] .= NaN)
+    return KeyedArray(arr, Variable = collect(axiskeys(data, 1)), Time = axes(arr, 2))
+end
+
+function nonfinite_to_missing(data)
+    arr = Matrix{Union{Missing,Float64}}(copy(collect(data)))
+    @inbounds for j in axes(arr, 2), i in axes(arr, 1)
+        if !isfinite(Float64(coalesce(arr[i, j], NaN)))
+            arr[i, j] = missing
+        end
+    end
+    return KeyedArray(arr, Variable = collect(axiskeys(data, 1)), Time = axes(arr, 2))
+end
+
+function nonfinite_to_nothing(data)
+    arr = Matrix{Union{Nothing,Float64}}(copy(collect(data)))
+    @inbounds for j in axes(arr, 2), i in axes(arr, 1)
+        if !isfinite(coalesce(arr[i, j], NaN))
+            arr[i, j] = nothing
+        end
+    end
+    return KeyedArray(arr, Variable = collect(axiskeys(data, 1)), Time = axes(arr, 2))
+end
+
 
 @testset "Kalman with missing observations (mid-sample partial + fully missing periods)" begin
     n_obs   = size(data, 1)
@@ -43,21 +77,8 @@ data = data(observables, :)
     data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
 
     # Equivalent Missing-typed array
-    dat_miss = Matrix{Union{Missing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_miss, 2), i in axes(dat_miss, 1)
-        if !isfinite(Float64(coalesce(dat_miss[i, j], NaN)))
-            dat_miss[i, j] = missing
-        end
-    end
-    data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
-
-    dat_nothing = Matrix{Union{Nothing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_nothing, 2), i in axes(dat_nothing, 1)
-        if !isfinite(coalesce(dat_nothing[i, j], NaN))
-            dat_nothing[i, j] = nothing
-        end
-    end
-    data_nothing = KeyedArray(dat_nothing, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nothing, 2))
+    data_missing = nonfinite_to_missing(data_nan)
+    data_nothing = nonfinite_to_nothing(data_nan)
 
     # 1. forward filter: finite, agrees across NaN/Missing forms, differs from dense.
     ll_dense = get_loglikelihood(FS2000, data, FS2000.parameter_values)
@@ -90,14 +111,38 @@ data = data(observables, :)
     sd = get_shock_decomposition(FS2000, data_nan)
     @test all(isfinite, collect(sd))
     @test size(sd, 3) == n_time
+    sd_missing = get_shock_decomposition(FS2000, data_missing)
+    sd_nothing = get_shock_decomposition(FS2000, data_nothing)
+    @test isapprox(collect(sd), collect(sd_missing); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(sd), collect(sd_nothing); rtol = 1e-10, atol = 1e-10)
 
     sh = get_estimated_shocks(FS2000, data_nan)
     @test all(isfinite, collect(sh))
     @test size(sh, 2) == n_time
+    sh_missing = get_estimated_shocks(FS2000, data_missing)
+    sh_nothing = get_estimated_shocks(FS2000, data_nothing)
+    @test isapprox(collect(sh), collect(sh_missing); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(sh), collect(sh_nothing); rtol = 1e-10, atol = 1e-10)
 
     vars = get_estimated_variables(FS2000, data_nan)
     @test all(isfinite, collect(vars))
     @test size(vars, 2) == n_time
+    vars_missing = get_estimated_variables(FS2000, data_missing)
+    vars_nothing = get_estimated_variables(FS2000, data_nothing)
+    @test isapprox(collect(vars), collect(vars_missing); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(vars), collect(vars_nothing); rtol = 1e-10, atol = 1e-10)
+
+    model_estimates = get_model_estimates(FS2000, data_nan)
+    model_estimates_missing = get_model_estimates(FS2000, data_missing)
+    model_estimates_nothing = get_model_estimates(FS2000, data_nothing)
+    @test isapprox(collect(model_estimates), collect(model_estimates_missing); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(model_estimates), collect(model_estimates_nothing); rtol = 1e-10, atol = 1e-10)
+
+    std = get_estimated_variable_standard_deviations(FS2000, data_nan)
+    std_missing = get_estimated_variable_standard_deviations(FS2000, data_missing)
+    std_nothing = get_estimated_variable_standard_deviations(FS2000, data_nothing)
+    @test isapprox(collect(std), collect(std_missing); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(std), collect(std_nothing); rtol = 1e-10, atol = 1e-10)
 end
 
 @testset "Inversion filter with missing observations (mid-sample partial + fully missing periods)" begin
@@ -114,21 +159,8 @@ end
     dat_nan[:, 60] .= NaN
     data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
 
-    dat_miss = Matrix{Union{Missing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_miss, 2), i in axes(dat_miss, 1)
-        if !isfinite(Float64(coalesce(dat_miss[i, j], NaN)))
-            dat_miss[i, j] = missing
-        end
-    end
-    data_missing = KeyedArray(dat_miss, Variable = collect(axiskeys(data, 1)), Time = axes(dat_miss, 2))
-
-    dat_nothing = Matrix{Union{Nothing,Float64}}(copy(dat_nan))
-    @inbounds for j in axes(dat_nothing, 2), i in axes(dat_nothing, 1)
-        if !isfinite(coalesce(dat_nothing[i, j], NaN))
-            dat_nothing[i, j] = nothing
-        end
-    end
-    data_nothing = KeyedArray(dat_nothing, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nothing, 2))
+    data_missing = nonfinite_to_missing(data_nan)
+    data_nothing = nonfinite_to_nothing(data_nan)
 
     inversion_algos = [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
 
@@ -164,4 +196,166 @@ end
         )[1]
         @test isapprox(back_grad, fin_grad, rtol = 1e-4)
     end
+end
+
+@testset "Higher-order inversion output warmup differs from prepended-data run" begin
+    warmup_iterations = 2
+    n_warm = warmup_iterations - 1
+    higher_order_algos = (:pruned_second_order, :second_order, :pruned_third_order, :third_order)
+
+    dat_nan = Matrix{Float64}(collect(data))
+    dat_nan[1, 25]  = NaN
+    dat_nan[2, 47]  = NaN
+    dat_nan[:, 30] .= NaN
+    dat_nan[:, 31] .= NaN
+    dat_nan[:, 60] .= NaN
+    data_nan = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
+
+    for (label, dataset) in (("dense", data), ("missing", data_nan))
+        dataset_prepended = prepend_initial_periods(dataset, n_warm)
+
+        for algo in higher_order_algos
+            sh_warm = get_estimated_shocks(FS2000, dataset;
+                                           algorithm = algo,
+                                           filter = :inversion,
+                                           warmup_iterations = warmup_iterations)
+            sh_prepended = get_estimated_shocks(FS2000, dataset_prepended;
+                                                algorithm = algo,
+                                                filter = :inversion)
+            @test maximum(abs.(collect(sh_warm) .- collect(sh_prepended)[:, n_warm+1:end])) > 1e-8
+
+            vars_warm = get_estimated_variables(FS2000, dataset;
+                                                algorithm = algo,
+                                                filter = :inversion,
+                                                warmup_iterations = warmup_iterations)
+            vars_prepended = get_estimated_variables(FS2000, dataset_prepended;
+                                                     algorithm = algo,
+                                                     filter = :inversion)
+            @test maximum(abs.(collect(vars_warm) .- collect(vars_prepended)[:, n_warm+1:end])) > 1e-8
+        end
+
+        for algo in (:pruned_second_order, :pruned_third_order)
+            sd_warm = get_shock_decomposition(FS2000, dataset;
+                                              algorithm = algo,
+                                              filter = :inversion,
+                                              warmup_iterations = warmup_iterations)
+            sd_prepended = get_shock_decomposition(FS2000, dataset_prepended;
+                                                   algorithm = algo,
+                                                   filter = :inversion)
+            @test maximum(abs.(collect(sd_warm) .- collect(sd_prepended)[:, :, n_warm+1:end])) > 1e-8
+        end
+    end
+end
+
+@testset "Inversion output warmup one is a no-op" begin
+    dat_nan = Matrix{Float64}(collect(data))
+    dat_nan[1, 25]  = NaN
+    dat_nan[2, 47]  = NaN
+    dat_nan[:, 30] .= NaN
+    dat_nan[:, 31] .= NaN
+    dat_nan[:, 60] .= NaN
+    data_nan_local = KeyedArray(dat_nan, Variable = collect(axiskeys(data, 1)), Time = axes(dat_nan, 2))
+
+    for dataset in (data, data_nan_local)
+        for algo in (:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order)
+            shocks_no_warmup = get_estimated_shocks(FS2000, dataset;
+                                                    algorithm = algo,
+                                                    filter = :inversion,
+                                                    warmup_iterations = 0)
+            shocks_one_warmup = get_estimated_shocks(FS2000, dataset;
+                                                     algorithm = algo,
+                                                     filter = :inversion,
+                                                     warmup_iterations = 1)
+            @test isapprox(collect(shocks_no_warmup), collect(shocks_one_warmup); rtol = 1e-10, atol = 1e-10)
+
+            variables_no_warmup = get_estimated_variables(FS2000, dataset;
+                                                          algorithm = algo,
+                                                          filter = :inversion,
+                                                          warmup_iterations = 0)
+            variables_one_warmup = get_estimated_variables(FS2000, dataset;
+                                                           algorithm = algo,
+                                                           filter = :inversion,
+                                                           warmup_iterations = 1)
+            @test isapprox(collect(variables_no_warmup), collect(variables_one_warmup); rtol = 1e-10, atol = 1e-10)
+        end
+
+        for algo in (:first_order, :pruned_second_order, :pruned_third_order)
+            decomposition_no_warmup = get_shock_decomposition(FS2000, dataset;
+                                                              algorithm = algo,
+                                                              filter = :inversion,
+                                                              warmup_iterations = 0)
+            decomposition_one_warmup = get_shock_decomposition(FS2000, dataset;
+                                                               algorithm = algo,
+                                                               filter = :inversion,
+                                                               warmup_iterations = 1)
+            @test isapprox(collect(decomposition_no_warmup), collect(decomposition_one_warmup); rtol = 1e-10, atol = 1e-10)
+        end
+    end
+end
+
+@testset "Outer fully missing periods are ignored" begin
+    warmup_iterations = 2
+    outer = blank_outer_periods(data, 2, 3)
+    outer_missing = nonfinite_to_missing(outer)
+    outer_nothing = nonfinite_to_nothing(outer)
+    trimmed = data[:, 3:size(data, 2)-3]
+    inversion_kwargs = (; algorithm = :pruned_second_order, filter = :inversion, warmup_iterations = warmup_iterations)
+
+    ll_outer = get_loglikelihood(FS2000, outer, FS2000.parameter_values; inversion_kwargs...)
+    ll_outer_missing = get_loglikelihood(FS2000, outer_missing, FS2000.parameter_values; inversion_kwargs...)
+    ll_outer_nothing = get_loglikelihood(FS2000, outer_nothing, FS2000.parameter_values; inversion_kwargs...)
+    ll_trimmed = get_loglikelihood(FS2000, trimmed, FS2000.parameter_values; inversion_kwargs...)
+    @test isapprox(ll_outer, ll_trimmed; rtol = 1e-10, atol = 1e-10)
+    @test isapprox(ll_outer_missing, ll_trimmed; rtol = 1e-10, atol = 1e-10)
+    @test isapprox(ll_outer_nothing, ll_trimmed; rtol = 1e-10, atol = 1e-10)
+
+    grad_outer = DifferentiationInterface.gradient(
+        x -> get_loglikelihood(FS2000, outer, x; inversion_kwargs...),
+        ADTypes.AutoMooncake(config = nothing),
+        FS2000.parameter_values,
+    )
+    grad_trimmed = DifferentiationInterface.gradient(
+        x -> get_loglikelihood(FS2000, trimmed, x; inversion_kwargs...),
+        ADTypes.AutoMooncake(config = nothing),
+        FS2000.parameter_values,
+    )
+    @test isapprox(grad_outer, grad_trimmed; rtol = 1e-9, atol = 1e-9)
+
+    sh_outer = get_estimated_shocks(FS2000, outer; inversion_kwargs...)
+    sh_trimmed = get_estimated_shocks(FS2000, trimmed; inversion_kwargs...)
+    @test size(sh_outer, 2) == size(trimmed, 2)
+    @test isapprox(collect(sh_outer), collect(sh_trimmed); rtol = 1e-10, atol = 1e-10)
+
+    vars_outer = get_estimated_variables(FS2000, outer; inversion_kwargs...)
+    vars_trimmed = get_estimated_variables(FS2000, trimmed; inversion_kwargs...)
+    @test size(vars_outer, 2) == size(trimmed, 2)
+    @test isapprox(collect(vars_outer), collect(vars_trimmed); rtol = 1e-10, atol = 1e-10)
+
+    sd_outer = get_shock_decomposition(FS2000, outer; inversion_kwargs...)
+    sd_trimmed = get_shock_decomposition(FS2000, trimmed; inversion_kwargs...)
+    @test size(sd_outer, 3) == size(trimmed, 2)
+    @test isapprox(collect(sd_outer), collect(sd_trimmed); rtol = 1e-10, atol = 1e-10)
+
+    ll_kalman_outer = get_loglikelihood(FS2000, outer, FS2000.parameter_values)
+    ll_kalman_trimmed = get_loglikelihood(FS2000, trimmed, FS2000.parameter_values)
+    @test isapprox(ll_kalman_outer, ll_kalman_trimmed; rtol = 1e-10, atol = 1e-10)
+
+    std_outer = get_estimated_variable_standard_deviations(FS2000, outer)
+    std_trimmed = get_estimated_variable_standard_deviations(FS2000, trimmed)
+    @test size(std_outer, 2) == size(trimmed, 2)
+    @test isapprox(collect(std_outer), collect(std_trimmed); rtol = 1e-10, atol = 1e-10)
+
+    model_outer_missing = get_model_estimates(FS2000, outer_missing; inversion_kwargs...)
+    model_outer_nothing = get_model_estimates(FS2000, outer_nothing; inversion_kwargs...)
+    model_trimmed = get_model_estimates(FS2000, trimmed; inversion_kwargs...)
+    @test isapprox(collect(model_outer_missing), collect(model_trimmed); rtol = 1e-10, atol = 1e-10)
+    @test isapprox(collect(model_outer_nothing), collect(model_trimmed); rtol = 1e-10, atol = 1e-10)
+
+    all_missing = blank_outer_periods(data, size(data, 2), 0)
+
+    @test iszero(get_loglikelihood(FS2000, all_missing, FS2000.parameter_values; inversion_kwargs...))
+    @test size(get_estimated_shocks(FS2000, all_missing; inversion_kwargs...), 2) == 0
+    @test size(get_estimated_variables(FS2000, all_missing; inversion_kwargs...), 2) == 0
+    @test size(get_shock_decomposition(FS2000, all_missing; inversion_kwargs...), 3) == 0
+    @test size(get_estimated_variable_standard_deviations(FS2000, all_missing), 2) == 0
 end

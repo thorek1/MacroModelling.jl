@@ -263,7 +263,7 @@ function calculate_mean(parameters::Vector{R},
             else
                 𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-                𝐒₂ = dense_to_sparse(𝐒₂) # ensure stable sparse type
+                𝐒₂ = sparse(𝐒₂) # ensure stable sparse type  # was: dense_to_sparse
 
                 nᵉ = T.nExo
                 nˢ = T.nPast_not_future_and_mixed
@@ -356,7 +356,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         if solved2
             𝐒₂ *= 𝓂.constants.second_order.𝐔₂
 
-            𝐒₂ = dense_to_sparse(𝐒₂) # ensure stable sparse type
+            𝐒₂ = sparse(𝐒₂) # ensure stable sparse type  # was: dense_to_sparse
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -480,7 +480,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         update_perturbation_counter!(𝓂.counters, solved2, order = 2)
         
         if solved2
-            𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+            𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}  # was: dense_to_sparse
 
             kron_s_s = so.kron_states
             kron_e_e = so.kron_e_e
@@ -674,7 +674,7 @@ function calculate_per_shock_variance_second_order(parameters::Vector{R},
     L₂ˢ = sub_idx.L₂ˢ
     n₂ˢ = size(D₂ˢ, 2)
 
-    𝐒₂ = dense_to_sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}  # was: dense_to_sparse
 
     kron_e_e = so.kron_e_e
     kron_s_e = so.kron_s_e
@@ -803,7 +803,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
         return fill(R(NaN), nVars, nᵉ), fill(R(NaN), nVars), false
     end
 
-    𝐒₂ = dense_to_sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}  # was: dense_to_sparse
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -1125,7 +1125,7 @@ function calculate_aumann_shapley_second_order_at_nodes(parameters::Vector{R},
     L₂ˢ = sub_idx.L₂ˢ
     n₂ˢ = size(D₂ˢ, 2)
 
-    𝐒₂ = dense_to_sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}  # was: dense_to_sparse
 
     kron_e_e = so.kron_e_e
     kron_s_e = so.kron_s_e
@@ -1272,7 +1272,7 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
         return fill(R(NaN), nVars, nᵉ), total_var, R(NaN)
     end
 
-    𝐒₂ = dense_to_sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}
+    𝐒₂ = sparse(𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{R, Int}  # was: dense_to_sparse
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -1633,7 +1633,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
-    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}  # was: dense_to_sparse
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order
@@ -2003,7 +2003,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     # Expand compressed 𝐒₂_raw to full for moments computation
-    𝐒₂ = (dense_to_sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}
+    𝐒₂ = (sparse(𝐒₂_raw) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{T, Int}  # was: dense_to_sparse
 
     ensure_moments_constants!(𝓂.constants)
     so = 𝓂.constants.second_order

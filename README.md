@@ -29,7 +29,7 @@ As of now the package can:
 - calculate **(unconditional and conditional) variance decompositions** including pruned **second- and third-order** solutions; per-shock contributions can additionally be reported as **marginal contributions (Shapley values)** so that the cross-shock interaction is allocated across the individual shocks
 - compute **shock decompositions** of filtered data via the Kalman or inversion filter, including pruned **second- and third-order** solutions where the nonlinear interaction term can optionally be allocated across shocks via **marginal contributions (Shapley values)**
 - **match model moments** (also for pruned **higher order** solutions)
-- estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
+- estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC), **estimate nonlinear models** using the inversion filter, or the filter-free joint likelihood
 - **differentiate** the model solution, loglikelihood (Kalman and inversion filters), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
 - **modify a model after it has been defined** — model and calibration equations can be updated, added, or removed in place (`update_equations!`, `add_equation!`, `remove_equation!`, and the `*_calibration_equation!` variants) without having to re-run the `@model` / `@parameters` macros. A chronological revision history is kept (`get_revision_history`); this mirrors the equation-revision workflow familiar from `TROLL`
 
@@ -80,7 +80,7 @@ using Pkg; Pkg.add("Optim")                         # LBFGS for conditional fore
 **Automatic differentiation backends:**
 
 - **[Mooncake.jl](https://github.com/compintell/Mooncake.jl)** (reverse-mode) is the recommended backend for gradient-based estimation with Turing.jl (NUTS, HMC). Custom ChainRules `rrule` definitions ensure efficient reverse-mode differentiation through all solvers and filters. Other ChainRules-compatible backends (e.g. Zygote.jl) also work through these same rrules.
-- **[ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)** (forward-mode) is supported via a package extension and provides `ForwardDiff.jacobian` / `ForwardDiff.gradient` compatibility for `get_solution`, `get_irf`, and `get_statistics` (steady state, mean, variance, standard deviation, covariance, correlation, autocorrelation) across all perturbation orders (first, second, third, and pruned variants), as well as `get_loglikelihood` (Kalman filter only; the inversion filter is not supported with ForwardDiff).
+- **[ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)** (forward-mode) is supported via a package extension and provides `ForwardDiff.jacobian` / `ForwardDiff.gradient` compatibility for `get_solution`, `get_irf`, and `get_statistics` (steady state, mean, variance, standard deviation, covariance, correlation, autocorrelation) across all perturbation orders (first, second, third, and pruned variants), as well as the different likelihood estimators via `get_loglikelihood` (Kalman filter, inversion filter, and filter free).
 
 ### Example
 

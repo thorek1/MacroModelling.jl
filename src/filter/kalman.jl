@@ -12,11 +12,12 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 warmup_iterations::Int = 0,
                                                 presample_periods::Int = 0,
-                                                initial_covariance::Symbol = :theoretical,
+                                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
     lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
@@ -32,14 +33,34 @@ function calculate_loglikelihood(::Val{:kalman},
 
     kalman_ws = ensure_kalman_workspaces!(workspaces, size(C, 1), size(C, 2))
 
-    𝐁 = kalman_ws.𝐁
-    ℒ.mul!(𝐁, B, B')
+    # When S === Float64 (typical hot path) reuse the workspace `𝐁` buffer and
+    # the LAPACK-backed Lyapunov solver. When S is non-Float64 (e.g. Dual from
+    # ForwardDiff'ing parameters or `initial_state`) the workspace buffers and
+    # `lyap_ws` are Float64-only and would strip the wider eltype; allocate a
+    # fresh `𝐁` and use the generic Lyapunov path instead.
+    if S === Float64
+        𝐁 = kalman_ws.𝐁
+        ℒ.mul!(𝐁, B, B')
 
-    # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
-    # timer = timer, 
+        P = initial_covariance isa AbstractMatrix ?
+            convert(Matrix{S}, initial_covariance) :
+            get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    else
+        𝐁 = B * B'
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
+        P = initial_covariance isa AbstractMatrix ?
+            convert(Matrix{S}, initial_covariance) :
+            get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    end
+
+    # Initial mean for the Kalman recursion. `state` is the deviation from
+    # the steady state at which the filter is initialised; pre-edit this was
+    # implicitly zero, and that remains the default (state[1] = zeros(nVars)
+    # for :first_order). A non-zero state[1] reflects a user-supplied
+    # initial_state at the get_loglikelihood level.
+    u₀ = state[1][observables_and_states]
+
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, u₀, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -55,11 +76,12 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                                 obs_idx_per_t::Vector{Vector{Int}};
                                                 warmup_iterations::Int = 0,
                                                 presample_periods::Int = 0,
-                                                initial_covariance::Symbol = :theoretical,
+                                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
     idx_constants = constants.post_complete_parameters
     lyap_ws = ensure_lyapunov_workspace!(workspaces, T.nVars, :first_order)
@@ -78,10 +100,14 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
     𝐁 = kalman_ws.𝐁
     ℒ.mul!(𝐁, B, B')
 
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+    P = initial_covariance isa AbstractMatrix ?
+        convert(Matrix{S}, initial_covariance) :
+        get_initial_covariance(Val(initial_covariance), A, 𝐁, lyap_ws, opts = opts)
+
+    u₀ = state[1][observables_and_states]
 
     return run_kalman_iterations_missing(A, 𝐁, C, P, data_in_deviations,
-                                          obs_idx_per_t, kalman_ws,
+                                          obs_idx_per_t, kalman_ws, u₀,
                                           presample_periods = presample_periods,
                                           verbose = opts.verbose,
                                           on_failure_loglikelihood = on_failure_loglikelihood)
@@ -115,114 +141,147 @@ function get_initial_covariance(::Val{:diagonal},
 end
 
 
-function run_kalman_iterations(A::Matrix{S}, 
+function run_kalman_iterations(A::Matrix{S},
                                 𝐁::Matrix{S},
-                                C::AbstractMatrix{R}, 
-                                P::Matrix{S}, 
+                                C::AbstractMatrix{R},
+                                P::Matrix{S},
                                 data_in_deviations::Matrix{S},
-                                ws::kalman_workspace; 
+                                ws::kalman_workspace,
+                                u₀::AbstractVector{V};
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
-    # @timeit_debug timer "Calculate Kalman filter" begin
+                                verbose::Bool = false) where {S <: Real, R <: Real, V <: Real, U <: AbstractFloat}
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
 
-    # Use workspaces
-    u = ws.u
-    z = ws.z
-    ztmp = ws.ztmp
-    utmp = ws.utmp
-    Ctmp = ws.Ctmp
-    F = ws.F
-    K = ws.K
-    tmp = ws.tmp
-    Ptmp = ws.Ptmp
-    
-    # Initialize state estimate to zero
-    fill!(u, zero(S))
+    # Promoted working eltype. For the Float64 hot path (S = V = R = Float64)
+    # this is Float64 and the function reuses the Float64-typed `ws` and the
+    # LAPACK-backed `factorize_lu!` / `solve_lu_*!` routines. For non-Float64
+    # eltypes (e.g. ForwardDiff `Dual`s introduced by differentiating w.r.t.
+    # `initial_state` or parameters) the function falls back to fresh
+    # allocations and Base.lu, since the workspace buffers and FastLapack
+    # routines are Float64-only. The branches are guarded by `T === Float64`
+    # which is constant-folded per specialization, so the active path has no
+    # runtime overhead.
+    T = promote_type(S, V, R)
+    n_state = size(A, 1)
+    n_obs   = size(C, 1)
+
+    if T === Float64
+        u    = ws.u
+        z    = ws.z
+        ztmp = ws.ztmp
+        utmp = ws.utmp
+        Ctmp = ws.Ctmp
+        F    = ws.F
+        K    = ws.K
+        tmp  = ws.tmp
+        Ptmp = ws.Ptmp
+        Pwork = P
+        copyto!(u, u₀)
+    else
+        u    = collect(T, u₀)
+        z    = Vector{T}(undef, n_obs)
+        ztmp = Vector{T}(undef, n_obs)
+        utmp = Vector{T}(undef, n_state)
+        Ctmp = Matrix{T}(undef, n_obs, n_state)
+        F    = Matrix{T}(undef, n_obs, n_obs)
+        K    = Matrix{T}(undef, n_state, n_obs)
+        tmp  = Matrix{T}(undef, n_state, n_state)
+        Ptmp = Matrix{T}(undef, n_state, n_state)
+        Pwork = collect(T, P)
+    end
+
     ℒ.mul!(z, C, u)                          # z = C * u
 
-    loglik = S(0.0)
+    loglik = zero(T)
 
-    # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
         if any(!isfinite, z)
             if verbose println("KF not finite at step $t") end
-            return on_failure_loglikelihood 
+            return T(on_failure_loglikelihood)
         end
 
-        ℒ.axpby!(1, @view(data_in_deviations[:, t]), -1, z)   # z = data[:,t] - z  (innovation v)
+        ℒ.axpby!(one(T), @view(data_in_deviations[:, t]), -one(T), z)   # z = data[:,t] - z  (innovation v)
 
-        ℒ.mul!(Ctmp, C, P)                                     # Ctmp = C * P
-        ℒ.mul!(F, Ctmp, C')                                    # F = C * P * C'
+        ℒ.mul!(Ctmp, C, Pwork)                                  # Ctmp = C * P
+        ℒ.mul!(F, Ctmp, C')                                     # F = C * P * C'
 
-        # Old way (≤v0.1.42): luF = lu(F)  — allocates new LU each step
-        ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
-                                                                           ws.fast_lu_ws_f,
-                                                                           ws.fast_lu_dims_f)
-
-        if !solved_F
-            if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood
-        end
-
-        # Old way (≤v0.1.42): Fdet = det(luF); loglik += log(Fdet) + v' * inv(F) * v
-        # Current code computes log|det(F)| from the LU diagonal and pivot signs.
-        logabsdetF = zero(S)
-        signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, eachindex(ws.fast_lu_ws_f.ipiv))) ? -one(S) : one(S)
-        @inbounds for i in 1:size(F, 1)
-            di = F[i, i]
-            if di == 0
+        if T === Float64
+            ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
+                                                                               ws.fast_lu_ws_f,
+                                                                               ws.fast_lu_dims_f)
+            if !solved_F
                 if verbose println("KF factorisation failed step $t") end
-                return on_failure_loglikelihood
+                return T(on_failure_loglikelihood)
             end
-            logabsdetF += log(abs(di))
-            signF *= sign(di)
+
+            logabsdetF = zero(T)
+            signF = isodd(count(i -> ws.fast_lu_ws_f.ipiv[i] != i, eachindex(ws.fast_lu_ws_f.ipiv))) ? -one(T) : one(T)
+            @inbounds for i in 1:size(F, 1)
+                di = F[i, i]
+                if di == 0
+                    if verbose println("KF factorisation failed step $t") end
+                    return T(on_failure_loglikelihood)
+                end
+                logabsdetF += log(abs(di))
+                signF *= sign(di)
+            end
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if verbose println("KF factorisation failed step $t") end
+                return T(on_failure_loglikelihood)
+            end
+
+            if t > presample_periods
+                copyto!(ztmp, z)
+                solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)   # ztmp = F \ z
+                loglik += logabsdetF + ℒ.dot(z, ztmp)
+            end
+
+            # K = P * C' / F
+            ℒ.mul!(K, Pwork, C')
+            solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)
+        else
+            Flu = ℒ.lu(F, check = false)
+            if !ℒ.issuccess(Flu)
+                if verbose println("KF factorisation failed step $t") end
+                return T(on_failure_loglikelihood)
+            end
+            logabsdetF, signF = ℒ.logabsdet(Flu)
+
+            if signF <= 0 || logabsdetF < log(eps(Float64))
+                if verbose println("KF factorisation failed step $t") end
+                return T(on_failure_loglikelihood)
+            end
+
+            if t > presample_periods
+                ztmp = Flu \ z
+                loglik += logabsdetF + ℒ.dot(z, ztmp)
+            end
+
+            # K = P * C' / F
+            ℒ.mul!(K, Pwork, C')
+            K = K * inv(Flu)
         end
 
-        # Early return if determinant is too small, indicating numerical instability.
-        if signF <= 0 || logabsdetF < log(eps(Float64))
-            if verbose println("KF factorisation failed step $t") end
-            return on_failure_loglikelihood
-        end
+        # P = A * (P - K * C * P) * A' + 𝐁
+        ℒ.mul!(tmp, K, C)                                       # tmp = K * C
+        ℒ.mul!(Ptmp, tmp, Pwork)                                # Ptmp = K * C * P
+        ℒ.axpy!(-one(T), Ptmp, Pwork)                           # P = P - K * C * P
 
-        # Old way (≤v0.1.42): loglik += log(det(F)) + v' * inv(F) * v
-        if t > presample_periods
-            copyto!(ztmp, z)
-            solve_lu_left!(F, ztmp, ws.fast_lu_ws_f, luF)      # ztmp = F \ z
-            loglik += logabsdetF + ℒ.dot(z', ztmp)             # loglik += log|det(F)| + z' * (F \ z)
-        end
-
-        # Old way (≤v0.1.42): K = P * C' / F  — Kalman gain
-        ℒ.mul!(K, P, C')                                       # K = P * C'
-        solve_lu_right!(F, K, ws.fast_lu_ws_f, luF, ws.fast_lu_rhs_t_k)  # K = K / F
-
-        # end # timeit_debug
-        # @timeit_debug timer "Matmul" begin
-
-        # P = A * (P - K * C * P) * A' + B
-        ℒ.mul!(tmp, K, C)                                      # tmp = K * C
-        ℒ.mul!(Ptmp, tmp, P)                                   # Ptmp = K * C * P
-        ℒ.axpy!(-1, Ptmp, P)                                   # P = P - K * C * P
-
-        ℒ.mul!(Ptmp, A, P)                                     # Ptmp = A * P
-        ℒ.mul!(P, Ptmp, A')                                    # P = A * P * A'
-        ℒ.axpy!(1, 𝐁, P)                                      # P = P + B
+        ℒ.mul!(Ptmp, A, Pwork)                                  # Ptmp = A * P
+        ℒ.mul!(Pwork, Ptmp, A')                                 # P = A * P * A'
+        ℒ.axpy!(one(T), 𝐁, Pwork)                              # P = P + 𝐁
 
         # u = A * (u + K * v)
-        ℒ.mul!(u, K, z, 1, 1)                                  # u = u + K * v
-        ℒ.mul!(utmp, A, u)                                     # utmp = A * u
-        u .= utmp                                              # u = A * (u + K * v)
+        ℒ.mul!(u, K, z, one(T), one(T))                         # u = u + K * v
+        ℒ.mul!(utmp, A, u)                                      # utmp = A * u
+        u .= utmp                                               # u = A * (u + K * v)
 
-        ℒ.mul!(z, C, u)                                        # z = C * u
-
-        # end # timeit_debug
+        ℒ.mul!(z, C, u)                                         # z = C * u
     end
 
-    # end # timeit_debug
-    # end # timeit_debug
-
-    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2π)) / 2
 end
 
 
@@ -236,7 +295,8 @@ function run_kalman_iterations_missing(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S},
                                 obs_idx_per_t::Vector{Vector{Int}},
-                                ws::kalman_workspace; 
+                                ws::kalman_workspace,
+                                u₀::AbstractVector{<:Real}; 
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
@@ -244,6 +304,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
     n_obs   = size(C, 1)
     n_state = size(C, 2)
     n_steps = size(data_in_deviations, 2)
+    presample_periods = normalize_presample_periods(presample_periods, n_steps)
 
     u    = ws.u
     z    = ws.z
@@ -255,7 +316,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
     tmp  = ws.tmp
     Ptmp = ws.Ptmp
 
-    fill!(u, zero(S))
+    copyto!(u, u₀)
 
     loglik = S(0.0)
     n_obs_total = 0
@@ -350,7 +411,7 @@ function run_kalman_iterations_missing(A::Matrix{S},
         u .= utmp
     end
 
-    return -(loglik + n_obs_total * log(2 * 3.141592653589793)) / 2
+    return -(loglik + n_obs_total * log(2π)) / 2
 end
 
 

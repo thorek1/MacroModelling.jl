@@ -1,8 +1,9 @@
 using MacroModelling
 using Test
 import Turing, Pigeons
+import Turing: MvNormal
+import LinearAlgebra as ℒ
 using Random, DelimitedFiles, MCMCChains, AxisKeys
-import DynamicPPL
 import StatsPlots
 
 include("test_helpers.jl")
@@ -36,6 +37,41 @@ dists = [
     InverseGamma(0.008862, Inf, eps(Float64), Inf, μσ = true)               # z_e_m
 ]
 
+const PIGEONS_SEED = 30
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
+# parameters + latent shocks).  First order.
+# ---------------------------------------------------------------------------
+const T_ff_1st = size(data, 2)
+const data_ff_1st = data
+const nExo_ff_1st = length(get_shocks(FS2000))
+
+Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
+    shocks  = reshape(shocks_vec, nExo, nT)
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+FS2000_ff_lp = Pigeons.TuringLogPotential(
+    FS2000_filter_free_function_1st(data_ff_1st, FS2000, :first_order, nExo_ff_1st, T_ff_1st, -floatmax(Float64)+1e10))
+
+pt_ff = @time Pigeons.pigeons(target = FS2000_ff_lp,
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 10,
+            seed = PIGEONS_SEED,
+            multithreaded = false)
+
+samps_ff = MCMCChains.Chains(pt_ff)
+println("Filter-free (Pigeons, first order) — mean: $(mean(samps_ff).nt.mean)")
+@test size(samps_ff, 1) > 0
+
+
 Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.product_distribution(dists)
 
@@ -50,8 +86,6 @@ end
 
 # generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)+1e10))
-
-const PIGEONS_SEED = 30
 
 #=
 init_params = FS2000.parameter_values

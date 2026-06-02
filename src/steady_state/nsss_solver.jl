@@ -16,7 +16,7 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
-@unstable @inline function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
     if sol.is_number == true
         return sol
     end
@@ -24,7 +24,7 @@ const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
     return num.is_zero == true ? SPyPyC.Sym(0) : sol
 end
 
-@unstable @inline function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
+@unstable function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
     sol.is_number == true && return Symbol[]
     atoms = Symbol[]
     for a in sol.atoms()
