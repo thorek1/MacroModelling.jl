@@ -1497,7 +1497,7 @@ function get_irf(𝓂::ℳ,
 
     if !solved
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
+        return fill(S(NaN), length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
     nExo = 𝓂.constants.post_model_macro.nExo

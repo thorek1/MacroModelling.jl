@@ -2505,8 +2505,8 @@ function rrule(::typeof(get_irf),
     nShocks  = shocks == :none ? 1 : length(shock_idx)
     nVar_len = length(𝓂.constants.post_model_macro.var)
 
-    zero_result() = zeros(S, length(var_idx), periods, nShocks)
-    zero_pb(_) = (NoTangent(), NoTangent(), zeros(S, length(parameters)))
+    zero_result() = fill(S(NaN), length(var_idx), periods, nShocks)
+    zero_pb(_) = (NoTangent(), NoTangent(), fill(S(NaN), length(parameters)))
 
     # Dispatched rrule chain forward
     chain_result = irf_rrule_forward_chain(val_alg, parameters, 𝓂, constants_obj, opts, tol)
