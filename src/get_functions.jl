@@ -364,7 +364,8 @@ And data, 4×2×40 Array{Float64, 3}:
         if marginal_contribution
             decomposition[:, end - 1, :] .+= SSS_delta
         else
-            decomposition[:,end - 1,:]                  .+= SSS_delta * (size(decomposition,2) - 3)
+            # decomposition[:,end - 1,:]                  .+= SSS_delta * (size(decomposition,2) - 3)
+            decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
             decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
         end
     end
