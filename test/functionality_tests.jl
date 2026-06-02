@@ -1994,7 +1994,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.constants.post_model_macro.var[var_idxs]) : m.constants.post_model_macro.var[var_idxs],:,:simulate)
 
         nVars_local = m.constants.post_model_macro.nVars
-        ss_vec_local = copy(m.caches.non_stochastic_steady_state)
+        ss_vec_local = copy(m.caches.non_stochastic_steady_state)[1:nVars_local]
         state_idx_local = m.constants.post_model_macro.past_not_future_and_mixed_idx
 
         filters_for_algo = algorithm == :first_order ? [:kalman, :inversion] : [:inversion]
@@ -2024,7 +2024,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             perturbed_local[state_idx_local[1]] += 0.5
             ll_pert = get_loglikelihood(m, data_in_levels, old_params, perturbed_local; filter = filt, algorithm = algorithm)
             @test isfinite(ll_pert)
-            @test ll_pert != ll_base
+            @test !isapprox(ll_pert, ll_base, rtol = 1e-7)
 
             # Length validation
             @test_throws AssertionError get_loglikelihood(m, data_in_levels, old_params, [1.0, 2.0]; filter = filt, algorithm = algorithm)
@@ -2038,7 +2038,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = :inversion, algorithm = algorithm)
             ll_vv   = get_loglikelihood(m, data_in_levels, old_params, pert_vv; filter = :inversion, algorithm = algorithm)
             @test isfinite(ll_vv)
-            @test ll_vv != ll_base
+            @test !isapprox(ll_vv, ll_base, rtol = 1e-7)
         end
 
         # Filter-free loglikelihood
