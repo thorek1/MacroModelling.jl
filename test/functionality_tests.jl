@@ -2021,7 +2021,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             # Perturbed initial state should produce a different loglikelihood
             perturbed_local = copy(ss_vec_local)
-            perturbed_local[state_idx_local[1]] += 0.5
+            perturbed_local[state_idx_local] .+= 0.05
             ll_pert = get_loglikelihood(m, data_in_levels, old_params, perturbed_local; filter = filt, algorithm = algorithm)
             @test isfinite(ll_pert)
             @test !isapprox(ll_pert, ll_base, rtol = 1e-7)
@@ -2034,7 +2034,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         if algorithm in (:pruned_second_order, :pruned_third_order)
             n_levels = algorithm == :pruned_second_order ? 2 : 3
             pert_vv = [zeros(nVars_local) for _ in 1:n_levels]
-            pert_vv[1][state_idx_local[1]] = 0.5
+            pert_vv[1][state_idx_local] .= 0.05
             ll_base = get_loglikelihood(m, data_in_levels, old_params; filter = :inversion, algorithm = algorithm)
             ll_vv   = get_loglikelihood(m, data_in_levels, old_params, pert_vv; filter = :inversion, algorithm = algorithm)
             @test isfinite(ll_vv)
