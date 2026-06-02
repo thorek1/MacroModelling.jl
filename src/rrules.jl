@@ -18258,7 +18258,7 @@ end
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# rrule for get_filter_free_loglikelihood
+# rrule for get_loglikelihood
 #
 # Joint sampling of parameters + latent shocks per Childers, Fernández-Villaverde,
 # Perla, Rackauckas & Wu (2025). The forward pass solves the model, then runs
@@ -18903,7 +18903,7 @@ function filter_free_warmup_pullback_pruned3rd(
 end
 
 
-function rrule(::typeof(get_filter_free_loglikelihood),
+function rrule(::typeof(get_loglikelihood),
                 𝓂::ℳ,
                 data::KeyedArray{D},
                 parameter_values::Vector{S},
@@ -18922,7 +18922,7 @@ function rrule(::typeof(get_filter_free_loglikelihood),
                 caching::Bool = DEFAULT_CACHING,
                 use_workspaces::Bool = DEFAULT_USE_WORKSPACES) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, V <: Real, U <: AbstractFloat}
 
-    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "rrule for `get_filter_free_loglikelihood` supports `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`."
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "rrule for `get_loglikelihood` supports `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`."
 
     R = promote_type(S, T)
 
@@ -19537,14 +19537,14 @@ end
 # that the 5-arg @from_rrule wrapper sees a 6-element pullback. Delegates to
 # the 6-arg rrule with default initial_state and drops the trailing
 # ∂initial_state.
-function rrule(::typeof(get_filter_free_loglikelihood),
+function rrule(::typeof(get_loglikelihood),
                 𝓂::ℳ,
                 data::KeyedArray{D},
                 parameter_values::Vector{S},
                 shocks::AbstractMatrix{T},
                 measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
                 kwargs...) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real}
-    y, pb = rrule(get_filter_free_loglikelihood, 𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE; kwargs...)
+    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE; kwargs...)
     pb_short(Δy) = begin
         t = pb(Δy)
         return (t[1], t[2], t[3], t[4], t[5], t[6])

@@ -104,7 +104,7 @@ Turing.@model function SW07_filter_free_function_1st(data, m, algorithm, fixed_p
 
     parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, parameters_combined, shocks, me_std;
+    Turing.@addlogprob! get_loglikelihood(m, data, parameters_combined, shocks, me_std;
                                                       algorithm = algorithm,
                                                       on_failure_loglikelihood = on_failure_loglikelihood)
 end

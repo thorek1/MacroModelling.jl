@@ -50,7 +50,7 @@ Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo,
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)
     shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
     shocks  = reshape(shocks_vec, nExo, nT)
-    Turing.@addlogprob! get_filter_free_loglikelihood(m, data, all_params, shocks, me_std;
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params, shocks, me_std;
                                                       algorithm = algorithm,
                                                       on_failure_loglikelihood = on_failure_loglikelihood)
 end

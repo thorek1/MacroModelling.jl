@@ -60,12 +60,12 @@ function make_ff_param_closure(model, data, base_params, idx, shocks, me_std, al
         T    = eltype(θ_subset)
         full = map(j -> pos[j] == 0 ? T(base_params[j]) : θ_subset[pos[j]], 1:n)
         if isnothing(initial_state)
-            return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+            return get_loglikelihood(model, data, full, shocks, me_std;
                                                   algorithm = algorithm,
                                                   on_failure_loglikelihood = -Inf,
                                                   kwargs...)
         end
-        return get_filter_free_loglikelihood(model, data, full, shocks, me_std, initial_state;
+        return get_loglikelihood(model, data, full, shocks, me_std, initial_state;
                                               algorithm = algorithm,
                                               on_failure_loglikelihood = -Inf,
                                               kwargs...)
@@ -97,12 +97,12 @@ function make_ff_joint_closure(model, data, base_params, idx,
             shocks  = reshape(sh_vec, nExo, nT)
             me_std  = vec_me ? me_part : me_part[1]
             if isnothing(initial_state)
-                return get_filter_free_loglikelihood(model, data, full, shocks, me_std;
+                return get_loglikelihood(model, data, full, shocks, me_std;
                                                       algorithm = algorithm,
                                                       on_failure_loglikelihood = -Inf,
                                                       kwargs...)
             end
-            return get_filter_free_loglikelihood(model, data, full, shocks, me_std, initial_state;
+            return get_loglikelihood(model, data, full, shocks, me_std, initial_state;
                                                   algorithm = algorithm,
                                                   on_failure_loglikelihood = -Inf,
                                                   kwargs...)
@@ -251,14 +251,14 @@ end
         me_scalar_boundary = 0.05
 
         for algo in algorithms
-            ll_full = get_filter_free_loglikelihood(GALI_FF,
+            ll_full = get_loglikelihood(GALI_FF,
                                                     data_boundary,
                                                     base_params,
                                                     shocks_full,
                                                     me_matrix;
                                                     algorithm = algo,
                                                     on_failure_loglikelihood = -Inf)
-            ll_trimmed = get_filter_free_loglikelihood(GALI_FF,
+            ll_trimmed = get_loglikelihood(GALI_FF,
                                                        data_trimmed,
                                                        base_params,
                                                        shocks_trimmed,
@@ -269,7 +269,7 @@ end
             @test isfinite(ll_full)
             @test isapprox(ll_full, ll_trimmed; rtol = 1e-12, atol = 1e-12)
 
-            ll_rrule, pb = CRC.rrule(get_filter_free_loglikelihood,
+            ll_rrule, pb = CRC.rrule(get_loglikelihood,
                                      GALI_FF,
                                      data_boundary,
                                      base_params,
@@ -278,7 +278,7 @@ end
                                      algorithm = algo,
                                      on_failure_loglikelihood = -Inf)
             @test isapprox(ll_rrule,
-                           get_filter_free_loglikelihood(GALI_FF,
+                           get_loglikelihood(GALI_FF,
                                                          data_boundary,
                                                          base_params,
                                                          shocks_full,
@@ -293,7 +293,7 @@ end
             dropped_shock_fd = manual_centered_diff_ff(x -> begin
                 shocks_local = copy(shocks_full)
                 shocks_local[1, 1] = x
-                get_filter_free_loglikelihood(GALI_FF,
+                get_loglikelihood(GALI_FF,
                                               data_boundary,
                                               base_params,
                                               shocks_local,
@@ -305,7 +305,7 @@ end
             kept_shock_fd = manual_centered_diff_ff(x -> begin
                 shocks_local = copy(shocks_full)
                 shocks_local[1, 3] = x
-                get_filter_free_loglikelihood(GALI_FF,
+                get_loglikelihood(GALI_FF,
                                               data_boundary,
                                               base_params,
                                               shocks_local,
@@ -314,7 +314,7 @@ end
                                               on_failure_loglikelihood = -Inf)
             end, shocks_full[1, 3])
 
-            me_fd = manual_centered_diff_ff(x -> get_filter_free_loglikelihood(GALI_FF,
+            me_fd = manual_centered_diff_ff(x -> get_loglikelihood(GALI_FF,
                                                                                 data_boundary,
                                                                                 base_params,
                                                                                 shocks_full,
@@ -370,12 +370,12 @@ const CALDARA_FF_NEXO = length(get_shocks(CALDARA_FF))
     pars = copy(CALDARA_FF.parameter_values)
     shocks = 0.01 .* randn(CALDARA_FF_NEXO, CALDARA_FF_T)
 
-    llh_fwd = get_filter_free_loglikelihood(CALDARA_FF, CALDARA_FF_DATA,
+    llh_fwd = get_loglikelihood(CALDARA_FF, CALDARA_FF_DATA,
                                             pars, shocks, me;
                                             algorithm = algo)
     @test isfinite(llh_fwd)
 
-    llh_r, pb = CRC.rrule(get_filter_free_loglikelihood, CALDARA_FF,
+    llh_r, pb = CRC.rrule(get_loglikelihood, CALDARA_FF,
                           CALDARA_FF_DATA, pars, shocks, me; algorithm = algo)
     @test isapprox(llh_r, llh_fwd; rtol = 1e-12)
     _, _, _, dpars_a, dshk_a, dme_a = pb(1.0)
@@ -389,7 +389,7 @@ const CALDARA_FF_NEXO = length(get_shocks(CALDARA_FF))
         s     = reshape(z[nP+1:nP+nSh], CALDARA_FF_NEXO, CALDARA_FF_T)
         mpart = z[nP+nSh+1:nP+nSh+nMe]
         mloc  = me isa AbstractVector ? mpart : mpart[1]
-        get_filter_free_loglikelihood(CALDARA_FF, CALDARA_FF_DATA, p, s, mloc;
+        get_loglikelihood(CALDARA_FF, CALDARA_FF_DATA, p, s, mloc;
                                       algorithm = algo)
     end
     g_mc       = DifferentiationInterface.gradient(obj, AutoMooncake(config = nothing), z0)

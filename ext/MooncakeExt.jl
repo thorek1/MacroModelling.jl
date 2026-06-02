@@ -71,15 +71,15 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglike
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), MacroModelling.ℳ, Vector{T}} where {T<:Base.IEEEFloat} true
 
-# get_filter_free_loglikelihood:
+# get_loglikelihood:
 #   (𝓂, data, parameter_values::Vector{T}, shocks::Matrix{T}, me_std::T_or_Vector{T})
 # Two narrow @from_rrule generations cover scalar and vector me_std cases.
 # 5-arg kwarg-only path (no AD through initial_state)
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T} where {T<:Base.IEEEFloat} true
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}} where {T<:Base.IEEEFloat} true
 # 6-arg positional path (AD through initial_state)
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T, Vector{Float64}} where {T<:Base.IEEEFloat} true
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T, Vector{Float64}} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
 # Nested Vector{Vector} initial_state forms are implemented manually below.
 
 # ── DynamicPPL compatibility: wider @is_primitive declarations ──
@@ -172,13 +172,13 @@ function Mooncake.rrule!!(
     return CoDual(y_primal, y_fdata), pb!!
 end
 
-# Wide primitive declarations for get_filter_free_loglikelihood so that the
+# Wide primitive declarations for get_loglikelihood so that the
 # Turing/DynamicPPL call site (which widens argument types to Any) still
 # matches the registered Mooncake primitive.
-@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
-@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
-@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
-@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_filter_free_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
+@is_primitive Mooncake.DefaultCtx Tuple{typeof(Core.kwcall), <:NamedTuple, typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, Any, Any, Any, Any, Any}
 
 function increment_nested_initial_state_rdata!(
     initial_state_cd::CoDual{<:Vector{<:AbstractVector}},
@@ -259,7 +259,7 @@ function Mooncake.rrule!!(
 end
 
 function Mooncake.rrule!!(
-    f_cd::CoDual{typeof(MacroModelling.get_filter_free_loglikelihood)},
+    f_cd::CoDual{typeof(MacroModelling.get_loglikelihood)},
     model_cd::CoDual{MacroModelling.ℳ},
     data_cd::CoDual{<:KeyedArray{Float64}},
     params_cd::CoDual{Vector{T}},
@@ -282,7 +282,7 @@ end
 function Mooncake.rrule!!(
     kwcall_cd::CoDual{typeof(Core.kwcall)},
     kwargs_cd::CoDual{<:NamedTuple},
-    f_cd::CoDual{typeof(MacroModelling.get_filter_free_loglikelihood)},
+    f_cd::CoDual{typeof(MacroModelling.get_loglikelihood)},
     model_cd::CoDual{MacroModelling.ℳ},
     data_cd::CoDual{<:KeyedArray{Float64}},
     params_cd::CoDual{Vector{T}},
@@ -297,7 +297,7 @@ function Mooncake.rrule!!(
     shocks = Mooncake.primal(shocks_cd)
     measurement_error_std = Mooncake.primal(measurement_error_std_cd)
     initial_state = Mooncake.primal(initial_state_cd)
-    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_filter_free_loglikelihood,
+    y_primal, cr_pb = ChainRulesCore.rrule(MacroModelling.get_loglikelihood,
                                            model, data, params, shocks, measurement_error_std, initial_state; kwargs...)
     y_fdata = Mooncake.fdata(Mooncake.zero_tangent(y_primal))
     kwargs_lazy_rdata = Mooncake.lazy_zero_rdata(kwargs)

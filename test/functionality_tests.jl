@@ -2049,24 +2049,24 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         me_ff   = 0.05
 
         clear_solution_caches!(m, algorithm)
-        ll_ff_base = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff; algorithm = algorithm)
+        ll_ff_base = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff; algorithm = algorithm)
         @test isfinite(ll_ff_base)
 
-        ll_ff_lev = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, ss_vec_local; algorithm = algorithm)
+        ll_ff_lev = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, ss_vec_local; algorithm = algorithm)
         if is_first_or_pruned
             @test isapprox(ll_ff_lev, ll_ff_base, rtol = 1e-7)
-            ll_ff_vv = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [zeros(nVars_local)]; algorithm = algorithm)
+            ll_ff_vv = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [zeros(nVars_local)]; algorithm = algorithm)
             @test isapprox(ll_ff_vv, ll_ff_base, rtol = 1e-7)
         else
             _, sap, _, sd, _ = MacroModelling.get_relevant_steady_state_and_state_update(
                 Val(algorithm), old_params, m;
                 opts = MacroModelling.merge_calculation_options(), estimation = true)
             sss_levels = sd .+ sap[1:nVars_local]
-            ll_ff_sss = get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, sss_levels; algorithm = algorithm)
+            ll_ff_sss = get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, sss_levels; algorithm = algorithm)
             @test isapprox(ll_ff_sss, ll_ff_base, rtol = 1e-7)
         end
 
-        @test_throws AssertionError get_filter_free_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [1.0, 2.0]; algorithm = algorithm)
+        @test_throws AssertionError get_loglikelihood(m, data_in_levels, old_params, shks_ff, me_ff, [1.0, 2.0]; algorithm = algorithm)
     end
 
     @testset "get_conditional_forecast" begin

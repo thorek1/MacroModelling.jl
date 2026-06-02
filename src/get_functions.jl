@@ -4612,7 +4612,7 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
 # Returns
 - `<:AbstractFloat` loglikelihood
 """
-function get_filter_free_loglikelihood(𝓂::ℳ,
+function get_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{D},
                             parameter_values::Vector{S},
                             shocks::AbstractMatrix{T},
@@ -4630,8 +4630,8 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
     # Convenience method: no `initial_state` argument; uses the internal default.
     # To override the initial state (and get AD tangents through it), call the
-    # positional method `get_filter_free_loglikelihood(𝓂, data, p, shocks, me_std, initial_state; ...)`.
-    return get_filter_free_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE;
+    # positional method `get_loglikelihood(𝓂, data, p, shocks, me_std, initial_state; ...)`.
+    return get_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE;
                             steady_state_function = steady_state_function,
                             algorithm = algorithm,
                             warmup_iterations = warmup_iterations,
@@ -4647,7 +4647,7 @@ end
 
 
 
-function get_filter_free_loglikelihood(𝓂::ℳ,
+function get_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{D},
                             parameter_values::Vector{S},
                             shocks::AbstractMatrix{T},
@@ -4665,7 +4665,7 @@ function get_filter_free_loglikelihood(𝓂::ℳ,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64, IT) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat, IT <: Real}
 
-    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_filter_free_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`get_loglikelihood` only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
 
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
 

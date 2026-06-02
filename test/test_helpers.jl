@@ -134,21 +134,21 @@ function check_filter_free_boundary_cases(model, coverage, parameter_values;
     shocks = zeros(n_exo, size(coverage.base, 2) + n_warm)
     kwargs = warmup_iterations > 0 ? (; algorithm = algorithm, warmup_iterations = warmup_iterations) : (; algorithm = algorithm)
 
-    @test isfinite(get_filter_free_loglikelihood(model, coverage.base, parameter_values, shocks, measurement_error_std; kwargs...))
-    @test isfinite(get_filter_free_loglikelihood(model, coverage.missing, parameter_values, shocks, measurement_error_std; kwargs...))
+    @test isfinite(get_loglikelihood(model, coverage.base, parameter_values, shocks, measurement_error_std; kwargs...))
+    @test isfinite(get_loglikelihood(model, coverage.missing, parameter_values, shocks, measurement_error_std; kwargs...))
 
-    @test isapprox(get_filter_free_loglikelihood(model, coverage.leading, parameter_values, shocks, measurement_error_std; kwargs...),
-                   get_filter_free_loglikelihood(model, coverage.trimmed_leading, parameter_values,
+    @test isapprox(get_loglikelihood(model, coverage.leading, parameter_values, shocks, measurement_error_std; kwargs...),
+                   get_loglikelihood(model, coverage.trimmed_leading, parameter_values,
                                                  trim_filter_free_shocks(shocks, coverage.n_leading, 0, warmup_iterations),
                                                  measurement_error_std; kwargs...);
                    rtol = 1e-10, atol = 1e-10)
-    @test isapprox(get_filter_free_loglikelihood(model, coverage.trailing, parameter_values, shocks, measurement_error_std; kwargs...),
-                   get_filter_free_loglikelihood(model, coverage.trimmed_trailing, parameter_values,
+    @test isapprox(get_loglikelihood(model, coverage.trailing, parameter_values, shocks, measurement_error_std; kwargs...),
+                   get_loglikelihood(model, coverage.trimmed_trailing, parameter_values,
                                                  trim_filter_free_shocks(shocks, 0, coverage.n_trailing, warmup_iterations),
                                                  measurement_error_std; kwargs...);
                    rtol = 1e-10, atol = 1e-10)
-    @test isapprox(get_filter_free_loglikelihood(model, coverage.boundary, parameter_values, shocks, measurement_error_std; kwargs...),
-                   get_filter_free_loglikelihood(model, coverage.trimmed_boundary, parameter_values,
+    @test isapprox(get_loglikelihood(model, coverage.boundary, parameter_values, shocks, measurement_error_std; kwargs...),
+                   get_loglikelihood(model, coverage.trimmed_boundary, parameter_values,
                                                  trim_filter_free_shocks(shocks, coverage.n_leading, coverage.n_trailing, warmup_iterations),
                                                  measurement_error_std; kwargs...);
                    rtol = 1e-10, atol = 1e-10)
