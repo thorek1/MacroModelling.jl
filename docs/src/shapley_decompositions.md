@@ -16,9 +16,8 @@ Both routines compute the same allocation rule. They differ only in what is
 being decomposed (a Lyapunov-equation solution versus a forward simulation of
 the pruned state recursion) and therefore in the numerical method used.
 
-The remainder of this page describes the underlying construction, the
-implementation in `src/aumann_shapley.jl`, `src/moments.jl`, and
-`src/filter/inversion.jl`, and how the result is reported.
+The remainder of this page describes the underlying construction and how
+the result is reported.
 
 ---
 
@@ -91,9 +90,9 @@ such a polynomial exactly: two nodes at second order, three at third order.
 
 This collapses the cost from `2ⁿᵉ` evaluations of `V` to at most
 `⌈k/2⌉ · nᵉ` evaluations of `∂Ṽ / ∂xᵢ` along the diagonal. The quadrature
-nodes and weights on `(0, 1)` are returned by
-`gausslegendre_unit_interval` in `src/aumann_shapley.jl`. The remainder of
-the implementation differs by routine.
+nodes and weights on `(0, 1)` are obtained from a Gauss–Legendre rule
+rescaled to the unit interval. The remainder of the construction differs by
+routine.
 
 ---
 
@@ -111,8 +110,8 @@ cumulant block `C(S)`, the inner Lyapunov system is
 ```
 
 and the variable-space covariance equals `ŝ_to_y · Σ(S) · ŝ_to_yᵀ` plus the
-fixed boundary terms documented in `calculate_second_order_moments_with_covariance`
-and `calculate_third_order_moments_with_autocorrelation`. Silencing shocks
+fixed boundary terms of the pruned second- and third-order moment
+construction. Silencing shocks
 outside `S` is implemented as a binary mask on the augmented shock vector
 `ê`: at third order an `ê`-component is retained only when all its
 exogenous-shock indices belong to `S` (see the docstring of
@@ -120,21 +119,16 @@ exogenous-shock indices belong to `S` (see the docstring of
 
 ### Continuous mask and its directional derivative
 
-The multilinear extension corresponds to replacing the binary mask by the
-continuous one returned by `continuous_coalition_mask_second_order` and
-`continuous_coalition_mask_third_order`: the mask entry attached to an
-`ê`-component is the product of the activation levels `xⱼ` over the unique
-base shocks the component mentions. Its derivative
-`ṁ = ∂m / ∂xᵢ` is computed by
-`mask_directional_derivative_{second,third}_order!` and is sparse — only
-mask entries that mention shock `i` are non-zero.
+The multilinear extension corresponds to replacing the binary mask by a
+continuous one: the mask entry attached to an `ê`-component is the product
+of the activation levels `xⱼ` over the unique base shocks the component
+mentions. Its derivative `ṁ = ∂m / ∂xᵢ` is sparse — only mask entries that
+mention shock `i` are non-zero.
 
 ### Per node and per direction
 
 For each Gauss–Legendre node `tₖ` on `(0, 1)` and each shock direction
-`i ∈ {1, …, nᵉ}`, the drivers
-`calculate_aumann_shapley_second_order_at_nodes` and
-`calculate_aumann_shapley_third_order_at_nodes` in `src/moments.jl`:
+`i ∈ {1, …, nᵉ}`, the construction proceeds as follows:
 
 1. Evaluate `m` and `ṁ` at `x = tₖ · 𝟙`.
 2. Apply the product rule to the cumulant block. With
@@ -145,7 +139,7 @@ For each Gauss–Legendre node `tₖ` on `(0, 1)` and each shock direction
        (+ cross terms involving the autocorrelation block Eᴸᶻ at third order)
    ```
    Sparsity of `Γ` and `ṁ` is preserved throughout; the right-hand side
-   `Ċ` is passed sparse to `solve_lyapunov_equation`.
+   `Ċ` is kept sparse for the tangent Lyapunov solve.
 3. Solve the tangent Lyapunov system with the same transition `A` (so the
    Schur factorisation of `A` is reusable across all nodes and directions):
    ```
@@ -172,11 +166,10 @@ For `Smets_Wouters_2007` (`nᵉ = 7`) the second-order count is `14` versus
 
 ### Convergence safeguard
 
-`calculate_aumann_shapley_{second,third}_order` start from the low-order
-Gauss–Legendre rule and rerun with one additional node up to a maximum of
-seven whenever the relative Shapley-efficiency closure error exceeds
-`AUMANN_SHAPLEY_REFINEMENT_RTOL = 1e-3`. The closure error is the maximum
-relative deviation of the row sums from one (efficiency:
+The variance decomposition starts from the low-order Gauss–Legendre rule
+and reruns with one additional node up to a maximum of seven whenever the
+relative Shapley-efficiency closure error exceeds `1e-3`. The closure error
+is the maximum relative deviation of the row sums from one (efficiency:
 `Σᵢ φᵢ(v) = V(N)(v) − V(∅)(v)`).
 
 ### Output
@@ -211,12 +204,10 @@ apply unchanged.
 ### Forward-mode tangents
 
 Materialising the polynomial coefficients explicitly would require carrying a
-Kronecker bundle of width `C(nᵉ + k, k)` through every period. The drivers
-`aumann_shapley_shock_decomposition_pruned_{2nd,3rd}_order!` in
-`src/filter/inversion.jl` evaluate the path integral instead by running, at
-each Gauss–Legendre node `sₖ`, one primal pruned trajectory with shocks
-scaled by `sₖ` together with `nᵉ` forward-mode directional-derivative
-trajectories.
+Kronecker bundle of width `C(nᵉ + k, k)` through every period. The shock
+decomposition evaluates the path integral instead by running, at each
+Gauss–Legendre node `sₖ`, one primal pruned trajectory with shocks scaled
+by `sₖ` together with `nᵉ` forward-mode directional-derivative trajectories.
 
 For each shock direction `i`, the tangent trajectory `v_t = ∂ŝₜ / ∂xᵢ`
 satisfies the chain-rule lift of the recursion. At second order,
@@ -289,8 +280,6 @@ of variable `v` at period `t` minus the `:Initial_values` contribution
 | Cost per `V` evaluation | One Lyapunov solve | One vector recursion per period |
 | Quadrature work | `n_nodes · nᵉ` Lyapunov solves with shared `A` | `n_nodes · (nᵉ + 1) · T` plain matrix-vector products |
 | Quadrature error | Zero (integrand of degree ≤ `k − 1`) | Zero at `k = 2`; `O(1e-8)` split-only perturbation at `k = 3` |
-| Driver | `calculate_aumann_shapley_{second,third}_order` in `src/moments.jl` | `aumann_shapley_shock_decomposition_pruned_{2nd,3rd}_order!` in `src/filter/inversion.jl` |
-| Shared primitives | `gausslegendre_unit_interval`, `continuous_coalition_mask_*`, `mask_directional_derivative_*` in `src/aumann_shapley.jl` |
 
 ---
 
