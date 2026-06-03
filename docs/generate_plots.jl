@@ -2918,6 +2918,7 @@ using CSV, DataFrames, AxisKeys
 import DynamicPPL
 import Turing
 import Turing: NUTS, sample, logpdf
+import FlexiChains
 import ADTypes: AutoZygote
 # import Zygote
 using Serialization
@@ -3015,7 +3016,18 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 chain_path = "docs/src/assets/chain_NUTS.jls"
 chain_NUTS = if isfile(chain_path)
-    open(deserialize, chain_path)
+    chn = open(deserialize, chain_path)
+    # Deserialized OrderedDicts can have stale hash slots, which breaks
+    # key lookup (and therefore `_split_varnames`). Rebuild the internal
+    # dict in place so lookups work again.
+    let d = chn._data
+        items = collect(pairs(d))
+        empty!(d)
+        for (k, v) in items
+            d[k] = v
+        end
+    end
+    chn
 else
     n_samples = 1000
     chain = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
@@ -3026,7 +3038,21 @@ else
 end
 
 # ensure output directory exists and save the chain plot as PNG
-p = plot(chain_NUTS)
+# Rename the vector-valued `parameters` key into one scalar key per model
+# parameter so the plot labels show e.g. `alp`, `bet`, ... instead of
+# `parameters[1]`, `parameters[2]`, ...
+parameter_names = Symbol.(get_parameters(FS2000))
+let
+    split_chain = FlexiChains._split_varnames(chain_NUTS)
+    ordered_vns = collect(FlexiChains.parameters(split_chain))
+    @assert length(ordered_vns) == length(parameter_names)
+    VN = FlexiChains.VarName
+    name_mapping = Dict(ordered_vns[i] => VN{parameter_names[i]}()
+                        for i in eachindex(parameter_names))
+    global chain_NUTS_named = FlexiChains.map_parameters(vn -> name_mapping[vn],
+                                                         split_chain)
+end
+p = plot(chain_NUTS_named)
 savefig(p, joinpath("./docs/src/assets", "FS2000_chain_NUTS.png"))
 
 # ![NUTS chain](../assets/FS2000_chain_NUTS.png)
