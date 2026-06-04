@@ -76,7 +76,8 @@ Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
 Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
 ]
 
-me_std_dists = fill(InverseGamma(1e-4, Inf, 1e-6, 10.0, μσ = true), length(observables))
+# me_std_dists = fill(InverseGamma(1e-4, Inf, 1e-6, 10.0, μσ = true), length(observables))
+me_std_dists = InverseGamma(1e-3, Inf, 1e-6, 10.0, μσ = true)
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, filter)
     all_params ~ Turing.product_distribution(dists)
