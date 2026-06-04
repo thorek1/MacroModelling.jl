@@ -1,5 +1,12 @@
 # Todo list
 ## High priority
+- [ ] do triage of helpers. either make sure they are used across the package where applciable but then also check that there is no more consice or already existing implmentation in the ecosystem.
+- [ ] with these large models being used, make returns that are scaling with the number of variables and shocks output only the selected variables and shocks in order not to bloat memory and speed up computations. this includes IRFs, variance decompositions, etc.
+- [ ] rethink very long input types
+- [ ] checkout StaticArrays for filter, if they speed things up
+- [ ] time filter step as well (SW07) for speed docs
+- [ ] eliminate nested spaghetti code in nsss_solver
+- [ ] get iterative SSS/mean analytically
 
 - [ ] for get functions that return larger arrays, add option to select variables to return and then only allocate for those variables (e.g. get_irf)
 - [ ] derivatives of variance decomposition for estimation!?
@@ -45,7 +52,7 @@
 - [ ] implement forwarddiff for find_shocks
 - [ ] redo inversion filter 1st order rrule based on the higher order ones. the accumulated matmul might not be necessary at all
 - [ ] inversion filter: use subset of observables and states when propagating states (see kalman filter)
-- [ ] start filter from initial values provided by user
+- [x] start filter from initial values provided by user
 - [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
 - [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
 - [ ] check tols throughout. adopt max(abs,rel*norm) tols
@@ -96,7 +103,7 @@
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
-- [ ] autocorr and corr with derivatives. return 3d array
+- [x] autocorr and corr with derivatives. return 3d array
 - [ ] add pydsge and econpizza to overview
 - [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
@@ -309,7 +316,7 @@
 
 ## Not high priority
 
-- [ ] estimation codes with missing values (adopt kalman filter)
+- [x] estimation codes with missing values (adopt kalman filter)
 - [ ] decide on whether levels = false means deviations from NSSS or relevant SS
 - [ ] what's a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
@@ -363,13 +370,13 @@
 
 The following tasks were extracted from comments in the code base. Each item references the relevant file and context.
 
-- [ ] `src/MacroModelling.jl` (`calculate_third_order_stochastic_steady_state`): verify sparse matrix support
+- [x] `src/MacroModelling.jl` (`calculate_third_order_stochastic_steady_state`): verify sparse matrix support
 - [ ] `src/filter/inversion.jl` (`calculate_inversion_filter_loglikelihood`): use subsets of observables and states when propagating states
-- [ ] `src/filter/inversion.jl` (`rrule` for first order): rewrite based on higher order implementation to remove unnecessary matmul
-- [ ] `src/filter/inversion.jl` (`rrule` for first order): add warmup iterations
-- [ ] `src/filter/inversion.jl` (`rrule` for first order): reduce allocations in pullback
-- [ ] `src/filter/inversion.jl` (`rrule` for higher order): clean up length and size handling and avoid temporary vector allocations
-- [ ] `src/filter/find_shocks.jl`: add `ForwardDiff` support for `find_shocks`
+- [x] `src/filter/inversion.jl` (`rrule` for first order): rewrite based on higher order implementation to remove unnecessary matmul
+- [x] `src/filter/inversion.jl` (`rrule` for first order): add warmup iterations
+- [x] `src/filter/inversion.jl` (`rrule` for first order): reduce allocations in pullback
+- [x] `src/filter/inversion.jl` (`rrule` for higher order): clean up length and size handling and avoid temporary vector allocations
+- [x] `src/filter/find_shocks.jl`: add `ForwardDiff` support for `find_shocks`
 - [ ] `src/get_functions.jl`: verify derivatives against finite differences
 - [ ] `src/get_functions.jl` (`get_conditional_variance_decomposition`): extend to higher order solutions
 - [x] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions

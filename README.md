@@ -26,7 +26,7 @@ As of now the package can:
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
 - calibrate parameters using (non-stochastic) steady state relationships
-- calculate **(unconditional and conditional) variance decompositions** including pruned **second- and third-order** solutions; per-shock contributions can additionally be reported as **marginal contributions (Shapley values)** so that the cross-shock interaction is allocated across the individual shocks
+- calculate **variance decompositions**: unconditional decompositions at first order and at pruned **second- and third-order**, and conditional / forecast-error decompositions at first order. For pruned higher-order unconditional decompositions, the cross-shock interaction term can either be reported as a separate component or allocated across the individual shocks as **marginal contributions (Shapley values)**
 - compute **shock decompositions** of filtered data via the Kalman or inversion filter, including pruned **second- and third-order** solutions where the nonlinear interaction term can optionally be allocated across shocks via **marginal contributions (Shapley values)**
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC), **estimate nonlinear models** using the inversion filter, or the filter-free joint likelihood
