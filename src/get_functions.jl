@@ -249,7 +249,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -414,7 +414,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -537,7 +537,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -666,7 +666,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -785,7 +785,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -908,7 +908,7 @@ using SparseArrays, AxisKeys
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME silent = true begin
+@parameters RBC_CME  begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -1282,7 +1282,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1573,7 +1573,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -1785,7 +1785,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2078,7 +2078,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2266,7 +2266,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -2440,7 +2440,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME silent = true begin
+@parameters RBC_CME  begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -2643,7 +2643,7 @@ using MacroModelling
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
 
-@parameters RBC_CME silent = true begin
+@parameters RBC_CME  begin
     alpha = .157
     beta = .999
     delta = .0226
@@ -3022,7 +3022,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3092,7 +3092,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -3245,7 +3245,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -4002,7 +4002,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -4338,7 +4338,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -5297,7 +5297,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC silent = true begin
+@parameters RBC  begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
