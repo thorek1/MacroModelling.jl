@@ -85,10 +85,6 @@ end
     
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
-        
-    if lyapunov_algorithm == :bartels_stewart && !has_bartels_stewart()
-        error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
-    end
 
     if lyapunov_algorithm ≠ :bartels_stewart
         A = choose_matrix_format(A)
@@ -170,18 +166,6 @@ end
         end
     end
 
-    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 && has_bartels_stewart() # try bartels_stewart if previous one didn't solve it
-        A = collect(A)
-
-        C = collect(C)
-
-        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = tol) # timer = timer)
-
-        if verbose
-            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
-        end
-    end
-
     # Schur deflation fallback: when all standard solvers fail, check for unit-root
     # eigenvalues and solve only the stationary subspace.
     if !(reached_tol < acceptance_tol)
@@ -202,19 +186,6 @@ end
 
     return X, reached_tol < acceptance_tol
 end
-
-
-# Keep the low-level bartels-stewart signature available in core so fallback
-# paths remain well-typed when MatrixEquations is not loaded.
-function solve_lyapunov_equation(A::AbstractMatrix{T},
-                                          C::AbstractMatrix{T},
-                                          ::Val{:bartels_stewart},
-                                          workspace::lyapunov_workspace;
-                                  tol::SolverTolerances = SolverTolerances(),
-                                  has_unit_roots::Bool = false)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-     return Matrix(C), 0, T(Inf)
-end
-
 
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
@@ -897,10 +868,6 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 
     if sub_tol > tol.acceptance_tol
         X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bicgstab), ws_stable; tol = tol)
-    end
-
-    if sub_tol > tol.acceptance_tol && has_bartels_stewart() && length(C_ss) < 5e7
-        X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bartels_stewart), ws_stable; tol = tol)
     end
 
     if sub_tol > tol.acceptance_tol

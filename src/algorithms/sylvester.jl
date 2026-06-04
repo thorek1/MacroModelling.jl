@@ -42,10 +42,6 @@
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)
 
-    if sylvester_algorithm == :bartels_stewart && !has_bartels_stewart()
-        error("The :bartels_stewart algorithm requires the MatrixEquations package. Run `using MatrixEquations` to enable it.")
-    end
-
     if sylvester_algorithm ∈ [:bicgstab, :gmres, :dqgmres, :bartels_stewart]
         a = 𝕊ℂ.𝐀
         copyto!(a, A)
@@ -130,29 +126,6 @@
 
         if verbose# && i != 0
             println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
-        end
-    end
-
-    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) && has_bartels_stewart()
-        aa = 𝕊ℂ.𝐀
-        copyto!(aa, A)
-
-        bb = 𝕊ℂ.𝐁
-        copyto!(bb, B)
-
-        cc = 𝕊ℂ.𝐂_dbl
-        copyto!(cc, C)
-
-        x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
-                                                            Val(:bartels_stewart), 𝕊ℂ,
-                                                            initial_guess = zeros(0,0), 
-                                                            preconditioner = preconditioner,
-                                                            tol = tol, 
-                                                            # timer = timer, 
-                                                            verbose = verbose)
-
-        if verbose && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
         end
     end
 
@@ -289,22 +262,6 @@
 
     return X, reached_tol < acceptance_tol
 end
-
-
-# Keep the low-level bartels-stewart signature available in core so fallback
-# paths remain well-typed when MatrixEquations is not loaded.
-function solve_sylvester_equation(A::DenseMatrix{T},
-                                                B::AbstractMatrix{T},
-                                                C::DenseMatrix{T},
-                                                ::Val{:bartels_stewart},
-                                                𝕊ℂ::sylvester_workspace;
-                                                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                                preconditioner::Symbol = :none,
-                                                verbose::Bool = false,
-                                                tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-     return copy(C), 0, T(Inf)
-end
-
 
 
 function solve_sylvester_equation(  A::AbstractSparseMatrix{T},

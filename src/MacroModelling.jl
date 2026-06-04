@@ -178,11 +178,6 @@ include("./perturbation/solution.jl")
 include("./steady_state/stochastic_steady_state.jl")
 include("impulse_response_function.jl")
 
-# Sentinel for MatrixEquations extension (bartels_stewart algorithm).
-# Set to `true` by MatrixEquationsExt.__init__() when the package is loaded.
-const BARTELS_STEWART_AVAILABLE = Ref(false)
-has_bartels_stewart() = BARTELS_STEWART_AVAILABLE[]
-
 include("./algorithms/preconditioner.jl")
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
