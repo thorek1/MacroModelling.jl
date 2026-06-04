@@ -18384,6 +18384,37 @@ function expand_filter_free_me_std_cotangent(d_me_std::AbstractMatrix,
     return full
 end
 
+# When the user passes a scalar or a length-1 vector / singleton-axis matrix for
+# `measurement_error_std`, the forward path internally expands the input to the
+# full (n_obs, nT) shape. The reverse pass therefore receives a cotangent on the
+# expanded shape and must sum over the broadcasted axes before returning the
+# tangent to the user-facing argument.
+contract_filter_free_me_std_cotangent(d_me_std, user_me_std::Real) = d_me_std isa AbstractArray ? sum(d_me_std) : d_me_std
+function contract_filter_free_me_std_cotangent(d_me_std::AbstractVector, user_me_std::AbstractVector)
+    if length(user_me_std) == length(d_me_std)
+        return d_me_std
+    elseif length(user_me_std) == 1
+        return [sum(d_me_std)]
+    else
+        return d_me_std
+    end
+end
+function contract_filter_free_me_std_cotangent(d_me_std::AbstractMatrix, user_me_std::AbstractMatrix)
+    if size(d_me_std) == size(user_me_std)
+        return d_me_std
+    end
+    out = similar(user_me_std, eltype(d_me_std))
+    dims = Int[]
+    size(user_me_std, 1) == 1 && size(d_me_std, 1) != 1 && push!(dims, 1)
+    size(user_me_std, 2) == 1 && size(d_me_std, 2) != 1 && push!(dims, 2)
+    if isempty(dims)
+        copyto!(out, d_me_std)
+    else
+        copyto!(out, sum(d_me_std; dims = Tuple(dims)))
+    end
+    return out
+end
+
 # Visible-period filter-free pullbacks run on the reduced `needed` row slice of
 # the policy matrices. They propagate the state cotangent backward across only
 # the retained visible sample, accumulate reduced-matrix cotangents, and return
@@ -18960,17 +18991,26 @@ function rrule(::typeof(get_loglikelihood),
     @assert warmup_iterations >= 0 "`warmup_iterations` must be non-negative."
     n_warm = max(warmup_iterations - 1, 0)
     nT_total = nT_input + n_warm
+    user_me_std = measurement_error_std
     if me_std_is_vec
-        @assert length(measurement_error_std) == n_obs_check "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs_check)."
+        @assert length(measurement_error_std) == n_obs_check || length(measurement_error_std) == 1 "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs_check) or a single entry that is broadcast to all observables."
         if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return on_failure
         end
+        if length(measurement_error_std) == 1 && n_obs_check > 1
+            measurement_error_std = fill(measurement_error_std[1], n_obs_check)
+        end
     elseif me_std_is_mat
-        @assert size(measurement_error_std) == (n_obs_check, nT_input) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs_check, $nT_input); got $(size(measurement_error_std))."
+        @assert (size(measurement_error_std) == (n_obs_check, nT_input)) || (size(measurement_error_std) == (1, nT_input)) || (size(measurement_error_std) == (n_obs_check, 1)) || (size(measurement_error_std) == (1, 1)) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs_check, $nT_input); got $(size(measurement_error_std)). A singleton dimension is broadcast."
         if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return on_failure
+        end
+        if size(measurement_error_std) != (n_obs_check, nT_input)
+            measurement_error_std = repeat(measurement_error_std,
+                                           size(measurement_error_std, 1) == 1 ? n_obs_check : 1,
+                                           size(measurement_error_std, 2) == 1 ? nT_input : 1)
         end
     else
         if !isfinite(measurement_error_std) || measurement_error_std <= zero(T)
@@ -19121,7 +19161,7 @@ function rrule(::typeof(get_loglikelihood),
                 d_shocks = hcat(d_shocks_warm, d_shocks)
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
-            d_me_std_full = expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range)
+            d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_𝐒₁_full_cot = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁)
             @inbounds d_𝐒₁_full_cot[needed, :] .= d_𝐒₁_red
             d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
@@ -19206,7 +19246,7 @@ function rrule(::typeof(get_loglikelihood),
                 d_shocks = hcat(d_shocks_warm, d_shocks)
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
-            d_me_std_full = expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range)
+            d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
             d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
             d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
@@ -19297,7 +19337,7 @@ function rrule(::typeof(get_loglikelihood),
                 d_shocks = hcat(d_shocks_warm, d_shocks)
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
-            d_me_std_full = expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range)
+            d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
             d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
             d_state = [zeros(eltype(d_state_red[1]), nVars_full),
@@ -19388,7 +19428,7 @@ function rrule(::typeof(get_loglikelihood),
                 d_shocks = hcat(d_shocks_warm, d_shocks)
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
-            d_me_std_full = expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range)
+            d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
             d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
             d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
@@ -19496,7 +19536,7 @@ function rrule(::typeof(get_loglikelihood),
                 d_shocks = hcat(d_shocks_warm, d_shocks)
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
-            d_me_std_full = expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range)
+            d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
             d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
             d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red

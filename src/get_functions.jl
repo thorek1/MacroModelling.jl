@@ -4714,16 +4714,24 @@ function get_loglikelihood(𝓂::ℳ,
     n_warm = max(warmup_iterations - 1, 0)
     nT_total = nT_input + n_warm
     if me_std_is_vec
-        @assert length(measurement_error_std) == n_obs "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs)."
+        @assert length(measurement_error_std) == n_obs || length(measurement_error_std) == 1 "`measurement_error_std` vector must have one entry per observable (got $(length(measurement_error_std)), expected $n_obs) or a single entry that is broadcast to all observables."
         if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return convert(R, on_failure_loglikelihood)
         end
+        if length(measurement_error_std) == 1 && n_obs > 1
+            measurement_error_std = fill(measurement_error_std[1], n_obs)
+        end
     elseif me_std_is_mat
-        @assert size(measurement_error_std) == (n_obs, nT_input) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs, $nT_input); got $(size(measurement_error_std))."
+        @assert (size(measurement_error_std) == (n_obs, nT_input)) || (size(measurement_error_std) == (1, nT_input)) || (size(measurement_error_std) == (n_obs, 1)) || (size(measurement_error_std) == (1, 1)) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs, $nT_input); got $(size(measurement_error_std)). A singleton dimension is broadcast."
         if any(x -> !isfinite(x) || x <= zero(T), measurement_error_std)
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
             return convert(R, on_failure_loglikelihood)
+        end
+        if size(measurement_error_std) != (n_obs, nT_input)
+            measurement_error_std = repeat(measurement_error_std,
+                                           size(measurement_error_std, 1) == 1 ? n_obs : 1,
+                                           size(measurement_error_std, 2) == 1 ? nT_input : 1)
         end
     else
         if !isfinite(measurement_error_std) || measurement_error_std <= zero(T)
