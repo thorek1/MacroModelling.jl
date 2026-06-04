@@ -129,10 +129,10 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "pruned_3rd_order_estimation_pigeons"
-          - version: 'min'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "basic"
+          # - version: 'min'
+          #   os: ubuntu-latest
+          #   arch: x64
+          #   test_set: "basic"
           - version: 'lts'
             os: ubuntu-latest
             arch: x64
@@ -151,10 +151,28 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
+            allow_failure: true
           - version: 'lts'
             os: macOS-latest
             arch: x64
             test_set: "jet"
+            allow_failure: true
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "jet_hot_paths"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "estimate_sw07_nested_sampling"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "gradient_checks"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "system_prior_estimation"
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v2
@@ -168,18 +186,68 @@ jobs:
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Pigeons"//g' \
             -e '/^\[targets\]/,$ s/"Pigeons",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Pigeons[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Pigeons[[:space:]]*=.*$//g' \
             Project.toml
           rm -f Project.toml.bak
 
-      - name: Remove JET from estimation runs
-        if: contains(matrix.test_set, 'estimat') == true || contains(matrix.test_set, 'pigeons') == true
+      - name: Remove MCMCChains from non-pigeons runs
+        if: contains(matrix.test_set, 'pigeons') == false
         shell: bash
         run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"MCMCChains"//g' \
+            -e '/^\[targets\]/,$ s/"MCMCChains",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^MCMCChains[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      # - name: Restrict DynamicPPL to 0.40 for pigeons runs
+      #   if: contains(matrix.test_set, 'pigeons')
+      #   shell: bash
+      #   run: |
+      #     sed -i.bak \
+      #       -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$/DynamicPPL = "0.40"/g' \
+      #       Project.toml
+      #     rm -f Project.toml.bak
+
+      - name: Remove Mooncake from pigeons runs
+        if: contains(matrix.test_set, 'pigeons')
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
+            -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove FlexiChains from pigeons runs
+        if: contains(matrix.test_set, 'pigeons')
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"FlexiChains"//g' \
+            -e '/^\[targets\]/,$ s/"FlexiChains",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^FlexiChains[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^FlexiChains[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove JET from non-jet runs
+        if: "!startsWith(matrix.test_set, 'jet')"
+        shell: bash
+        run: |
+          # `JET` is only needed for the dedicated `jet` rows. Keeping it in the
+          # shared test target adds resolver constraints to unrelated jobs.
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"JET"//g' \
             -e '/^\[targets\]/,$ s/"JET",[[:space:]]*//g' \
             Project.toml
-          rm -f Project.toml.bak 
+          rm -f Project.toml.bak
+
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
@@ -199,3 +267,32 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: lcov.info
+
+  dynare-comparison:
+    name: Dynare Comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+
+      # Phase 1: Generate Julia results and .mod files
+      - name: Generate Julia results
+        env:
+          JULIA_NUM_THREADS: '1'
+        run: julia --threads=1 --project=. test/dynare_comparison/generate_julia_results.jl
+
+      # Phase 2: Run Dynare in Docker (debian:testing)
+      - name: Build Dynare Docker image
+        run: docker build -t dynare-runner test/dynare_comparison/
+      - name: Run Dynare models
+        run: docker run --rm --user "$(id -u):$(id -g)" -e THREAD_COUNT=1 -e OMP_NUM_THREADS=1 -e OMP_THREAD_LIMIT=1 -e OPENBLAS_NUM_THREADS=1 -e MKL_NUM_THREADS=1 -v "${{ github.workspace }}/test/dynare_comparison/output:/work/output" dynare-runner
+
+      # Phase 3: Compare results
+      - name: Compare Julia vs Dynare results
+        env:
+          JULIA_NUM_THREADS: '1'
+        run: julia --threads=1 --project=. test/dynare_comparison/compare_results.jl

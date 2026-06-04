@@ -56,6 +56,7 @@ const DEFAULT_MEAN_FLAG = false
 const DEFAULT_STANDARD_DEVIATION_FLAG = true
 const DEFAULT_VARIANCE_FLAG = false
 const DEFAULT_COVARIANCE_FLAG = false
+const DEFAULT_CORRELATION_FLAG = false
 const DEFAULT_AUTOCORRELATION_FLAG = false
 const DEFAULT_DERIVATIVES_FLAG = true
 const DEFAULT_STOCHASTIC_FLAG = false
@@ -65,9 +66,12 @@ const DEFAULT_SILENT_FLAG = false
 # Solver and tolerance defaults
 const DEFAULT_VERBOSE = false
 const DEFAULT_QME_ALGORITHM = :schur
+const DEFAULT_QME_THRESHOLD = 1000000
+const DEFAULT_LARGE_QME_ALGORITHM = :doubling
+const DEFAULT_QME_SELECTOR = 𝓂 -> (𝓂.constants.post_model_macro.nVars - 𝓂.constants.post_model_macro.nPresent_only)^2 > DEFAULT_QME_THRESHOLD ? DEFAULT_LARGE_QME_ALGORITHM : DEFAULT_QME_ALGORITHM
 const DEFAULT_LYAPUNOV_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_ALGORITHM = :doubling
-const DEFAULT_SYLVESTER_THRESHOLD = 1000
+const DEFAULT_SYLVESTER_THRESHOLD = 10000
 const DEFAULT_LARGE_SYLVESTER_ALGORITHM = :bicgstab
 const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> sum(1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM
 
@@ -105,21 +109,13 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
-    :NSSS_acceptance_tol => "NSSS acceptance tol",
-    :NSSS_xtol => "NSSS xtol",
-    :NSSS_ftol => "NSSS ftol",
-    :NSSS_rel_xtol => "NSSS rel xtol",
-    :qme_tol => "QME tol",
-    :qme_acceptance_tol => "QME acceptance tol",
-    :sylvester_tol => "Sylvester tol",
-    :sylvester_acceptance_tol => "Sylvester acceptance tol",
-    :lyapunov_tol => "Lyapunov tol",
-    :lyapunov_acceptance_tol => "Lyapunov acceptance tol",
-    :droptol => "Droptol",
-    :dependencies_tol => "Dependencies tol",
 )
 
 # Turing distribution wrapper defaults
 const DEFAULT_TURING_USE_MEAN_STD = false
 
 const DEFAULT_MAXLOG = 3
+
+# Caching and workspace defaults
+const DEFAULT_CACHING = true
+const DEFAULT_USE_WORKSPACES = true

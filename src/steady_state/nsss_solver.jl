@@ -1,0 +1,2654 @@
+@stable default_mode = "disable" begin
+
+# Non-stochastic steady state (NSSS) solver
+# 
+# This file contains:
+# 1. Builder for accumulating step data into model sub-structs
+# 2. Step execution function dispatching on step type
+# 3. The solve_nsss_steps orchestrator that iterates over steps
+# 4. The solve_nsss_wrapper that handles cache management and continuation method
+
+# ============================================================================
+# Pipeline builder
+# ============================================================================
+
+const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
+const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
+const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
+
+@unstable function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
+    if sol.is_number == true
+        return sol
+    end
+    num, _ = sol.as_numer_denom()
+    return num.is_zero == true ? SPyPyC.Sym(0) : sol
+end
+
+@unstable function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
+    sol.is_number == true && return Symbol[]
+    atoms = Symbol[]
+    for a in sol.atoms()
+        if a.is_number != true
+            push!(atoms, Symbol(a))
+        end
+    end
+    return atoms
+end
+
+"""
+Return `true` if the Julia `Expr`/`Symbol` contains a call that
+`make_equation_robust_to_domain_errors` would rewrite with a `➕` auxiliary
+variable. Used to gate the rewrite: when no hazard is present the rewrite is
+a no-op and can be skipped entirely, saving allocations and SymPy simplify
+calls on log-linear models.
+"""
+@unstable function expression_has_domain_hazards(expr)
+    hazard = false
+    postwalk(x -> begin
+        if x isa Expr && x.head == :call && length(x.args) >= 2
+            op = x.args[1]
+            if op === :log || op === :sqrt || op === :exp ||
+                op === :norminvcdf || op === :norminv || op === :qnorm ||
+                op === :erfcinv
+                hazard = true
+            elseif op === :^
+                # non-integer exponent triggers the rewrite path
+                if length(x.args) >= 3 && !(x.args[3] isa Int)
+                    hazard = true
+                end
+            end
+        end
+        x
+    end, expr)
+    return hazard
+end
+
+"""
+Mutable accumulator used during `write_steady_state_solver_function!` to collect step data.
+After all steps are appended, call `build_nsss_solver!(𝓂, builder, param_prep!)` to assign
+data into the model's functions, constants, and workspaces sub-structs.
+"""
+mutable struct NSSSSolverBuilder
+    # Per-step parallel vectors (functions)
+    aux_funcs::Vector{Function}
+    error_funcs::Vector{Function}
+    eval_funcs::Vector{Function}
+    solve_blocks::Vector{Union{Nothing, ss_solve_block{Float64}}}
+    # Per-step metadata
+    step_types::Vector{UInt8}
+    descriptions::Vector{String}
+    block_indices::Vector{Int}
+    # Flat index accumulators
+    write_indices::Vector{Int}
+    write_ranges::Vector{UnitRange{Int}}
+    aux_write_indices::Vector{Int}
+    aux_write_ranges::Vector{UnitRange{Int}}
+    param_gather_indices::Vector{Int}
+    param_gather_ranges::Vector{UnitRange{Int}}
+    var_gather_indices::Vector{Int}
+    var_gather_ranges::Vector{UnitRange{Int}}
+    # Flat bounds accumulators (analytical)
+    lower_bounds::Vector{Float64}
+    upper_bounds::Vector{Float64}
+    has_bounds::BitVector
+    bounds_ranges::Vector{UnitRange{Int}}
+    # Flat bounds accumulators (numerical)
+    numerical_lbs::Vector{Float64}
+    numerical_ubs::Vector{Float64}
+    numerical_bounds_ranges::Vector{UnitRange{Int}}
+    # Error sizes
+    error_sizes::Vector{Int}
+    aux_error_sizes::Vector{Int}
+    # Workspace size tracking
+    max_main_buffer::Int
+    max_aux_buffer::Int
+    max_error_buffer::Int
+    max_guess_buffer::Int
+end
+
+function NSSSSolverBuilder()
+    NSSSSolverBuilder(
+        Function[], Function[],
+        Function[], Union{Nothing,ss_solve_block{Float64}}[],
+        UInt8[], String[], Int[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Int[], UnitRange{Int}[],
+        Float64[], Float64[], BitVector(), UnitRange{Int}[],
+        Float64[], Float64[], UnitRange{Int}[],
+        Int[], Int[],
+        0, 0, 0, 0,
+    )
+end
+
+"""Append an analytical step to the builder."""
+function push_analytical_step!(b::NSSSSolverBuilder;
+                               aux_func!::Function = NOOP_NSSS_FUNC!,
+                               aux_write_indices::Vector{Int} = Int[],
+                               error_func!::Function = NOOP_NSSS_FUNC!,
+                               error_size::Int = 0,
+                               eval_func!::Function,
+                               write_indices::Vector{Int},
+                               lower_bounds::Vector{Float64} = Float64[],
+                               upper_bounds::Vector{Float64} = Float64[],
+                               has_bounds::BitVector = falses(length(lower_bounds)),
+                               description::String = "")
+    push!(b.step_types, ANALYTICAL_STEP)
+    push!(b.descriptions, description)
+    push!(b.block_indices, 0)
+
+    # Functions
+    push!(b.aux_funcs, aux_func!)
+    push!(b.error_funcs, error_func!)
+    push!(b.eval_funcs, eval_func!)
+    push!(b.solve_blocks, nothing)
+
+    # Write indices
+    off = length(b.write_indices)
+    append!(b.write_indices, write_indices)
+    push!(b.write_ranges, (off+1):(off+length(write_indices)))
+
+    # Aux write indices
+    off = length(b.aux_write_indices)
+    append!(b.aux_write_indices, aux_write_indices)
+    push!(b.aux_write_ranges, (off+1):(off+length(aux_write_indices)))
+
+    # No param/var gather for analytical
+    push!(b.param_gather_ranges, 1:0)
+    push!(b.var_gather_ranges, 1:0)
+
+    # Bounds (analytical)
+    off = length(b.lower_bounds)
+    append!(b.lower_bounds, lower_bounds)
+    append!(b.upper_bounds, upper_bounds)
+    append!(b.has_bounds, has_bounds)
+    push!(b.bounds_ranges, (off+1):(off+length(lower_bounds)))
+
+    # No numerical bounds
+    push!(b.numerical_bounds_ranges, 1:0)
+
+    # Error sizes
+    push!(b.error_sizes, error_size)
+    push!(b.aux_error_sizes, 0)
+
+    # Update workspace max sizes
+    b.max_main_buffer = max(b.max_main_buffer, length(write_indices))
+    b.max_aux_buffer = max(b.max_aux_buffer, length(aux_write_indices))
+    b.max_error_buffer = max(b.max_error_buffer, error_size)
+end
+
+"""Append a numerical step to the builder."""
+function push_numerical_step!(b::NSSSSolverBuilder;
+                              solve_block::ss_solve_block{Float64},
+                              block_index::Int,
+                              write_indices::Vector{Int},
+                              param_gather_indices::Vector{Int},
+                              var_gather_indices::Vector{Int},
+                              lbs::Vector{Float64},
+                              ubs::Vector{Float64},
+                              aux_func!::Function = NOOP_NSSS_FUNC!,
+                              aux_write_indices::Vector{Int} = Int[],
+                              aux_error_func!::Function = NOOP_NSSS_FUNC!,
+                              aux_error_size::Int = 0,
+                              description::String = "")
+    push!(b.step_types, NUMERICAL_STEP)
+    push!(b.descriptions, description)
+    push!(b.block_indices, block_index)
+
+    # Functions
+    push!(b.aux_funcs, aux_func!)
+    push!(b.error_funcs, aux_error_func!)   # numerical steps use error_funcs slot for aux_error
+    push!(b.eval_funcs, NOOP_NSSS_EVAL!)
+    push!(b.solve_blocks, solve_block)
+
+    # Write indices
+    off = length(b.write_indices)
+    append!(b.write_indices, write_indices)
+    push!(b.write_ranges, (off+1):(off+length(write_indices)))
+
+    # Aux write indices
+    off = length(b.aux_write_indices)
+    append!(b.aux_write_indices, aux_write_indices)
+    push!(b.aux_write_ranges, (off+1):(off+length(aux_write_indices)))
+
+    # Param/var gather indices
+    off = length(b.param_gather_indices)
+    append!(b.param_gather_indices, param_gather_indices)
+    push!(b.param_gather_ranges, (off+1):(off+length(param_gather_indices)))
+
+    off = length(b.var_gather_indices)
+    append!(b.var_gather_indices, var_gather_indices)
+    push!(b.var_gather_ranges, (off+1):(off+length(var_gather_indices)))
+
+    # No analytical bounds
+    push!(b.bounds_ranges, 1:0)
+
+    # Numerical bounds
+    off = length(b.numerical_lbs)
+    append!(b.numerical_lbs, lbs)
+    append!(b.numerical_ubs, ubs)
+    push!(b.numerical_bounds_ranges, (off+1):(off+length(lbs)))
+
+    # Error sizes
+    push!(b.error_sizes, 0)
+    push!(b.aux_error_sizes, aux_error_size)
+
+    # Update workspace max sizes
+    gather_size = length(param_gather_indices) + length(var_gather_indices)
+    b.max_main_buffer = max(b.max_main_buffer, gather_size)
+    b.max_aux_buffer = max(b.max_aux_buffer, length(aux_write_indices))
+    b.max_error_buffer = max(b.max_error_buffer, aux_error_size)
+    b.max_guess_buffer = max(b.max_guess_buffer, length(write_indices))
+end
+
+"""Assign the solver functions, constants, and workspace from builder data into `𝓂`."""
+function build_nsss_solver!(𝓂::ℳ, b::NSSSSolverBuilder, param_prep!::Union{Nothing,Function})
+    n = length(b.step_types)
+    n_ext_params = length(𝓂.constants.post_complete_parameters.parameters) + length(𝓂.equations.calibration_no_var)
+    𝓂.functions.nsss_solver = NSSSSolverFunctions(
+        b.aux_funcs, b.error_funcs, b.eval_funcs, b.solve_blocks,
+    )
+    𝓂.functions.nsss_param_prep! = param_prep!
+    𝓂.constants.nsss_solver = NSSSSolverConstants(
+        n,
+        n_ext_params,
+        b.step_types, b.descriptions, b.block_indices,
+        b.write_indices, b.write_ranges,
+        b.aux_write_indices, b.aux_write_ranges,
+        b.param_gather_indices, b.param_gather_ranges,
+        b.var_gather_indices, b.var_gather_ranges,
+        b.lower_bounds, b.upper_bounds, b.has_bounds, b.bounds_ranges,
+        b.numerical_lbs, b.numerical_ubs, b.numerical_bounds_ranges,
+        b.error_sizes, b.aux_error_sizes,
+    )
+    𝓂.workspaces.nsss_solver = NSSSSolverWorkspace(
+        zeros(Float64, max(b.max_main_buffer, 1)),
+        zeros(Float64, max(b.max_aux_buffer, 1)),
+        zeros(Float64, max(b.max_error_buffer, 1)),
+        zeros(Float64, max(𝓂.constants.nsss_solver.n_ext_params, 1)),
+        Float64[],
+        Float64[],
+        zeros(Float64, max(b.max_guess_buffer, 1)),
+        [zeros(Float64, max(b.max_guess_buffer, 1)), Float64[Inf]],
+        zeros(Float64, max(b.max_main_buffer, 1)),
+        zeros(Float64, max(b.max_guess_buffer, 1)),
+        zeros(Float64, max(b.max_guess_buffer, 1)),
+        Float64[],
+        CircularBuffer{Vector{Vector{Float64}}}(1),
+        1,
+        zeros(Float64, length(𝓂.equations.steady_state) + length(𝓂.equations.calibration)),
+    )
+    return nothing
+end
+
+@unstable begin
+    function replace_symbols(exprs, remap::AbstractDict{Symbol, <:Any})
+        postwalk(node ->
+            (node isa Symbol && haskey(remap, node)) ? remap[node] : node,
+            exprs,
+        )
+    end
+end
+
+@unstable function write_block_solution!(𝓂,
+                                vars_to_solve,
+                                eqs_to_solve,
+                                relevant_pars_across,
+                                nsss_solver_cache_init_tmp,
+                                eq_idx_in_block_to_solve,
+                                atoms_in_equations_list,
+                                solved_vars,
+                                solved_vals;
+                                block_index::Int,
+                                cse = true,
+                                skipzeros = true,
+                                density_threshold::Float64 = .1,
+                                nnz_parallel_threshold::Int = 1000000,
+                                min_length::Int = 10000)
+
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+
+    vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.constants.post_model_macro.➕_vars),Symbol[]]
+
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+
+    push!(solved_vars, Symbol.(vars_to_solve))
+    push!(solved_vals, rewritten_eqs)
+
+    syms_in_eqs = Set{Symbol}()
+    for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
+        push!(syms_in_eqs, get_symbols(i)...)
+    end
+
+    setdiff!(syms_in_eqs,𝓂.constants.post_model_macro.➕_vars)
+
+    syms_in_eqs2 = Set{Symbol}()
+    for i in ss_and_aux_equations
+        push!(syms_in_eqs2, get_symbols(i)...)
+    end
+
+    ➕_vars_alread_in_eqs = intersect(𝓂.constants.post_model_macro.➕_vars,reduce(union,get_symbols.(Meta.parse.(string.(eqs_to_solve)))))
+
+    union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.constants.post_model_macro.➕_vars))
+
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, solved_vars[end]))
+
+    calib_pars_input = Symbol[]
+
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
+    union!(relevant_pars_across, relevant_pars)
+
+    sorted_vars = sort(Symbol.(vars_to_solve))
+
+    iii = 1
+    for parss in union(𝓂.constants.post_complete_parameters.parameters, 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters)
+        if :($parss) ∈ relevant_pars
+            push!(calib_pars_input, :($parss))
+            iii += 1
+        end
+    end
+
+    other_vrs_eliminated_by_sympy = Set{Symbol}()
+    for (i,val) in enumerate(solved_vals[end])
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
+            val = vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
+            push!(other_vrs_eliminated_by_sympy, val.args[2])
+        end
+    end
+
+    solved_vals_local = Union{Expr, Symbol}[]
+    for (i,val) in enumerate(rewritten_eqs)
+        push!(solved_vals_local, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+    end
+
+    other_vars_input = Symbol[]
+    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
+                                        sort(solved_vars[end]) ),
+                                union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+
+    for var in other_vrs
+        push!(other_vars_input,:($(var)))
+        iii += 1
+    end
+
+    parameters_and_solved_vars = vcat(calib_pars_input, other_vrs)
+
+    ng = length(sorted_vars)
+    np = length(parameters_and_solved_vars)
+    nd = length(ss_and_aux_equations_dep)
+    nx = iii - 1
+
+    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
+
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    aux_vars = Symbol[]
+    aux_expr = []
+
+    for (i,v) in enumerate(sorted_vars)
+        push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
+    end
+
+    for (i,v) in enumerate(parameters_and_solved_vars)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+    end
+
+    for (i,v) in enumerate(ss_and_aux_equations_dep)
+        push!(aux_vars, v.args[1])
+        push!(aux_expr, v.args[2])
+    end
+
+    aux_replacements = Dict{Symbol, Union{Expr, Symbol, Number}}()
+    for (i,x) in enumerate(aux_vars)
+        replacement = Dict{Symbol, Union{Expr, Symbol, Number}}(x => aux_expr[i])
+        for ii in i+1:length(aux_vars)
+            aux_expr[ii] = replace_symbols(aux_expr[ii], replacement)
+        end
+        push!(aux_replacements, x => aux_expr[i])
+    end
+
+    replaced_solved_vals = solved_vals_local |>
+        x -> replace_symbols.(x, Ref(aux_replacements)) |>
+        x -> replace_symbols.(x, Ref(parameter_dict)) |>
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+    lennz = length(replaced_solved_vals)
+    if lennz > nnz_parallel_threshold
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    ϵˢ = zeros(Symbolics.Num, ng)
+    ϵ = zeros(ng)
+
+    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊)
+
+    lennz = nnz(∂block_∂parameters_and_solved_vars)
+    if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
+        derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
+        buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
+    else
+        derivatives_mat = ∂block_∂parameters_and_solved_vars
+        buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
+        buffer.nzval .= 1
+    end
+
+    chol_buff = buffer * buffer'
+    chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(chol_buff, ϵ)
+    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+
+    lu_factorization = issparse(buffer) ? 𝒮.LUFactorization() : 𝒮.FastLUFactorization()
+    prob = 𝒮.LinearProblem(buffer, ϵ)
+    lu_buffer = 𝒮.init(prob, lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+
+    if lennz > nnz_parallel_threshold
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    Symbolics.@variables 𝔊[1:ng+nx]
+
+    ext_diff = Symbolics.Num[]
+    for i in 1:nx
+        push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
+    end
+    replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
+
+    _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    ϵᵉ = zeros(ng + nx)
+    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊)
+
+    lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
+    if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
+        derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
+        ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
+    else
+        derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
+        ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
+        ext_buffer.nzval .= 1
+    end
+
+    ext_chol_buff = ext_buffer * ext_buffer'
+    ext_chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ)
+    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+
+    ext_lu_factorization = issparse(ext_buffer) ? 𝒮.LUFactorization() : 𝒮.FastLUFactorization()
+    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+    ext_lu_buffer = 𝒮.init(prob, ext_lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+
+    if lennz > nnz_parallel_threshold
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    push!(nsss_solver_cache_init_tmp, [haskey(𝓂.constants.post_parameters_macro.guess, v) ? 𝓂.constants.post_parameters_macro.guess[v] : Inf for v in sorted_vars])
+    push!(nsss_solver_cache_init_tmp, [Inf])
+
+    lbs = Float64[]
+    ubs = Float64[]
+    limit_boundaries = 1e12
+
+    for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+        if haskey(𝓂.constants.post_parameters_macro.bounds,i)
+            push!(lbs,𝓂.constants.post_parameters_macro.bounds[i][1])
+            push!(ubs,𝓂.constants.post_parameters_macro.bounds[i][2])
+        else
+            push!(lbs,-limit_boundaries)
+            push!(ubs, limit_boundaries)
+        end
+    end
+
+    n_block = block_index
+
+    workspace = Nonlinear_solver_workspace(ϵ, buffer, chol_buffer, lu_buffer)
+    ext_workspace = Nonlinear_solver_workspace(ϵᵉ, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+
+    solve_block = ss_solve_block(
+            function_and_jacobian(calc_block!::Function, func_exprs::Function, workspace),
+            function_and_jacobian(calc_ext_block!::Function, ext_func_exprs::Function, ext_workspace)
+        )
+
+    return (sorted_vars = sorted_vars,
+            calib_pars_input = Symbol.(calib_pars_input),
+            other_vars_input = Symbol.(other_vars_input),
+            lbs = lbs,
+            ubs = ubs,
+            n_block = n_block,
+            solve_block = solve_block,
+            ss_and_aux_equations = ss_and_aux_equations,
+            ss_and_aux_equations_error = ss_and_aux_equations_error)
+end
+
+struct PartialSolveResult{T,E}
+    remaining_vars::Vector{T}
+    solved_vars::Vector{T}
+    remaining_eqs::Vector{E}
+    solved_exprs::Vector{E}
+    remaining_var_indices::Vector{Int}
+    solved_var_indices::Vector{Int}
+    remaining_eq_indices::Vector{Int}
+    solved_eq_indices::Vector{Int}
+end
+
+@unstable function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::PartialSolveResult{T,E} where {E, T}
+    for n in length(eqs_to_solve)-1:-1:2
+        for eq_combo in combinations(1:length(eqs_to_solve), n)
+            var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
+            var_indices_in_remaining_eqs = findall([sum(incidence_matrix_subset[:,setdiff(1:length(eqs_to_solve),eq_combo)],dims = 2)...] .> 0)
+
+            for var_combo in combinations(var_indices_to_select_from, n)
+                remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
+                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n
+                    if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
+                        soll = nothing
+                    else
+                        soll = solve_symbolically(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
+                    end
+
+                    if !(isnothing(soll) || isempty(soll))
+                        soll_collected = E.(collect(values(soll)))
+                        solved_var_indices = Int[var_combo...]
+                        remaining_var_indices = [i for i in 1:length(eqs_to_solve) if i ∉ solved_var_indices]
+                        solved_eq_indices = Int[eq_combo...]
+                        remaining_eq_indices = [i for i in 1:length(eqs_to_solve) if i ∉ solved_eq_indices]
+
+                        return PartialSolveResult(
+                            vars_to_solve[remaining_var_indices],
+                            vars_to_solve[solved_var_indices],
+                            eqs_to_solve[remaining_eq_indices],
+                            soll_collected,
+                            remaining_var_indices,
+                            solved_var_indices,
+                            remaining_eq_indices,
+                            solved_eq_indices,
+                        )
+                    end
+                end
+            end
+        end
+    end
+
+    return PartialSolveResult(T[], T[], E[], E[], Int[], Int[], Int[], Int[])
+end
+
+@unstable function make_equation_robust_to_domain_errors(eqs,
+                                                vars_to_exclude::Vector{Vector{Symbol}},
+                                                bounds::Dict{Symbol,Tuple{Float64,Float64}},
+                                                ➕_vars::Vector{Symbol},
+                                                unique_➕_eqs;
+                                                precompile::Bool = false)
+    ss_and_aux_equations = Expr[]
+    ss_and_aux_equations_dep = Expr[]
+    ss_and_aux_equations_error = Expr[]
+    ss_and_aux_equations_error_dep = Expr[]
+    rewritten_eqs = Union{Expr,Symbol}[]
+    for eq in eqs
+        if eq isa Symbol
+            push!(rewritten_eqs, eq)
+        elseif eq isa Expr
+            rewritten_eq = postwalk(x ->
+                x isa Expr ?
+                    x.head == :call ?
+                        x.args[1] == :* ?
+                            x.args[2] isa Int ?
+                                x.args[3] isa Int ?
+                                    x :
+                                Expr(:call, :*, x.args[3:end]..., x.args[2]) :
+                            x :
+                        x.args[1] ∈ [:^] ?
+                            !(x.args[3] isa Int) ?
+                                x.args[2] isa Symbol ?
+                                    x.args[2] ∈ vars_to_exclude[1] ?
+                                        begin
+                                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
+                                            x
+                                        end :
+                                    begin
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if x.args[2] in vars_to_exclude[1]
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+
+                                        :($(replacement) ^ $(x.args[3]))
+                                    end :
+                                x.args[2] isa Float64 ?
+                                    x :
+                                x.args[2].head == :call ?
+                                    begin
+                                        if precompile
+                                            replacement = x.args[2]
+                                        else
+                                            replacement = simplify(x.args[2])
+                                        end
+
+                                        if !(replacement isa Int)
+                                            if haskey(unique_➕_eqs, x.args[2])
+                                                replacement = unique_➕_eqs[x.args[2]]
+                                            else
+                                                if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                    push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                    push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                                else
+                                                    push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                    push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                                end
+
+                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                                replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                                unique_➕_eqs[x.args[2]] = replacement
+                                            end
+                                        end
+
+                                        :($(replacement) ^ $(x.args[3]))
+                                    end :
+                                x :
+                            x :
+                        x.args[2] isa Float64 ?
+                            x :
+                        x.args[1] ∈ [:log] ?
+                            x.args[2] isa Symbol ?
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                    begin
+                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
+                                        x
+                                    end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ?
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
+                            x.args[2] isa Symbol ?
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                begin
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1 - eps())
+                                    x
+                                end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ?
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:exp] ?
+                            x.args[2] isa Symbol ?
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                begin
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
+                                    x
+                                end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ?
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:erfcinv] ?
+                            x.args[2] isa Symbol ?
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                    begin
+                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2 - eps())) : (eps(), 2 - eps())
+                                        x
+                                    end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ?
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x :
+                    x :
+                x,
+            eq)
+            push!(rewritten_eqs,rewritten_eq)
+        else
+            @assert typeof(eq) in [Symbol, Expr]
+        end
+    end
+
+    vars_to_exclude_from_block = vcat(vars_to_exclude...)
+    found_new_dependecy = true
+
+    while found_new_dependecy
+        found_new_dependecy = false
+        for ssauxdep in ss_and_aux_equations_dep
+            push!(vars_to_exclude_from_block, ssauxdep.args[1])
+        end
+
+        for (iii, ssaux) in enumerate(ss_and_aux_equations)
+            if !isempty(intersect(get_symbols(ssaux), vars_to_exclude_from_block))
+                found_new_dependecy = true
+                push!(vars_to_exclude_from_block, ssaux.args[1])
+                push!(ss_and_aux_equations_dep, ssaux)
+                push!(ss_and_aux_equations_error_dep, ss_and_aux_equations_error[iii])
+                deleteat!(ss_and_aux_equations, iii)
+                deleteat!(ss_and_aux_equations_error, iii)
+            end
+        end
+    end
+
+    return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
+end
+
+@unstable function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
+                                cse = true, skipzeros = true, nnz_parallel_threshold::Int = 1000000)
+    sym_exprs = Symbolics.Num[]
+    for expr in exprs
+        if expr isa Number
+            push!(sym_exprs, Symbolics.Num(expr))
+        else
+            clean_expr = postwalk(x -> x isa Expr && length(x.args) >= 2 && x.args[1] == :conjugate ? x.args[2] : x, expr)
+            replaced = replace_symbols(clean_expr, placeholder_dict)
+            sym = Symbolics.parse_expr_to_symbolic(replaced, @__MODULE__)
+            sym = Symbolics.substitute(sym, back_to_array_dict)
+            push!(sym_exprs, sym)
+        end
+    end
+
+    lennz = length(sym_exprs)
+    parallel = lennz > nnz_parallel_threshold ?
+        Symbolics.ShardedForm(1500, 4) : Symbolics.SerialForm()
+
+    _, func! = Symbolics.build_function(sym_exprs, 𝔖, 𝔓_ext,
+        cse = cse, skipzeros = skipzeros,
+        parallel = parallel,
+        expression_module = @__MODULE__,
+        expression = Val(false))::Tuple{<:Function, <:Function}
+
+    return func!
+end
+
+@unstable function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
+                               𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
+                               global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
+    write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
+    param_gather_indices = [ext_param_to_index[p] for p in block_meta.calib_pars_input]
+    var_gather_indices = [sol_name_to_index[v] for v in block_meta.other_vars_input]
+
+    aux_func! = NOOP_NSSS_FUNC!
+    aux_write_indices = Int[]
+    aux_error_func! = NOOP_NSSS_FUNC!
+    aux_error_size = 0
+
+    if !isempty(block_meta.ss_and_aux_equations)
+        model_aux_names = Symbol[]
+        model_aux_rhs = Any[]
+        model_aux_sub = Dict{Symbol, Any}()
+        for eq in block_meta.ss_and_aux_equations
+            if eq isa Expr && eq.head == :(=)
+                lhs = eq.args[1]
+                rhs = eq.args[2]
+                expanded_rhs = isempty(global_solvetime_aux_sub) ? rhs : replace_symbols(rhs, global_solvetime_aux_sub)
+                expanded_rhs = isempty(model_aux_sub) ? expanded_rhs : replace_symbols(expanded_rhs, model_aux_sub)
+                if haskey(sol_name_to_index, lhs)
+                    push!(model_aux_names, lhs)
+                    push!(model_aux_rhs, expanded_rhs)
+                    model_aux_sub[lhs] = expanded_rhs
+                else
+                    global_solvetime_aux_sub[lhs] = expanded_rhs
+                end
+            end
+        end
+        if !isempty(model_aux_rhs)
+            aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
+            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
+        end
+    end
+
+    if !isempty(block_meta.ss_and_aux_equations_error)
+        inlined_errors = isempty(global_solvetime_aux_sub) ? block_meta.ss_and_aux_equations_error : [replace_symbols(e, global_solvetime_aux_sub) for e in block_meta.ss_and_aux_equations_error]
+        aux_error_size = length(inlined_errors)
+        aux_error_func! = compile_exprs_to_func(inlined_errors,
+                                                 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
+    end
+
+    desc = "Numerical block $(block_meta.n_block): $(join(string.(block_meta.sorted_vars), ", "))"
+
+    push_numerical_step!(builder;
+        solve_block = block_meta.solve_block,
+        block_index = block_meta.n_block,
+        write_indices = write_indices,
+        param_gather_indices = param_gather_indices,
+        var_gather_indices = var_gather_indices,
+        lbs = block_meta.lbs,
+        ubs = block_meta.ubs,
+        aux_func! = aux_func!,
+        aux_write_indices = aux_write_indices,
+        aux_error_func! = aux_error_func!,
+        aux_error_size = aux_error_size,
+        description = desc,
+    )
+end
+
+@unstable function write_steady_state_solver_function!(𝓂::ℳ, symbolic_enabled::Bool = false, symbolics_data::Union{Nothing, symbolics} = nothing;
+                                            verbose::Bool = false,
+                                            avoid_solve::Bool = false)
+    symbolic_enabled = symbolic_enabled && (symbolics_data !== nothing)
+
+    unknowns = if symbolics_data === nothing
+        union(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.equations.calibration_parameters)
+    else
+        union(symbolics_data.calibration_equations_parameters, symbolics_data.vars_in_ss_equations)
+    end
+
+    n_equations_total = if symbolics_data === nothing
+        length(𝓂.equations.steady_state_aux) + length(𝓂.equations.calibration)
+    else
+        length(symbolics_data.ss_equations) + length(symbolics_data.calibration_equations)
+    end
+    @assert length(unknowns) <= n_equations_total "Unable to solve steady state. More unknowns than equations."
+
+    incidence_matrix = spzeros(Int, length(unknowns), length(unknowns))
+
+    eq_list = if symbolics_data === nothing
+        empty_var_redundant_list = [Symbol[] for _ in eachindex(𝓂.constants.post_model_macro.var_list_aux_SS)]
+        vcat(
+            union.(
+                setdiff.(
+                    union.(
+                        𝓂.constants.post_model_macro.var_list_aux_SS,
+                        𝓂.constants.post_model_macro.ss_list_aux_SS,
+                    ),
+                    empty_var_redundant_list,
+                ),
+                𝓂.constants.post_model_macro.par_list_aux_SS,
+            ),
+            union.(
+                𝓂.constants.post_parameters_macro.ss_calib_list,
+                𝓂.constants.post_parameters_macro.par_calib_list,
+            ),
+        )
+    else
+        vcat(
+            union.(
+                setdiff.(
+                    union.(
+                        symbolics_data.var_list_aux_SS,
+                        symbolics_data.ss_list_aux_SS,
+                    ),
+                    symbolics_data.var_redundant_list,
+                ),
+                symbolics_data.par_list_aux_SS,
+            ),
+            union.(
+                symbolics_data.ss_calib_list,
+                symbolics_data.par_calib_list,
+            ),
+        )
+    end
+
+    for (i,u) in enumerate(unknowns)
+        for (k,e) in enumerate(eq_list)
+            incidence_matrix[i,k] = u ∈ e
+        end
+    end
+
+    # Precomputed per-equation symbol sets used as a cheap Julia-side filter for
+    # SymPy solve/subs calls in the analytical branch. Aligned with ss_equations.
+    eq_symbol_sets = [Set{Symbol}(Symbol.(collect(e))) for e in eq_list]
+
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
+    R̂ = Int[]
+    for i in 1:n_blocks
+        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
+    end
+    push!(R̂,1)
+
+    vars = hcat(P, R̂)'
+    eqs = hcat(Q, R̂)'
+
+    # Handle unmatched variables: those whose equations became redundant
+    # (e.g., unit-root variables that cancel in steady state like qlfpr[0] = hqlfpr[0] + qlfpr[-1])
+    unmatched_mask = eqs[1,:] .< 0
+    n_unmatched = sum(unmatched_mask)
+    unmatched_var_names = similar(unknowns, 0)
+
+    if n_unmatched > 0
+        unmatched_var_indices = vars[1, unmatched_mask]
+        unmatched_var_names = [unknowns[i] for i in unmatched_var_indices]
+
+        if verbose
+            println("Indeterminate steady-state variables ($(n_unmatched)): assigned default value (0.0 or user guess)")
+            for vn in unmatched_var_names
+                guess_val = haskey(𝓂.constants.post_parameters_macro.guess, Symbol(vn)) ?
+                    𝓂.constants.post_parameters_macro.guess[Symbol(vn)] : 0.0
+                println("  $(Symbol(vn)) = $guess_val")
+            end
+        end
+
+        # Keep only matched columns
+        matched_mask = .!unmatched_mask
+        vars = vars[:, matched_mask]
+        eqs = eqs[:, matched_mask]
+
+        # Renumber blocks: the matched entries retain their block numbers from BTF
+        # but we need contiguous block numbers for the processing loop
+        if !isempty(vars)
+            old_blocks = sort(unique(vars[2,:]))
+            block_remap = Dict(old => new for (new, old) in enumerate(old_blocks))
+            for j in axes(vars, 2)
+                vars[2,j] = block_remap[vars[2,j]]
+                eqs[2,j] = block_remap[eqs[2,j]]
+            end
+            n_blocks = length(old_blocks)
+        else
+            n_blocks = 0
+        end
+    end
+
+    n = n_blocks
+
+    ss_equations = if symbolics_data === nothing
+        vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)
+    else
+        vcat(symbolics_data.ss_equations, symbolics_data.calibration_equations)
+    end
+
+    output_var_names = unique(Symbol.(replace.(string.(sort(union(
+        𝓂.constants.post_model_macro.var,
+        𝓂.constants.post_model_macro.exo_past,
+        𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
+    calib_param_names = 𝓂.equations.calibration_parameters
+    plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
+    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names)
+    n_sol = length(all_sol_names)
+    sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
+    plus_var_count_at_start = length(plus_var_names)
+
+    for d in union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
+        raw_name = Symbol(d)
+        stripped_name = Symbol(replace(string(d), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        if raw_name != stripped_name && haskey(sol_name_to_index, stripped_name)
+            sol_name_to_index[raw_name] = sol_name_to_index[stripped_name]
+        end
+    end
+
+    output_names_full = vcat(
+        Symbol.(replace.(string.(sort(union(
+            𝓂.constants.post_model_macro.var,
+            𝓂.constants.post_model_macro.exo_past,
+            𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
+        calib_param_names
+    )
+    output_indices = [sol_name_to_index[name] for name in output_names_full]
+
+    raw_param_names = collect(𝓂.constants.post_complete_parameters.parameters)
+    n_raw_params = length(raw_param_names)
+    calib_no_var_names = Symbol[expr.args[1] for expr in 𝓂.equations.calibration_no_var]
+    ext_param_names = vcat(raw_param_names, calib_no_var_names)
+    n_ext_params = length(ext_param_names)
+    ext_param_to_index = Dict(name => i for (i, name) in enumerate(ext_param_names))
+
+    exo_zero_indices = Int[]
+    for d in union(𝓂.constants.post_model_macro.exo_past, 𝓂.constants.post_model_macro.exo_future)
+        dns = Symbol(replace(string(d), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        if haskey(sol_name_to_index, dns)
+            push!(exo_zero_indices, sol_name_to_index[dns])
+        end
+    end
+
+    n_sol_max = n_sol + 2 * length(ss_equations)
+    MacroModelling.Symbolics.@variables 𝔖[1:n_sol_max] 𝔓_ext[1:n_ext_params]
+
+    global_placeholder = Dict{Symbol, Symbol}()
+    global_back_to_array = Dict{MacroModelling.Symbolics.Num, MacroModelling.Symbolics.Num}()
+
+    for (name, idx) in sol_name_to_index
+        sym = Symbol("𝔖_$idx")
+        global_placeholder[name] = sym
+        global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+    end
+    for (name, idx) in ext_param_to_index
+        sym = Symbol("𝔓e_$idx")
+        global_placeholder[name] = sym
+        global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔓_ext[idx]
+    end
+
+    MacroModelling.Symbolics.@variables P_raw[1:n_raw_params]
+
+    pp_back = Dict{MacroModelling.Symbolics.Num, MacroModelling.Symbolics.Num}()
+    for i in 1:n_raw_params
+        sym = Symbol("Praw_$i")
+        pp_back[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = P_raw[i]
+    end
+
+    bounded_param_exprs_for_sub = Dict{Symbol, Union{Symbol, Expr}}()
+    for (i, par) in enumerate(raw_param_names)
+        if haskey(𝓂.constants.post_parameters_macro.bounds, par)
+            lb, ub = 𝓂.constants.post_parameters_macro.bounds[par]
+            bounded_param_exprs_for_sub[par] = :(min(max($(Symbol("Praw_$i")), $lb), $ub))
+        else
+            bounded_param_exprs_for_sub[par] = Symbol("Praw_$i")
+        end
+    end
+
+    ext_param_sym_exprs = MacroModelling.Symbolics.Num[]
+    for (i, par) in enumerate(raw_param_names)
+        if haskey(𝓂.constants.post_parameters_macro.bounds, par)
+            lb, ub = 𝓂.constants.post_parameters_macro.bounds[par]
+            push!(ext_param_sym_exprs, min(max(P_raw[i], lb), ub))
+        else
+            push!(ext_param_sym_exprs, P_raw[i])
+        end
+    end
+
+    calib_expr_replacements = Dict{Symbol, Union{Symbol, Expr}}()
+    for expr in 𝓂.equations.calibration_no_var
+        lhs = expr.args[1]
+        rhs = expr.args[2]
+        rhs_expanded = replace_symbols(rhs, calib_expr_replacements)
+        rhs_final = replace_symbols(rhs_expanded, bounded_param_exprs_for_sub)
+        calib_expr_replacements[lhs] = rhs_final
+
+        sym_expr = MacroModelling.Symbolics.parse_expr_to_symbolic(rhs_final, @__MODULE__)
+        sym_expr = MacroModelling.Symbolics.substitute(sym_expr, pp_back)
+        push!(ext_param_sym_exprs, sym_expr)
+    end
+
+    _, param_prep_func! = MacroModelling.Symbolics.build_function(ext_param_sym_exprs, P_raw,
+        cse = true, skipzeros = true,
+        parallel = MacroModelling.Symbolics.SerialForm(),
+        expression_module = @__MODULE__,
+        expression = Val(false))::Tuple{<:Function, <:Function}
+
+    atoms_in_equations = Set{Symbol}()
+    atoms_in_equations_list = []
+    relevant_pars_across = Symbol[]
+    nsss_solver_cache_init_tmp = []
+
+    solved_vars = []
+    solved_vals = []
+
+    min_max_error_exprs = []
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+    global_solvetime_aux_sub = Dict{Symbol, Union{Symbol, Expr}}()
+    builder = NSSSSolverBuilder()
+    numerical_block_count = 0
+
+    # Emit analytical steps for unmatched (indeterminate) variables
+    if n_unmatched > 0
+        for vn in unmatched_var_names
+            var_sym = Symbol(vn)
+            default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
+                Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
+
+            widx = sol_name_to_index[var_sym]
+
+            eval_func! = let cv = default_val
+                (out, _sol_vec, _params_vec) -> begin
+                    out[1] = cv
+                    return nothing
+                end
+            end
+
+            push!(solved_vars, var_sym)
+            push!(solved_vals, default_val)
+            push!(atoms_in_equations_list, [])
+
+            push_analytical_step!(builder;
+                eval_func! = eval_func!,
+                write_indices = [widx],
+                description = "Indeterminate: $var_sym = $default_val",
+            )
+        end
+    end
+
+    while n > 0
+        if length(eqs[:,eqs[2,:] .== n]) == 2
+            var_to_solve_for = unknowns[vars[:,vars[2,:] .== n][1]]
+
+            eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
+            minmax_rewritten = false
+
+            parsed_eq_to_solve_for = eq_to_solve |> string |> Meta.parse
+
+            minmax_fixed_eqs = postwalk(x ->
+                x isa Expr ?
+                    x.head == :call ?
+                        x.args[1] ∈ [:Max,:Min] ?
+                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[2]) ?
+                                x.args[2] :
+                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[3]) ?
+                                x.args[3] :
+                            x :
+                        x :
+                    x :
+                x,
+            parsed_eq_to_solve_for)
+
+            if parsed_eq_to_solve_for != minmax_fixed_eqs
+                [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
+                push!(min_max_error_exprs, parsed_eq_to_solve_for)
+                eq_to_solve = minmax_fixed_eqs
+                minmax_rewritten = true
+            end
+
+            if symbolics_data === nothing || avoid_solve || minmax_rewritten || count_ops(parsed_eq_to_solve_for) > 15
+                soll = nothing
+            else
+                var_sym = Symbol(var_to_solve_for)
+                eq_idx_for_filter = eqs[:,eqs[2,:] .== n][1]
+                # Option A: skip SymPy solve when the variable is not a free symbol of the equation
+                if 1 <= eq_idx_for_filter <= length(eq_symbol_sets) && !(var_sym in eq_symbol_sets[eq_idx_for_filter])
+                    soll = nothing
+                elseif eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
+                    soll = solve_symbolically(eq_to_solve, var_to_solve_for)
+                else
+                    soll = nothing
+                end
+            end
+
+            if isnothing(soll) || isempty(soll)
+                if verbose && symbolic_enabled
+                    println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
+                end
+
+                eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
+
+                numerical_block_count += 1
+                block_meta = write_block_solution!(𝓂, [var_to_solve_for], [eq_to_solve], relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+
+                current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                if current_plus_count > plus_var_count_at_start
+                    for pvi in (plus_var_count_at_start + 1):current_plus_count
+                        pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                        if !haskey(sol_name_to_index, pv)
+                            push!(all_sol_names, pv)
+                            idx = length(all_sol_names)
+                            sol_name_to_index[pv] = idx
+                            sym = Symbol("𝔖_$idx")
+                            global_placeholder[pv] = sym
+                            global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                        end
+                    end
+                    plus_var_count_at_start = current_plus_count
+                end
+
+                append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
+                                       𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
+
+            else
+                sol_expr = normalize_symbolic_solution(soll[1])
+
+                if sol_expr.is_number == true
+                    if var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py} && sol_expr isa SPyPyC.Sym{PythonCall.Core.Py}
+                        var_sym_for_sub = Symbol(var_to_solve_for)
+                        # Only do the expensive SymPy substitution on equations that actually
+                        # contain the variable (per the precomputed symbol sets).
+                        ss_equations = [
+                            (eq isa SPyPyC.Sym{PythonCall.Core.Py} &&
+                             k <= length(eq_symbol_sets) &&
+                             (var_sym_for_sub in eq_symbol_sets[k])) ?
+                                replace_symbolic(eq, var_to_solve_for, sol_expr) : eq
+                            for (k, eq) in enumerate(ss_equations)
+                        ]
+                    end
+
+                    push!(solved_vars, Symbol(var_to_solve_for))
+                    push!(solved_vals, Meta.parse(string(sol_expr)))
+                    push!(atoms_in_equations_list, [])
+
+                    var_name = solved_vars[end]
+                    val = solved_vals[end]
+                    widx = sol_name_to_index[var_name]
+
+                    if var_name ∈ 𝓂.constants.post_model_macro.➕_vars
+                        step_expr = :(max(eps(), $val))
+                        eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                    else
+                        constant_value = Float64(sol_expr)
+                        eval_func! = let constant_value = constant_value
+                            (out, _sol_vec, _params_vec) -> begin
+                                out[1] = constant_value
+                                return nothing
+                            end
+                        end
+                    end
+
+                    push_analytical_step!(builder;
+                        eval_func! = eval_func!,
+                        write_indices = [widx],
+                        description = "Constant: $var_name = $val",
+                    )
+
+                else
+                    push!(solved_vars, Symbol(var_to_solve_for))
+                    push!(solved_vals, Meta.parse(string(sol_expr)))
+
+                    for a in symbolic_solution_atoms(sol_expr)
+                        push!(atoms_in_equations, a)
+                    end
+                    push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)), symbolic_solution_atoms(sol_expr))))
+
+                    var_name = solved_vars[end]
+                    val_expr = solved_vals[end]
+                    widx = sol_name_to_index[var_name]
+
+                    if var_name ∈ 𝓂.constants.post_model_macro.➕_vars
+                        bounds_tuple = get(𝓂.constants.post_parameters_macro.bounds, var_name, (eps(), 1e12))
+                        lb, ub = Float64(bounds_tuple[1]), Float64(bounds_tuple[2])
+
+                        eval_func! = compile_exprs_to_func([val_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+
+                        push_analytical_step!(builder;
+                            eval_func! = eval_func!,
+                            write_indices = [widx],
+                            lower_bounds = [lb],
+                            upper_bounds = [ub],
+                            has_bounds = trues(1),
+                            description = "Analytical ➕: $var_name",
+                        )
+
+                        unique_➕_eqs[val_expr] = var_name
+                    else
+                        vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.constants.post_model_macro.➕_vars), Symbol[]]
+
+                        if expression_has_domain_hazards(val_expr)
+                            rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([val_expr], vars_to_exclude, 𝓂.constants.post_parameters_macro.bounds, 𝓂.constants.post_model_macro.➕_vars, unique_➕_eqs)
+                        else
+                            rewritten_eqs = Union{Expr,Symbol}[val_expr]
+                            ss_and_aux_equations = Expr[]
+                            ss_and_aux_equations_dep = Expr[]
+                            ss_and_aux_equations_error = Expr[]
+                            ss_and_aux_equations_error_dep = Expr[]
+                        end
+
+                        current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                        if current_plus_count > plus_var_count_at_start
+                            for pvi in (plus_var_count_at_start + 1):current_plus_count
+                                pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                                if !haskey(sol_name_to_index, pv)
+                                    push!(all_sol_names, pv)
+                                    idx = length(all_sol_names)
+                                    sol_name_to_index[pv] = idx
+                                    sym = Symbol("𝔖_$idx")
+                                    global_placeholder[pv] = sym
+                                    global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                                end
+                            end
+                            plus_var_count_at_start = current_plus_count
+                        end
+
+                        all_aux_eqs = vcat(ss_and_aux_equations, ss_and_aux_equations_dep)
+                        all_aux_errors = vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)
+
+                        aux_func! = NOOP_NSSS_FUNC!
+                        aux_write_indices = Int[]
+                        error_func! = NOOP_NSSS_FUNC!
+                        error_size = 0
+
+                        model_aux_names = Symbol[]
+                        model_aux_rhs = Any[]
+                        model_aux_sub = Dict{Symbol, Any}()
+
+                        for eq in all_aux_eqs
+                            if eq isa Expr && eq.head == :(=)
+                                lhs = eq.args[1]
+                                rhs = eq.args[2]
+                                expanded_rhs = isempty(global_solvetime_aux_sub) ? rhs : replace_symbols(rhs, global_solvetime_aux_sub)
+                                expanded_rhs = isempty(model_aux_sub) ? expanded_rhs : replace_symbols(expanded_rhs, model_aux_sub)
+                                if haskey(sol_name_to_index, lhs)
+                                    push!(model_aux_names, lhs)
+                                    push!(model_aux_rhs, expanded_rhs)
+                                    model_aux_sub[lhs] = expanded_rhs
+                                else
+                                    global_solvetime_aux_sub[lhs] = expanded_rhs
+                                end
+                            end
+                        end
+
+                        if !isempty(model_aux_rhs)
+                            aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
+                            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                        end
+
+                        main_expr = isempty(global_solvetime_aux_sub) ? rewritten_eqs[1] : replace_symbols(rewritten_eqs[1], global_solvetime_aux_sub)
+                        eval_func! = compile_exprs_to_func([main_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+
+                        if !isempty(all_aux_errors)
+                            inlined_errors = isempty(global_solvetime_aux_sub) ? all_aux_errors : [replace_symbols(e, global_solvetime_aux_sub) for e in all_aux_errors]
+                            error_size = length(inlined_errors)
+                            error_func! = compile_exprs_to_func(inlined_errors, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                        end
+
+                        has_user_bounds = haskey(𝓂.constants.post_parameters_macro.bounds, var_name) && var_name ∉ 𝓂.constants.post_model_macro.➕_vars
+                        if has_user_bounds
+                            lb = Float64(𝓂.constants.post_parameters_macro.bounds[var_name][1])
+                            ub = Float64(𝓂.constants.post_parameters_macro.bounds[var_name][2])
+                            push_analytical_step!(builder;
+                                aux_func! = aux_func!,
+                                aux_write_indices = aux_write_indices,
+                                error_func! = error_func!,
+                                error_size = error_size,
+                                eval_func! = eval_func!,
+                                write_indices = [widx],
+                                lower_bounds = [lb],
+                                upper_bounds = [ub],
+                                has_bounds = trues(1),
+                                description = "Analytical bounded: $var_name",
+                            )
+                        else
+                            push_analytical_step!(builder;
+                                aux_func! = aux_func!,
+                                aux_write_indices = aux_write_indices,
+                                error_func! = error_func!,
+                                error_size = error_size,
+                                eval_func! = eval_func!,
+                                write_indices = [widx],
+                                description = "Analytical: $var_name",
+                            )
+                        end
+                    end
+                end
+            end
+        else
+            vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
+            eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
+
+            numerical_sol = false
+
+            if symbolic_enabled
+                if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
+                    soll = nothing
+                else
+                    soll = solve_symbolically(eqs_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, vars_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}})
+                end
+
+                if isnothing(soll) || isempty(soll) || length(intersect((union(SPyPyC.free_symbols.(collect(values(soll)))...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                    if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
+                    numerical_sol = true
+                else
+                    if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
+
+                    normalized_solutions = Dict(v => normalize_symbolic_solution(soll[v]) for v in vars_to_solve)
+                    for sol_expr in values(normalized_solutions), a in symbolic_solution_atoms(sol_expr)
+                        push!(atoms_in_equations, a)
+                    end
+
+                    step_exprs = []
+                    step_write_indices = Int[]
+
+                    for v in vars_to_solve
+                        sol_expr = normalized_solutions[v]
+                        push!(solved_vars, Symbol(v))
+                        push!(solved_vals, Meta.parse(string(sol_expr)))
+                        push!(atoms_in_equations_list, Set(symbolic_solution_atoms(sol_expr)))
+                        push!(step_exprs, solved_vals[end])
+                        push!(step_write_indices, sol_name_to_index[Symbol(v)])
+                    end
+
+                    eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+
+                    push_analytical_step!(builder;
+                        eval_func! = eval_func!,
+                        write_indices = step_write_indices,
+                        description = "Analytical multi: $(join(string.(Symbol.(vars_to_solve)), ", "))",
+                    )
+                end
+            end
+
+            eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
+            incidence_matrix_subset = incidence_matrix[vars[:,vars[2,:] .== n][1,:], eq_idx_in_block_to_solve]
+
+            if numerical_sol || !symbolic_enabled
+                vars_to_solve_reduced = vars_to_solve
+                eqs_to_solve_reduced = eqs_to_solve
+                eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
+
+                numerical_block_count += 1
+                block_meta = write_block_solution!(𝓂, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+
+                if !isnothing(block_meta)
+                    current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
+                    if current_plus_count > plus_var_count_at_start
+                        for pvi in (plus_var_count_at_start + 1):current_plus_count
+                            pv = Symbol(𝓂.constants.post_model_macro.➕_vars[pvi])
+                            if !haskey(sol_name_to_index, pv)
+                                push!(all_sol_names, pv)
+                                idx = length(all_sol_names)
+                                sol_name_to_index[pv] = idx
+                                sym = Symbol("𝔖_$idx")
+                                global_placeholder[pv] = sym
+                                global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
+                            end
+                        end
+                        plus_var_count_at_start = current_plus_count
+                    end
+
+                    append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
+                                           𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
+                end
+
+                if !symbolic_enabled && verbose
+                    println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
+                end
+            end
+        end
+        n -= 1
+    end
+
+    push!(nsss_solver_cache_init_tmp, fill(Inf, length(𝓂.constants.post_complete_parameters.parameters)))
+    push!(𝓂.caches.solver, nsss_solver_cache_init_tmp)
+
+    parameters_only_in_par_defs = Set()
+    if length(𝓂.equations.calibration_no_var) > 0
+        atoms = reduce(union, get_symbols.(𝓂.equations.calibration_no_var))
+        [push!(atoms_in_equations, a) for a in atoms]
+        [push!(parameters_only_in_par_defs, a) for a in atoms]
+    end
+
+    dependencies = []
+    for (i, a) in enumerate(atoms_in_equations_list)
+        push!(dependencies, solved_vars[i] => intersect(a, union(𝓂.constants.post_model_macro.var, 𝓂.constants.post_complete_parameters.parameters)))
+    end
+
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
+    if !isempty(min_max_error_exprs)
+        minmax_error_func! = compile_exprs_to_func(min_max_error_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+        n_errors = length(min_max_error_exprs)
+        push_analytical_step!(builder;
+            error_func! = minmax_error_func!,
+            error_size = n_errors,
+            eval_func! = compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array),
+            write_indices = Int[],
+            description = "Min/Max validation",
+        )
+    end
+
+    # Patch bounds on ➕ steps in the builder's flat arrays
+    if !isempty(𝓂.constants.post_parameters_macro.bounds)
+        for i in 1:length(builder.step_types)
+            if builder.step_types[i] == ANALYTICAL_STEP && startswith(builder.descriptions[i], "Analytical ➕:")
+                wr = builder.write_ranges[i]
+                br = builder.bounds_ranges[i]
+                for (j_local, j_wr) in enumerate(wr)
+                    widx = builder.write_indices[j_wr]
+                    name = all_sol_names[widx]
+                    if haskey(𝓂.constants.post_parameters_macro.bounds, name)
+                        bt = 𝓂.constants.post_parameters_macro.bounds[name]
+                        j_br = br[j_local]
+                        builder.lower_bounds[j_br] = Float64(bt[1])
+                        builder.upper_bounds[j_br] = Float64(bt[2])
+                        builder.has_bounds[j_br] = true
+                    end
+                end
+            end
+        end
+    end
+
+    build_nsss_solver!(𝓂, builder, param_prep_func!)
+    n_sol = length(all_sol_names)
+    𝓂.constants.post_complete_parameters = update_post_complete_parameters(
+        𝓂.constants.post_complete_parameters;
+        nsss_dependencies = dependencies,
+        nsss_n_sol = n_sol,
+        nsss_output_indices = output_indices,
+        nsss_n_ext_params = n_ext_params,
+        nsss_sol_names = all_sol_names,
+        nsss_exo_zero_indices = exo_zero_indices,
+        nsss_param_names_ext = ext_param_names,
+    )
+
+    return nothing
+end
+
+function find_closest_solution(cache::CircularBuffer{Vector{Vector{Float64}}}, initial_parameters::Vector{Float64}, expected_length::Int)::Tuple{Float64, Vector{Vector{Float64}}}
+    current_best = Inf
+    closest_solution = cache[end]
+
+    target_parameters_norm_squared = 0.0
+    @turbo for i in eachindex(initial_parameters)
+        pi = initial_parameters[i]
+        target_parameters_norm_squared += pi * pi
+    end
+
+    @inbounds for idx in length(cache):-1:1
+        pars = cache[idx]
+        if length(pars) < expected_length || !(pars[end] isa Vector{Float64}) || length(pars[end]) != length(initial_parameters)
+            continue
+        end
+
+        cached_parameters = pars[end]
+        squared_distance = 0.0
+        cached_parameters_norm_squared = 0.0
+        @turbo for i in eachindex(initial_parameters)
+            ci = cached_parameters[i]
+            d = ci - initial_parameters[i]
+            squared_distance += d * d
+            cached_parameters_norm_squared += ci * ci
+        end
+
+        normalisation_norm_squared = max(target_parameters_norm_squared, cached_parameters_norm_squared)
+        relative_parameter_distance_squared = squared_distance / normalisation_norm_squared
+
+        if relative_parameter_distance_squared < eps()
+            return squared_distance, pars
+        end
+
+        if squared_distance < current_best
+            current_best = squared_distance
+            closest_solution = pars
+        end
+    end
+
+    if !isfinite(current_best)
+        if (closest_solution[end] isa Vector{Float64}) && (length(closest_solution[end]) == length(initial_parameters))
+            cached_parameters = closest_solution[end]
+            current_best = 0.0
+            @turbo for i in eachindex(initial_parameters)
+                d = cached_parameters[i] - initial_parameters[i]
+                current_best += d * d
+            end
+        else
+            current_best = Inf
+        end
+    end
+
+    return current_best, closest_solution
+end
+
+
+# ============================================================================
+# Block solver helpers (moved from MacroModelling.jl — used only in NSSS pipeline)
+
+@unstable function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
+    # equation.subs(variable, replacement)
+    return SPyPyC.subs(equation, variable, replacement)
+end
+
+function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}
+    @inbounds for i in 1:n_guess
+        if use_ssv
+            v = clamp(ssv_val, lbs[i], ubs[i])
+            init_buf[i] = ubs[i] <= one(T) ? T(0.1) : v
+        else
+            g = guess[i]
+            v = g < T(1e12) ? g : sv_val
+            init_buf[i] = clamp(v, lbs[i], ubs[i])
+        end
+    end
+end
+
+function update_sol_values!(sol_values::AbstractVector{T}, sol_new::AbstractVector{T}, lbs::AbstractVector{T}, ubs::AbstractVector{T}, n_guess::Int) where {T}
+    @inbounds for i in 1:n_guess
+        sol_values[i] = clamp(sol_new[i], lbs[i], ubs[i])
+    end
+end
+
+
+function solve_ss(SS_optimizer::F,
+                    SS_solve_block::ss_solve_block{Float64},
+                    parameters_and_solved_vars::Vector{T},
+                    closest_parameters_and_solved_vars::Vector{T},
+                    lbs::Vector{T},
+                    ubs::Vector{T},
+                    tol::Tolerances,
+                    total_iters::Vector{Int},
+                    n_block::Int,
+                    verbose::Bool,
+                    guess::Vector{T},
+                    solver_params::solver_parameters,
+                    extended_problem::Bool,
+                    separate_starting_value::T)::Tuple{Vector{T}, Vector{Int}, T, T} where {F, T <: AbstractFloat}
+    ftol = tol.nsss.ftol
+    n_guess = length(guess)
+    init_buf = SS_solve_block.ss_problem.workspace.best_previous_guess
+    use_ssv = !isnan(separate_starting_value)
+    ssv_val = use_ssv ? separate_starting_value : zero(T)
+    sv_val = T(solver_params.starting_value)
+    update_init_buf!(init_buf, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv)
+
+    if !extended_problem
+        lb_core = SS_solve_block.ss_problem.workspace.l_bounds
+        ub_core = SS_solve_block.ss_problem.workspace.u_bounds
+        copyto!(lb_core, 1, lbs, 1, n_guess)
+        copyto!(ub_core, 1, ubs, 1, n_guess)
+    end
+
+    optimizer_init = if extended_problem
+        ext_init = SS_solve_block.extended_ss_problem.workspace.best_previous_guess
+        @inbounds begin
+            for i in 1:n_guess
+                ext_init[i] = init_buf[i]
+            end
+            for i in 1:length(closest_parameters_and_solved_vars)
+                ext_init[n_guess + i] = closest_parameters_and_solved_vars[i]
+            end
+        end
+        ext_init
+    else
+        init_buf
+    end
+
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    # if extended_problem
+    #     function ext_function_to_optimize(guesses)
+    #         gss = guesses[1:length(guess)]
+    
+    #         parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+    
+    #         res = ss_solve_blocks(parameters_and_solved_vars, gss)
+    
+    #         return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+    #     end
+    # else
+    #     function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
+    # end
+
+    # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
+                                        optimizer_init,
+                                        parameters_and_solved_vars,
+                                        extended_problem ? lbs : SS_solve_block.ss_problem.workspace.l_bounds,
+                                        extended_problem ? ubs : SS_solve_block.ss_problem.workspace.u_bounds,
+                                        solver_params,
+                                        tol = tol   )
+
+    sol_minimum = info[4] # isnan(sum(abs, info[4])) ? Inf : ℒ.norm(info[4])
+    
+    rel_sol_minimum = info[3]
+    
+    sol_values = SS_solve_block.ss_problem.workspace.best_current_guess
+    if isnothing(sol_new_tmp)
+        update_sol_values!(sol_values, init_buf, lbs, ubs, n_guess)
+    else
+        update_sol_values!(sol_values, sol_new_tmp, lbs, ubs, n_guess)
+    end
+
+    total_iters[1] += info[1]
+    total_iters[2] += info[2]
+
+    if sol_minimum < ftol && verbose
+        extended_problem_str = extended_problem ? "(extended problem) " : ""
+
+        if isnan(separate_starting_value)
+            starting_value_str = ""
+        else
+            starting_value_str = "and starting point: $separate_starting_value"
+        end
+
+        has_small_guess = false
+        all_small_guess = true
+        @inbounds for i in eachindex(guess)
+            is_small = guess[i] < T(1e12)
+            has_small_guess |= is_small
+            all_small_guess &= is_small
+        end
+
+        if all_small_guess && isnan(separate_starting_value)
+            any_guess_str = "previous solution, "
+        elseif has_small_guess && isnan(separate_starting_value)
+            any_guess_str = "provided guess, "
+        else
+            any_guess_str = ""
+        end
+
+        SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, sol_values, parameters_and_solved_vars)
+        max_resid = maximum(abs, SS_solve_block.ss_problem.workspace.func_buffer)
+
+        println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+    end
+    
+    return sol_values, total_iters, rel_sol_minimum, sol_minimum
+end
+
+
+function block_solver(parameters_and_solved_vars::Vector{T}, 
+                        n_block::Int, 
+                        SS_solve_block::ss_solve_block{Float64},
+                        # SS_optimizer, 
+                        # f::OptimizationFunction, 
+                        guess_and_pars_solved_vars::Vector{Vector{T}}, 
+                        lbs::Vector{T}, 
+                        ubs::Vector{T},
+                        parameters::Vector{solver_parameters},
+                        preferred_solver_parameter_idx::Int,
+                        fail_fast_solvers_only::Bool,
+                        cold_start::Bool,
+                        verbose::Bool ;
+                        tol::Tolerances = Tolerances(),
+                        # rtol::AbstractFloat = sqrt(eps()),
+                        # timeout = 120,
+                        # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
+                        # verbose::Bool = false
+                        )::Tuple{Vector{T},Tuple{T, Int}} where T <: AbstractFloat
+
+    # tol = parameters[1].ftol
+    # rtol = parameters[1].rel_xtol
+
+    solved_yet = false
+
+    guess = guess_and_pars_solved_vars[1]
+
+    sol_values = guess
+
+    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
+
+    # res = ss_solve_blocks(parameters_and_solved_vars, guess)
+
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.workspace.func_buffer, guess, parameters_and_solved_vars)
+
+    res = SS_solve_block.ss_problem.workspace.func_buffer
+
+    sol_minimum  = ℒ.norm(res)
+
+    # Handle removable singularities: if residual contains NaN (from 0/0 forms
+    # in symbolically simplified equations) but all finite residuals are below
+    # tolerance, treat NaN entries as zero. This occurs when remove_redundant_SS_vars!
+    # substitutes variables into equations creating indeterminate forms at the solution.
+    # Only apply this when we have an actual cached solution for these parameters
+    # (i.e. guess_and_pars_solved_vars[2] is not the all-Inf placeholder); otherwise
+    # the guess is just a clamped default that may coincidentally produce a NaN+zeros
+    # residual (e.g. 1 - R*beta/Pi at [Pi=0, R=0] gives NaN while companion equations
+    # evaluate to ~0), and accepting it would yield a spurious "solution" of all zeros.
+    has_cached_solution = sum(abs, guess_and_pars_solved_vars[2]) != Inf
+    if has_cached_solution && isnan(sol_minimum)
+        has_nonnan_violation = false
+        for i in eachindex(res)
+            v = res[i]
+            if !isnan(v) && abs(v) > tol.nsss.acceptance_tol
+                has_nonnan_violation = true
+                break
+            end
+        end
+        if !has_nonnan_violation
+            # All finite residuals are zero — NaN entries are removable singularities
+            for i in eachindex(res)
+                if isnan(res[i])
+                    res[i] = zero(T)
+                end
+            end
+            sol_minimum = ℒ.norm(res)
+        end
+    end
+
+    if !cold_start
+        if !isfinite(sol_minimum) || sol_minimum > tol.nsss.acceptance_tol
+            # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+
+            # ∇̂ = ℒ.lu!(∇, check = false)
+
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.workspace.jac_buffer, guess, parameters_and_solved_vars)
+
+            ∇ = SS_solve_block.ss_problem.workspace.jac_buffer
+
+            sol_cache = SS_solve_block.ss_problem.workspace.lu_buffer
+            # sol_cache.A = sol_cache.alg isa 𝒮.FastLUFactorization ? copy(∇) : ∇
+            sol_cache.A = ∇
+            # copy!(sol_cache.A, ∇)
+            sol_cache.b = res
+            sol = 𝒮.solve!(sol_cache)
+
+            if 𝒮.SciMLBase.successful_retcode(sol.retcode) || sol.retcode == 𝒮.SciMLBase.ReturnCode.Default
+                guess_update = sol_cache.u
+                if has_nonfinite(guess_update)
+                    rel_sol_minimum = one(T)
+                else
+                    new_guess = guess - guess_update
+                    rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+                end
+            else
+                rel_sol_minimum = one(T)
+            end
+        else
+            rel_sol_minimum = zero(T)
+        end
+    else
+        rel_sol_minimum = one(T)
+    end
+    
+    if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
+        solved_yet = true
+
+        if verbose
+            println("Block: $n_block, - Solved using previous solution; residual norm: $sol_minimum")
+        end
+    end
+
+    total_iters = [0,0]
+    n_solver_parameters = length(parameters)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
+
+    SS_optimizer = levenberg_marquardt
+    ext_candidates = (true, false)
+    algo_candidates = (newton, levenberg_marquardt)
+
+    if cold_start
+        guesses = any(x -> x < T(1e12), guess) ? [guess, fill(T(1e12), length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+        start_vals = fail_fast_solvers_only ? (T(NaN),) : (T(NaN), T(0.0), T(1.206), T(1.5), T(0.7688), T(2.0), T(0.897))
+        for g in guesses
+            for i in 1:n_solver_parameters
+                p = parameters[i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i)]
+                for ext in ext_candidates # try first the system where values and parameters can vary, next try the system where only values can vary
+                    for s in start_vals
+                        if !isfinite(sol_minimum) || sol_minimum > tol.nsss.acceptance_tol# || rel_sol_minimum > rtol
+                            if solved_yet continue end
+
+                            sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                            # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                                g, 
+                                                                p,
+                                                                ext,
+                                                                s)
+                                                                
+                            if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol
+                                solved_yet = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    else !cold_start
+
+        start_vals = Vector{T}(undef, 8)
+        start_vals[1] = T(NaN)
+        start_vals[3] = T(0.0)
+        start_vals[4] = T(1.206)
+        start_vals[5] = T(1.5)
+        start_vals[6] = T(0.7688)
+        start_vals[7] = T(2.0)
+        start_vals[8] = T(0.897)
+
+        s_candidates = fail_fast_solvers_only ? @view(start_vals[1:1]) : start_vals
+        n_parameter_iters = fail_fast_solvers_only ? 1 : n_solver_parameters
+        fail_fast_parameter_idx = n_solver_parameters == 1 ? 1 : (n_solver_parameters <= preferred_solver_parameter_idx ? n_solver_parameters - 1 : n_solver_parameters)
+
+        for i in 1:n_parameter_iters
+            p = parameters[fail_fast_solvers_only ? fail_fast_parameter_idx : (i == 1 ? preferred_solver_parameter_idx : (i <= preferred_solver_parameter_idx ? i - 1 : i))]
+            start_vals[2] = T(p.starting_value)
+            for s in s_candidates
+                for algo in algo_candidates
+                    if sol_minimum > tol.nsss.acceptance_tol || !isfinite(sol_minimum) # || rel_sol_minimum > rtol
+                        if solved_yet continue end
+                        # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                                                                            total_iters, 
+                                                                            n_block, 
+                                                                            false, # verbose
+                                                                            guess, 
+                                                                            p, 
+                                                                            # parameters[1],
+                                                                            false, # ext
+                                                                            # false)
+                                                                            s) 
+                        if isfinite(sol_minimum) && sol_minimum < tol.nsss.acceptance_tol # || rel_sol_minimum > rtol)
+                            solved_yet = true
+
+                            if verbose
+                                # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                                println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+
+        # if sol_minimum > tol# || rel_sol_minimum > rtol
+        #     for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
+        #         # for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+        #             # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+        #                 if sol_minimum > tol# || rel_sol_minimum > rtol
+        #                     sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+        #                                                         false, # verbose
+        #                                                         guess, 
+        #                                                         p,
+        #                                                         false,
+        #                                                         false)
+        #                                                         # s)
+        #                     if !solved_yet && sol_minimum < tol# || rel_sol_minimum > rtol)     
+        #                         solved_yet = true
+        #                         if verbose
+        #                             loop1 = unique(parameters)#[1:3]
+        #                             loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
+        #                             p_in_loop1 = findfirst(x -> x == p, loop1)
+        #                             s_in_loop2 = findfirst(x -> x == s, loop2)
+        #                             if p_in_loop1 isa Nothing
+        #                                 p_in_loop1 = 1
+        #                             end
+        #                             if s_in_loop2 isa Nothing
+        #                                 s_in_loop2 = 1
+        #                             end
+        #                             n1 = (p_in_loop1 - 1) * length(loop2) + s_in_loop2
+        #                             println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
+        #                         end
+        #                     end 
+        #                 end
+        #             # end
+        #         # end
+        #     end
+        # end
+    end
+
+    if verbose
+        if !solved_yet
+            println("Block: $n_block, - Solution not found after $(total_iters[1]) gradient evaluations and $(total_iters[2]) function evaluations; reltol: $rel_sol_minimum - tol: $sol_minimum")
+        end
+    end
+
+    return sol_values, (sol_minimum, total_iters[1])
+end
+
+
+"""
+    execute_step!(step_idx, sol_vec, params_vec, closest_solution, 𝓂, ...)
+
+Execute a single NSSS solve step.
+Dispatches on `𝓂.constants.nsss_solver.step_types[step_idx]` (ANALYTICAL_STEP or NUMERICAL_STEP).
+
+Uses shared workspace buffers for scratch computations, avoiding per-step allocation.
+
+Returns: (error, iterations, cache_entries::Vector{Vector{Float64}})
+"""
+function execute_step!(step_idx::Int,
+                       sol_vec::Vector{Float64}, params_vec::Vector{Float64},
+                       closest_solution::Vector{Vector{Float64}}, 𝓂::ℳ, tol::Tolerances, fail_fast_solvers_only::Bool,
+                       cold_start::Bool, solver_parameters::Vector{solver_parameters}, preferred_solver_parameter_idx::Int, verbose::Bool)::Tuple{Float64, Int, Vector{Vector{Float64}}}
+    
+    c = 𝓂.constants.nsss_solver
+    f = 𝓂.functions.nsss_solver
+    w = 𝓂.workspaces.nsss_solver
+    step_type = c.step_types[step_idx]
+
+    error = 0.0
+
+    # Phase 1: Compute auxiliary variables (shared across both step types)
+    aux_wr = c.aux_write_ranges[step_idx]
+    n_aux = length(aux_wr)
+    if n_aux > 0
+        aux_buf = @view w.aux_buffer[1:n_aux]
+        f.aux_funcs[step_idx](aux_buf, sol_vec, params_vec)
+        @inbounds for j in 1:n_aux
+            sol_vec[c.aux_write_indices[aux_wr[j]]] = aux_buf[j]
+        end
+    end
+
+    if step_type == ANALYTICAL_STEP
+        # Error check (analytical domain-safety)
+        err_n = c.error_sizes[step_idx]
+        if err_n > 0
+            err_buf = @view w.error_buffer[1:err_n]
+            f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
+            error += sum(abs, err_buf)
+        end
+
+        # Main evaluation
+        wr = c.write_ranges[step_idx]
+        n_write = length(wr)
+        if n_write > 0
+            main_buf = @view w.main_buffer[1:n_write]
+            f.eval_funcs[step_idx](main_buf, sol_vec, params_vec)
+            br = c.bounds_ranges[step_idx]
+            @inbounds for j in 1:n_write
+                raw = main_buf[j]
+                widx = c.write_indices[wr[j]]
+                if !isfinite(raw)
+                    raw = sol_vec[widx]
+                end
+                if !isempty(br) && c.has_bounds[br[j]]
+                    clamped = clamp(raw, c.lower_bounds[br[j]], c.upper_bounds[br[j]])
+                    error += abs(clamped - raw)
+                    sol_vec[widx] = clamped
+                else
+                    sol_vec[widx] = raw
+                end
+            end
+        else
+            # Min/Max validation step: no writes but eval_func exists
+            f.eval_funcs[step_idx](@view(w.main_buffer[1:1]), sol_vec, params_vec)
+        end
+
+        return error, 0, EMPTY_NSSS_STEP_CACHE
+
+    else # NUMERICAL_STEP
+        # Gather params_and_solved_vars into shared main_buffer
+        pgr = c.param_gather_ranges[step_idx]
+        vgr = c.var_gather_ranges[step_idx]
+        n_params = length(pgr)
+        n_vars = length(vgr)
+        gather_size = n_params + n_vars
+
+        params_and_solved_vars = w.params_and_solved_vars_buffer
+        resize!(params_and_solved_vars, gather_size)
+        @inbounds for j in 1:n_params
+            params_and_solved_vars[j] = params_vec[c.param_gather_indices[pgr[j]]]
+        end
+        @inbounds for j in 1:n_vars
+            params_and_solved_vars[n_params + j] = sol_vec[c.var_gather_indices[vgr[j]]]
+        end
+
+        # Build initial guesses
+        block_idx = c.block_indices[step_idx]
+        cache_sol_idx = 2*(block_idx-1)+1
+        cache_par_idx = 2*block_idx
+        cache_sol = cache_sol_idx <= length(closest_solution) ? closest_solution[cache_sol_idx] : Float64[]
+        cache_par = cache_par_idx <= length(closest_solution) ? closest_solution[cache_par_idx] : Float64[Inf]
+
+        wr = c.write_ranges[step_idx]
+        n_write = length(wr)
+        nbr = c.numerical_bounds_ranges[step_idx]
+        guess_len = min(n_write, length(nbr))
+
+        guess_buf = @view w.guess_buffer[1:guess_len]
+        copy_len = min(length(cache_sol), guess_len)
+        @inbounds for i in 1:copy_len
+            v = cache_sol[i]
+            if !isfinite(v)
+                # No prior cached solution; use sol_vec value (starts at 0.0, filled by earlier steps)
+                v = sol_vec[c.write_indices[wr[i]]]
+            end
+            guess_buf[i] = clamp(v, c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
+        end
+        @inbounds for i in (copy_len + 1):guess_len
+            guess_buf[i] = clamp(0.5 * (c.numerical_lbs[nbr[i]] + c.numerical_ubs[nbr[i]]),
+                                 c.numerical_lbs[nbr[i]], c.numerical_ubs[nbr[i]])
+        end
+
+        # Use workspace inits container
+        resize!(w.inits[1], guess_len)
+        if guess_len > 0
+            copyto!(w.inits[1], 1, guess_buf, 1, guess_len)
+        end
+        w.inits[2] = cache_par
+
+        lbs = w.lbs_buffer
+        ubs = w.ubs_buffer
+        n_bounds = length(nbr)
+        resize!(lbs, n_bounds)
+        resize!(ubs, n_bounds)
+        @inbounds for i in 1:n_bounds
+            lbs[i] = c.numerical_lbs[nbr[i]]
+            ubs[i] = c.numerical_ubs[nbr[i]]
+        end
+
+        # Call block solver
+        solve_block = f.solve_blocks[step_idx]
+        if solve_block === nothing
+            if verbose
+                println("Missing numerical solve block for step $(step_idx)")
+            end
+            return Inf, 0, EMPTY_NSSS_STEP_CACHE
+        end
+
+        solution = block_solver(
+            params_and_solved_vars,
+            block_idx,
+            solve_block,
+            w.inits,
+            lbs,
+            ubs,
+            solver_parameters,
+            preferred_solver_parameter_idx,
+            fail_fast_solvers_only,
+            cold_start,
+            verbose
+        )
+
+        error += solution[2][1]
+        iters = solution[2][2]
+        if error > tol.nsss.acceptance_tol
+            if verbose
+                println("Failed after solving block with error $error")
+            end
+            return error, iters, EMPTY_NSSS_STEP_CACHE
+        end
+
+        # Domain safety error check after block solve
+        err_n = c.aux_error_sizes[step_idx]
+        if err_n > 0
+            err_buf = @view w.error_buffer[1:err_n]
+            f.error_funcs[step_idx](err_buf, sol_vec, params_vec)
+            error += sum(abs, err_buf)
+            if error > tol.nsss.acceptance_tol
+                if verbose
+                    println("Failed for aux variables with error $error")
+                end
+                return error, iters, EMPTY_NSSS_STEP_CACHE
+            end
+        end
+
+        # Write results to solution vector
+        sol = solution[1]
+        @inbounds for j in 1:n_write
+            sol_vec[c.write_indices[wr[j]]] = sol[j]
+        end
+
+        # Build cache entries for this block
+        cache_entries = [
+              eltype(sol) === Float64 ? copy(sol) : Float64.(primal.(sol)),
+              eltype(params_and_solved_vars) === Float64 ? copy(params_and_solved_vars) : Float64.(primal.(params_and_solved_vars))
+        ]
+
+        return error, iters, cache_entries
+    end
+end
+
+
+# ============================================================================
+# Orchestrator: solve_nsss_steps
+# ============================================================================
+
+"""
+    solve_nsss_steps(parameters, 𝓂, tol, verbose, fail_fast_solvers_only,
+                     closest_solution, cold_start, solver_params)
+
+Solve the NSSS by executing pipeline steps in a single pass.
+
+Steps are dispatched via `execute_step!` which uses the pipeline's shared
+workspace buffers. Steps are executed in order, filling the solution vector
+progressively.
+
+Returns: (SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp)
+"""
+function solve_nsss_steps(
+    parameters::Vector{Float64},
+    𝓂::ℳ,
+    tol::Tolerances,
+    verbose::Bool,
+    fail_fast_solvers_only::Bool,
+    closest_solution::Vector{Vector{Float64}},
+    cold_start::Bool,
+    solver_params::Vector{solver_parameters},
+    preferred_solver_parameter_idx::Int
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}, Vector{Vector{Float64}}}
+    nsss_n_ext_params = 𝓂.constants.post_complete_parameters.nsss_n_ext_params
+    nsss_n_sol = 𝓂.constants.post_complete_parameters.nsss_n_sol
+    nsss_output_indices = 𝓂.constants.post_complete_parameters.nsss_output_indices
+    nsss_consts = 𝓂.constants.nsss_solver
+    nsss_ws = 𝓂.workspaces.nsss_solver
+    
+    # Prepare extended parameter vector (raw params → bounded + calibration_no_var)
+    params_vec = nsss_ws.params_vec_buffer
+    if length(params_vec) != nsss_n_ext_params
+        resize!(params_vec, nsss_n_ext_params)
+    end
+    𝓂.functions.nsss_param_prep!(params_vec, parameters)
+    
+    # Initialize solution vector from workspace buffer
+    sol_vec = nsss_ws.sol_vec_buffer
+    if length(sol_vec) != nsss_n_sol
+        resize!(sol_vec, nsss_n_sol)
+    end
+    fill!(sol_vec, 0.0)
+    
+    # Single pass through all steps
+    nsss_solver_cache_tmp = Vector{Float64}[]
+    solution_error = 0.0
+    iters = 0
+    
+    n_steps = nsss_consts.n_steps
+    for step_idx in 1:n_steps
+        step_error, step_iters, step_cache = execute_step!(
+            step_idx, sol_vec, params_vec, closest_solution, 𝓂, tol,
+            fail_fast_solvers_only, cold_start, solver_params, preferred_solver_parameter_idx, verbose
+        )
+        
+        solution_error += step_error
+        iters += step_iters
+        if !isempty(step_cache)
+            append!(nsss_solver_cache_tmp, step_cache)
+        end
+        
+        if solution_error > tol.nsss.acceptance_tol
+            if verbose
+                println("Step '$(nsss_consts.descriptions[step_idx])' failed with accumulated error $solution_error")
+            end
+            break
+        end
+    end
+    
+    # Build SS_and_pars from solution vector into reusable output buffer
+    SS_and_pars = nsss_ws.output_buffer
+    n_output = length(nsss_output_indices)
+    if length(SS_and_pars) != n_output
+        resize!(SS_and_pars, n_output)
+    end
+
+    @inbounds for i in 1:n_output
+        SS_and_pars[i] = sol_vec[nsss_output_indices[i]]
+    end
+
+    if solution_error < tol.nsss.acceptance_tol
+        if any(x -> !isfinite(x), SS_and_pars)
+            solution_error = Inf
+        elseif isempty(𝓂.constants.post_model_macro.➕_vars)
+            # Cross-check against raw model equations only when no ➕ domain-safety
+            # rewrites were applied. When ➕ vars exist the step solver evaluates
+            # max(eps(),x)-substituted equations while NSSS_check evaluates the raw
+            # model equations — the residuals can legitimately differ (NaN, Inf, or
+            # large finite values from log/sqrt/power at the same solution point).
+            residual = nsss_ws.check_residual
+            fill!(residual, 0.0)
+            𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
+            residual_error = ℒ.norm(residual)
+            if isfinite(residual_error) && residual_error > solution_error
+                solution_error = residual_error
+            end
+        end
+    end
+
+    if solution_error >= tol.nsss.acceptance_tol
+        fill!(SS_and_pars, 0.0)
+    end
+    
+    # Append parameters to cache
+    parameters_copy = copy(parameters)
+    push!(nsss_solver_cache_tmp, parameters_copy)
+    
+    return SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp
+end
+
+
+# ============================================================================
+# Wrapper: solve_nsss_wrapper (handles cache + continuation method)
+# ============================================================================
+
+"""
+    solve_nsss_wrapper(
+        parameter_values::Vector{<:Real},
+        𝓂::ℳ,
+        tol::Tolerances,
+        verbose::Bool,
+        cold_start::Bool,
+        solver_params::Vector{solver_parameters}
+    )::Tuple{Vector{Float64}, Tuple{Float64, Int}}
+
+Normal Julia function wrapper for NSSS solving.
+
+This function handles cache management and continuation scaling for solving
+the non-stochastic steady state using the step-based NSSS solver.
+
+The continuation method gradually transitions from a cached solution to the
+target parameters using a scaling approach, which improves convergence.
+
+# Arguments
+- `parameter_values`: Parameter values to solve at
+- `𝓂`: Model structure
+- `tol`: Tolerance settings
+- `verbose`: Whether to print verbose output
+- `cold_start`: Whether this is a cold start (limits iterations to 1)
+- `solver_params`: Solver configuration
+
+# Keyword arguments
+- `continuation_cache_capacity`: Size of local continuation cache buffer
+- `continuation_max_iters`: Maximum continuation iterations for warm starts
+- `stall_tolerance`: Threshold to stop when continuation scale no longer moves
+- `cache_push_distance_tol`: Distance threshold before pushing solved cache to model cache
+- `scale_snap_threshold`: Scale above which continuation snaps directly to `1.0`
+- `scale_success_weight`: Weight on current scale after successful continuation step
+- `scale_failure_weight`: Weight on current scale after failed continuation step
+
+# Returns
+- Tuple of (solution_vector, (solution_error, iterations))
+"""
+function solve_nsss_wrapper(
+    parameter_values::Vector{<:Real},
+    𝓂::ℳ,
+    tol::Tolerances,
+    verbose::Bool,
+    cold_start::Bool,
+    solver_params::Vector{solver_parameters}
+    ;
+    continuation_cache_capacity::Int = 500,
+    continuation_max_iters::Int = 500,
+    stall_tolerance::Float64 = 1e-2,
+    cache_push_distance_tol::Float64 = 1e-8,
+    scale_snap_threshold::Float64 = 0.95,
+    scale_success_weight::Float64 = 0.4,
+    scale_failure_weight::Float64 = 0.3,
+    preferred_solver_parameter_idx::Int = 1,
+)::Tuple{Vector{Float64}, Tuple{Float64, Int}}
+
+    n_numerical_steps = count(==(NUMERICAL_STEP), 𝓂.constants.nsss_solver.step_types)
+    
+    # Type conversion for AD compatibility
+    initial_parameters = parameter_values isa Vector{Float64} ? 
+                        parameter_values : 
+                        Float64.(primal.(parameter_values))
+    
+    # Find closest cached solution as starting point
+    expected_cache_length = 2 * n_numerical_steps + 1
+    _, closest_solution_init = find_closest_solution(𝓂.caches.solver, initial_parameters, expected_cache_length)
+    
+    # Initialize continuation method variables
+    range_iters = 0
+    solution_error = 1.0
+    solved_scale = 0.0
+    scale = 1.0
+    SS_and_pars = Float64[]
+    
+    nsss_ws = 𝓂.workspaces.nsss_solver
+    if nsss_ws.continuation_capacity != continuation_cache_capacity
+        nsss_ws.continuation = CircularBuffer{Vector{Vector{Float64}}}(continuation_cache_capacity)
+        nsss_ws.continuation_capacity = continuation_cache_capacity
+    else
+        empty!(nsss_ws.continuation)
+    end
+
+    continuation_cache = nsss_ws.continuation
+    push!(continuation_cache, closest_solution_init)
+    scaled_parameters = nsss_ws.scaled_parameters_buffer
+    if length(scaled_parameters) != length(initial_parameters)
+        resize!(scaled_parameters, length(initial_parameters))
+    end
+    
+    # Continuation method: iterate with scaling to gradually approach target
+    max_iters = cold_start ? 1 : continuation_max_iters
+    n_solver_parameters = length(solver_params)
+    @assert n_solver_parameters > 0 "At least one steady-state solver parameter set is required."
+    preferred_idx = clamp(preferred_solver_parameter_idx, 1, n_solver_parameters)
+
+    while range_iters <= max_iters && !(solution_error < tol.nsss.acceptance_tol && solved_scale == 1)
+        range_iters += 1
+        fail_fast_solvers_only = range_iters > 1
+
+        # Stall detection: stop if scale hasn't moved
+        if abs(solved_scale - scale) < stall_tolerance
+            break
+        end
+
+        # Find closest solution from local intermediate cache
+        current_best, closest_solution = find_closest_solution(continuation_cache, initial_parameters, expected_cache_length)
+        
+        # Interpolate parameters between target and cached solution
+        if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+            closest_params = closest_solution_init[end]
+            @turbo for i in eachindex(initial_parameters)
+                scaled_parameters[i] = scale * initial_parameters[i] + (1 - scale) * closest_params[i]
+            end
+            parameters = scaled_parameters
+        else
+            parameters = initial_parameters
+        end
+        
+        # Call step-based solver
+        SS_and_pars, (solution_error, iters), nsss_solver_cache_tmp = solve_nsss_steps(
+            parameters,
+            𝓂,
+            tol,
+            verbose,
+            fail_fast_solvers_only,
+            closest_solution,
+            cold_start,
+            solver_params,
+            preferred_idx
+        )
+        
+        # Check convergence and update scaling
+        if solution_error < tol.nsss.acceptance_tol
+            solved_scale = scale
+            
+            if scale == 1
+                if current_best > cache_push_distance_tol
+                    push!(𝓂.caches.solver, nsss_solver_cache_tmp)
+                end
+                return SS_and_pars, (solution_error, iters)
+            end
+            
+            # Cache intermediate result for warm starts
+            push!(continuation_cache, nsss_solver_cache_tmp)
+            
+            # Advance scale toward 1.0
+            if scale > scale_snap_threshold
+                scale = 1.0
+            else
+                scale = scale * scale_success_weight + (1 - scale_success_weight)
+            end
+        else
+            # Failed: pull scale back toward last successful scale
+            scale = scale * scale_failure_weight + solved_scale * (1 - scale_failure_weight)
+        end
+    end
+    
+    # Failed to converge - return zeros with matching output length
+    n_output = length(𝓂.constants.post_complete_parameters.nsss_output_indices)
+    SS_and_pars = nsss_ws.output_buffer
+    if length(SS_and_pars) != n_output
+        resize!(SS_and_pars, n_output)
+    end
+    fill!(SS_and_pars, 0.0)
+
+    return SS_and_pars, (1.0, 0)
+end
+
+end # @stable

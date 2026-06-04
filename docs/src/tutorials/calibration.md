@@ -193,7 +193,7 @@ The package provides functions specialised for the use with gradient based code 
 get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Gali_2015.parameters, mean = [:W_real], standard_deviation = [:Pi])
 ```
 
-First the model object is passed on, followed by the parameter values and the parameter names the values correspond to. Then the desired outputs are defined: for the mean real wages are wanted and for the standard deviation inflation is wanted. Outputs for variance, covariance, or autocorrelation can also be obtained the same way as for the mean and standard deviation.
+First the model object is passed on, followed by the parameter values and the parameter names the values correspond to. Then the desired outputs are defined: for the mean real wages are wanted and for the standard deviation inflation is wanted. Outputs for variance, covariance, correlation, or autocorrelation can also be obtained the same way as for the mean and standard deviation.
 
 Next, a function measuring how close the model is to the target for given values of `:α` and `:std_a` can be defined:
 

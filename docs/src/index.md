@@ -16,9 +16,12 @@ As of now the package can:
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
 - calibrate parameters using (non-stochastic) steady state relationships
+- calculate **variance decompositions**: unconditional decompositions at first order and at pruned **second- and third-order**, and conditional / forecast-error decompositions at first order. For pruned higher-order unconditional decompositions, the cross-shock interaction term can either be reported as a separate component or allocated across the individual shocks as **marginal contributions (Shapley values)**
+- compute **shock decompositions** of filtered data via the Kalman or inversion filter, including pruned **second- and third-order** solutions where the nonlinear interaction term can optionally be allocated across shocks via **marginal contributions (Shapley values)**
 - **match model moments** (also for pruned **higher order** solutions)
-- estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet)) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
-- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet)) with **gradient based samplers** (e.g. NUTS, HMC), **estimate nonlinear models** using the inversion filter, or the filter-free joint likelihood
+- **differentiate** the model solution, loglikelihood (Kalman filter, inversion filter, or filter free joint loglikelihood), model moments, and steady state **with respect to the parameters** using forward-mode AD ([ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl)) and reverse-mode AD ([Mooncake.jl](https://github.com/compintell/Mooncake.jl) recommended; other ChainRules-compatible backends such as Zygote.jl also work via custom rrules)
+- **modify a model after it has been defined** — model and calibration equations can be updated, added, or removed in place ([`update_equations!`](@ref), [`add_equation!`](@ref), [`remove_equation!`](@ref), and the `*_calibration_equation!` variants) without re-running the [`@model`](@ref) / [`@parameters`](@ref) macros. A chronological revision history is kept ([`get_revision_history`](@ref)) and the revised model can be saved to a Julia source file ([`write_julia_model_file`](@ref)); this mirrors the equation-revision workflow from `TROLL`. See the [how-to guide on modifying models](@ref "Modifying a model after definition").
 
 The package is not:
 
@@ -38,6 +41,7 @@ The package contains the following models in the `models` folder:
 - [Caldara et al. (2012)](https://www.sciencedirect.com/science/article/abs/pii/S1094202511000433) `Caldara_et_al_2012.jl`
 - [Gali (2015)](https://press.princeton.edu/books/hardcover/9780691164786/monetary-policy-inflation-and-the-business-cycle) - Chapter 3 `Gali_2015_chapter_3_nonlinear.jl`
 - [Gali and Monacelli (2005)](https://crei.cat/wp-content/uploads/users/pages/roes8739.pdf) - CPI inflation-based Taylor rule `Gali_Monacelli_2005_CITR.jl`
+- [Federal Reserve Board U.S. model (FRB/US) - LINVER (2024))](https://www.federalreserve.gov/econres/us-models-about.htm) `FRBUS.jl`
 - [Gerali, Neri, Sessa, and Signoretti (2010)](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1538-4616.2010.00331.x) `GNSS_2010.jl`
 - [Ghironi and Melitz (2005)](https://faculty.washington.edu/ghiro/GhiroMeliQJE0805.pdf) `Ghironi_Melitz_2005.jl`
 - [Ireland (2004)](http://irelandp.com/pubs/tshocksnk.pdf) `Ireland_2004.jl`
@@ -48,6 +52,20 @@ The package contains the following models in the `models` folder:
 - [Schorfheide (2000)](https://onlinelibrary.wiley.com/doi/abs/10.1002/jae.582) `FS2000.jl`
 - [Smets and Wouters (2003)](https://onlinelibrary.wiley.com/doi/10.1162/154247603770383415) `SW03.jl`
 - [Smets and Wouters (2007)](https://www.aeaweb.org/articles?id=10.1257/aer.97.3.586) `SW07.jl`
+
+## Speed
+
+`MacroModelling.jl` is genuinely faster than Dynare at computing perturbation solutions, which makes it well suited for tasks where runtime matters most — in particular estimation.
+
+For first-order solves, Dynare is most competitive when using compiled MATLAB mex files. `MacroModelling.jl` is still faster in that case, but the gap narrows as model size grows and the QZ decomposition starts to dominate the runtime; at that point performance is largely determined by the underlying BLAS/LAPACK rather than by the surrounding code.
+
+For higher-order perturbation the gap widens substantially. `MacroModelling.jl` is typically close to an order of magnitude faster at second order, and around two orders of magnitude faster at third order (roughly `40x`–`115x` on the bundled third-order timings for `Caldara_et_al_2012` and `Gali_2015_chapter_3_nonlinear`). Derivative construction (Jacobians and Hessians) shows even larger relative speedups — often `100x`–`1000x` — but because those operations take only microseconds in absolute terms for most models, they are not the main driver of end-to-end runtime. The speedups that actually change the user experience are in the solve steps themselves.
+
+See the [Speed Benchmarks](@ref "Speed Benchmarks") page for full per-model timings across operating systems and CPU architectures.
+
+Wall-clock user experience is a different story. `MacroModelling.jl` inherits Julia's just-in-time compilation cost: time-to-first-output can take a minute or more on a small model while the relevant functions are compiled. Once compiled, every subsequent call is fast. Dynare, being built on a compiled host - MATLAB, has the edge on the first call, but this advantage erodes as model size grows and disappears entirely as soon as functions are reused.
+
+In practice: if the goal is a single output from a model run once, Dynare will deliver it sooner. For iterative work — changing parameters or equations interactively, running estimation, or anything that calls the solvers many times — `MacroModelling.jl` is the better fit, thanks to its interactive design, the speed of precompiled functions, and its compatibility with Julia's rich ecosystem of gradient-based samplers.
 
 ## Comparison with other packages
 

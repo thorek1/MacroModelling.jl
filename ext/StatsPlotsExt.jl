@@ -2,8 +2,8 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step, SteadyStateFunctionType, normalize_superscript, apply_custom_name
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
+import MacroModelling: DEFAULT_CACHING, DEFAULT_USE_WORKSPACES, DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -17,11 +17,584 @@ import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
+import Dates
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
+import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, get_irf
 
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helper functions moved from core (only used by the plotting extension)
+# ──────────────────────────────────────────────────────────────────────────────
+
+const HIGHER_ORDER_ALGORITHMS = (:second_order, :pruned_second_order, :third_order, :pruned_third_order)
+const THIRD_ORDER_ALGORITHMS  = (:third_order, :pruned_third_order)
+
+const TOL_DISPLAY_NAMES = Dict{Symbol,String}(
+    :tol => "Tolerance",
+    :nsss => "NSSS",
+    :first_order => "1st order",
+    :second_order => "2nd order",
+    :third_order => "3rd order",
+    :qme => "QME",
+    :sylvester => "Sylvester",
+    :lyapunov => "Lyapunov",
+    :atol => "atol",
+    :rtol => "rtol",
+    :initial_guess_acceptance_tol => "init. guess accept. tol",
+    :acceptance_tol => "accept. tol",
+    :xtol => "xtol",
+    :ftol => "ftol",
+    :rel_xtol => "rel. xtol",
+    :droptol => "droptol",
+    :dependencies_tol => "dep. tol",
+)
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Number}
+    x_axis[end] - x_axis[end-1]
+end
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Dates.TimeType}
+    d1 = x_axis[end-1]
+    d2 = x_axis[end]
+
+    # try to infer a monthly step if aligned by day-of-month
+    if Dates.day(d1) == Dates.day(d2)
+        m1 = 12 * Dates.year(d1) + Dates.month(d1)
+        m2 = 12 * Dates.year(d2) + Dates.month(d2)
+        mstep = m2 - m1
+        if mstep != 0
+            return Dates.Month(mstep)
+        end
+    end
+
+    # fall back to the raw difference (in days, milliseconds, …)
+    return d2 - d1
+end
+
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where {R <: Union{Symbol, String}, S, T}
+    # First, check for an exact match with the original symbol
+    if haskey(custom_names, symbol)
+        return R(custom_names[symbol])
+    end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
+        return R(custom_names[String(replace_indices_in_symbol(symbol))])
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return R(custom_names[Symbol(symbol)])
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return R(string(value) * lag_part)
+        end
+    end
+
+    return symbol
+end
+
+function normalize_superscript(x::Symbol)
+    return normalize_superscript(string(x))
+end
+
+function normalize_superscript(x::AbstractString)
+    sub_map = Dict(
+        '₀' => '0', '₁' => '1', '₂' => '2', '₃' => '3', '₄' => '4',
+        '₅' => '5', '₆' => '6', '₇' => '7', '₈' => '8', '₉' => '9',
+        '₊' => '+', '₋' => '-', '₌' => '=', '₍' => '(', '₎' => ')',
+        'ₐ' => 'a', 'ₑ' => 'e', 'ₕ' => 'h', 'ᵢ' => 'i', 'ⱼ' => 'j',
+        'ₖ' => 'k', 'ₗ' => 'l', 'ₘ' => 'm', 'ₙ' => 'n', 'ₒ' => 'o',
+        'ₚ' => 'p', 'ᵣ' => 'r', 'ₛ' => 's', 'ₜ' => 't', 'ᵤ' => 'u',
+        'ᵥ' => 'v', 'ₓ' => 'x'
+    )
+    super_map = Dict(
+        '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+        '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9',
+        '⁺' => '+', '⁻' => '-', '⁼' => '=', '⁽' => '(', '⁾' => ')',
+        'ᵃ' => 'a', 'ᵇ' => 'b', 'ᶜ' => 'c', 'ᵈ' => 'd', 'ᵉ' => 'e',
+        'ᶠ' => 'f', 'ᵍ' => 'g', 'ʰ' => 'h', 'ᶦ' => 'i', 'ʲ' => 'j',
+        'ᵏ' => 'k', 'ˡ' => 'l', 'ᵐ' => 'm', 'ⁿ' => 'n', 'ᵒ' => 'o',
+        'ᵖ' => 'p', 'ʳ' => 'r', 'ˢ' => 's', 'ᵗ' => 't', 'ᵘ' => 'u',
+        'ᵛ' => 'v', 'ʷ' => 'w', 'ˣ' => 'x', 'ʸ' => 'y', 'ᶻ' => 'z'
+    )
+
+    buf = IOBuffer()
+    for c in x
+        if haskey(sub_map, c)
+            write(buf, sub_map[c])
+        elseif haskey(super_map, c)
+            write(buf, super_map[c])
+        else
+            write(buf, c)
+        end
+    end
+    return String(take!(buf))
+end
+
+function solver_tol_to_dict(st::SolverTolerances)
+    return Dict{Symbol,Any}(
+        :atol => st.atol,
+        :rtol => st.rtol,
+        :initial_guess_acceptance_tol => st.initial_guess_acceptance_tol,
+        :acceptance_tol => st.acceptance_tol,
+    )
+end
+
+function nsss_tol_to_dict(nt::NsssTolerances)
+    return Dict{Symbol,Any}(
+        :acceptance_tol => nt.acceptance_tol,
+        :initial_guess_acceptance_tol => nt.initial_guess_acceptance_tol,
+        :xtol => nt.xtol,
+        :ftol => nt.ftol,
+        :rel_xtol => nt.rel_xtol,
+    )
+end
+
+function tol_to_dict(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    d = Dict{Symbol,Any}()
+
+    # NSSS — always relevant
+    d[:nsss] = nsss_tol_to_dict(tol.nsss)
+
+    # First-order — always relevant
+    fo = Dict{Symbol,Any}(:qme => solver_tol_to_dict(tol.first_order.qme),
+                           :droptol => tol.first_order.droptol)
+    if needs_covariance
+        fo[:lyapunov] = solver_tol_to_dict(tol.first_order.lyapunov)
+        fo[:dependencies_tol] = tol.first_order.dependencies_tol
+    end
+    d[:first_order] = fo
+
+    # Second-order — only for higher-order algorithms
+    if algorithm in HIGHER_ORDER_ALGORITHMS
+        so = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.second_order.sylvester),
+                               :droptol => tol.second_order.droptol)
+        if needs_covariance
+            so[:lyapunov] = solver_tol_to_dict(tol.second_order.lyapunov)
+            so[:dependencies_tol] = tol.second_order.dependencies_tol
+        end
+        d[:second_order] = so
+    end
+
+    # Third-order — only for third-order algorithms
+    if algorithm in THIRD_ORDER_ALGORITHMS
+        to = Dict{Symbol,Any}(:sylvester => solver_tol_to_dict(tol.third_order.sylvester),
+                               :droptol => tol.third_order.droptol)
+        if needs_covariance
+            to[:lyapunov] = solver_tol_to_dict(tol.third_order.lyapunov)
+            to[:dependencies_tol] = tol.third_order.dependencies_tol
+        end
+        d[:third_order] = to
+    end
+
+    return d
+end
+
+function warn_irrelevant_tol(tol::Tolerances, algorithm::Symbol; needs_covariance::Bool = false)
+    defaults = Tolerances()
+
+    # --- order-based irrelevance ---
+    if algorithm ∉ HIGHER_ORDER_ALGORITHMS
+        if tol.second_order != defaults.second_order
+            @info "Second-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    if algorithm ∉ THIRD_ORDER_ALGORITHMS
+        if tol.third_order != defaults.third_order
+            @info "Third-order tolerances have no effect with algorithm = :$algorithm and are ignored."
+        end
+    end
+
+    # --- covariance-based irrelevance ---
+    if !needs_covariance
+        if tol.first_order.lyapunov != defaults.first_order.lyapunov ||
+           tol.first_order.dependencies_tol != defaults.first_order.dependencies_tol
+            @info "First-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+        end
+
+        if algorithm in HIGHER_ORDER_ALGORITHMS
+            if tol.second_order.lyapunov != defaults.second_order.lyapunov ||
+               tol.second_order.dependencies_tol != defaults.second_order.dependencies_tol
+                @info "Second-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+
+        if algorithm in THIRD_ORDER_ALGORITHMS
+            if tol.third_order.lyapunov != defaults.third_order.lyapunov ||
+               tol.third_order.dependencies_tol != defaults.third_order.dependencies_tol
+                @info "Third-order Lyapunov/dependencies tolerances have no effect without covariance computation (current operation does not require it) and are ignored."
+            end
+        end
+    end
+end
+
+function flatten_tol_dict(d::Dict;
+                           names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
+                           prefix::String = "")
+    result = Dict{String,Any}()
+    for (k, v) in d
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            merge!(result, flatten_tol_dict(v; names = names, prefix = label))
+        else
+            result[label] = v
+        end
+    end
+    return result
+end
+
+function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
+    N = length(dicts)
+
+    if N ≤ 1
+        diffs = Dict{Symbol,Any}()
+        if N == 1
+            for k in keys(dicts[1])
+                k in (:plot_data, :plot_type) && continue
+                v = dicts[1][k]
+                if v isa Dict
+                    diffs[k] = compare_args_and_kwargs([v])
+                else
+                    diffs[k] = [v]
+                end
+            end
+        end
+        return diffs
+    end
+
+    diffs = Dict{Symbol,Any}()
+
+    all_keys = reduce(union, keys.(dicts))
+
+    for k in all_keys
+        if k in [:plot_data, :plot_type]
+            continue
+        end
+
+        if !all(haskey(d, k) for d in dicts)
+            diffs[k] = [get(d, k, missing) for d in dicts]
+            continue
+        end
+
+        vals = [d[k] for d in dicts]
+
+        if all(v -> v isa Dict, vals)
+            nested = compare_args_and_kwargs(vals)
+            if !isempty(nested)
+                diffs[k] = nested
+            end
+
+        elseif all(v -> v isa KeyedArray, vals)
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(collect(v) .== collect(base)), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        elseif all(v -> v isa AbstractArray, vals)
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(v .== base), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        else
+            identical = all(v -> v == vals[1], vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+        end
+    end
+
+    return diffs
+end
+
+function flatten_tol_diff(diff::Dict;
+                          names::Dict{Symbol,String} = TOL_DISPLAY_NAMES,
+                          prefix::String = "")
+    result = Pair{String,Any}[]
+    for (k, v) in sort(collect(diff), by = first)
+        seg = get(names, k, String(k))
+        label = isempty(prefix) ? seg : prefix * " " * seg
+        if v isa Dict
+            append!(result, flatten_tol_diff(v; names = names, prefix = label))
+        else
+            push!(result, label => reduce(vcat, v))
+        end
+    end
+    return result
+end
+
+function setup_plot_attributes(plot_attributes::Dict)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attrbts = !gr_back ? merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box)) : merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
+    attributes = merge(attrbts, plot_attributes)
+    attributes_redux = copy(attributes)
+    delete!(attributes_redux, :framestyle)
+    return gr_back, attributes, attributes_redux
+end
+
+function build_extended_palette(attributes_redux::Dict; total_pal_len::Int = 100, alpha_reduction_factor::Float64 = 0.7)
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+    mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+end
+
+function process_rename_dictionary(rename_dictionary::AbstractDict, 𝓂::ℳ)
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
+    processed = Any[]
+    for k in relevant_keys
+        push!(processed, k => rename_dictionary[k])
+    end
+    return processed
+end
+
+function compute_diffdict(container::Vector{Dict}, ref_keys; include_label_in_reduced::Bool = true)
+    label_keys = include_label_in_reduced ? [:run_id, :label] : [:run_id]
+    reduced_vector = [
+        Dict(k => d[k] for k in vcat(label_keys..., keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
+        for d in container
+    ]
+
+    diffdict = compare_args_and_kwargs(reduced_vector)
+
+    grouped_by_model = Dict{Any, Vector{Dict}}()
+
+    for d in container
+        model = d[:model_name]
+        d_sub = Dict(k => d[k] for k in setdiff(ref_keys, keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:tol]) if haskey(d, k))
+        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+    end
+
+    model_names = unique([d[:model_name] for d in container])
+
+    for model in model_names
+        if length(grouped_by_model[model]) > 1
+            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+            diffdict = merge_by_runid(diffdict, diffdict_grouped)
+        end
+    end
+
+    return diffdict
+end
+
+function annotate_param_diff!(annotate_diff_input, diffdict)
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+end
+
+function annotate_rename_dict_diff!(annotate_diff_input, diffdict)
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+        rename_idx = Int[]
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx, i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+end
+
+function annotate_tol_diff!(annotate_diff_input, container)
+    if length(container) > 1
+        flat_tols = [flatten_tol_dict(d[:tol]) for d in container]
+        shared_tol_keys = reduce(intersect, keys.(flat_tols))
+        for fk in sort(collect(shared_tol_keys))
+            fvals = [ft[fk] for ft in flat_tols]
+            if !all(v -> v == fvals[1], fvals[2:end])
+                push!(annotate_diff_input, fk => fvals)
+            end
+        end
+    end
+end
+
+function should_use_label_switch(annotate_diff_input, container)
+    ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(container)))) && length(container) > 1
+end
+
+function push_if_no_duplicate!(container, args_and_kwargs, specific_keys; collect_compare_keys = Symbol[])
+    no_duplicate = all(
+        !(all((
+            all(get(dict, k, nothing) == args_and_kwargs[k] for k in specific_keys),
+            all(
+                k in collect_compare_keys ?
+                    collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) :
+                    get(dict, k, nothing) == get(args_and_kwargs, k, nothing)
+                for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:label])
+            )
+        )))
+        for dict in container
+    )
+
+    if no_duplicate
+        push!(container, args_and_kwargs)
+    else
+        @info "Plot with same parameters already exists. Using previous plot data to create plot."
+    end
+end
+
+function check_and_remove_duplicate!(container, specific_keys)
+    if length(container) > 1
+        ref = container[end]
+        no_duplicate = all(
+            !(all((
+                all(get(dict, k, nothing) == ref[k] for k in specific_keys),
+                all(get(dict, k, nothing) == get(ref, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:label]))
+            )))
+            for dict in container[1:end-1]
+        )
+
+        if !no_duplicate
+            @info "Plot with same parameters already exists. Using previous plot data to create plot."
+            pop!(container)
+        end
+    end
+end
+
+function annotate_default_kwarg_diffs!(annotate_diff_input, args_and_kwargs, diffdict, exclude_keys)
+    has_shock_direction_diff = false
+    for k in setdiff(keys(args_and_kwargs), exclude_keys)
+        if haskey(diffdict, k)
+            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
+            if k == :negative_shock
+                has_shock_direction_diff = true
+            end
+        end
+    end
+    return has_shock_direction_diff
+end
+
+function assemble_and_emit_page!(
+    return_plots, pp, legend_plot,
+    annotate_diff_input, diffdict,
+    attributes, attributes_redux,
+    pane, n_subplots, plots_per_page,
+    show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+    default_model_name;
+    title_extra::String = "",
+    filename_extra::String = "",
+    legend_height = length(annotate_diff_input),
+    show_diff_table::Bool = false,
+    annotate_ss = nothing,
+    annotate_ss_page = nothing,
+    plt_lab_switch::Bool = false,
+    is_tail::Bool = false
+)
+    ppp = StatsPlots.plot(pp...; attributes...)
+
+    if haskey(diffdict, :model_name)
+        model_string = "multiple models"
+        model_string_filename = "multiple_models"
+    else
+        model_string = string(default_model_name)
+        model_string_filename = string(default_model_name)
+    end
+
+    plot_title = "Model: " * model_string * title_extra * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots / plots_per_page))) * ")"
+
+    plot_elements = [ppp, legend_plot]
+    layout_heights = [15, legend_height]
+
+    if annotate_ss !== nothing && annotate_ss_page !== nothing
+        if plt_lab_switch
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+            push!(plot_elements, ppp_input_diff)
+            push!(layout_heights, 5)
+            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
+        else
+            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+        end
+
+        push!(annotate_ss, annotate_ss_page)
+
+        if length(annotate_ss[pane]) > 1
+            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
+            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+            push!(plot_elements, ppp_ss)
+            push!(layout_heights, 5)
+        end
+    else
+        if show_diff_table
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+            push!(plot_elements, ppp_input_diff)
+            push!(layout_heights, 5)
+        end
+    end
+
+    p = StatsPlots.plot(plot_elements...,
+                        layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                        plot_title = plot_title;
+                        attributes_redux...)
+
+    push!(return_plots, p)
+
+    if show_plots
+        display(p)
+    end
+
+    if save_plots
+        if !isdir(save_plots_path) mkpath(save_plots_path) end
+        fn = save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename
+        if !isempty(filename_extra)
+            fn *= "__" * string(filename_extra)
+        end
+        fn *= "__" * string(pane) * "." * string(save_plots_format)
+        StatsPlots.savefig(p, fn)
+    end
+
+    if !is_tail
+        pane += 1
+        empty!(pp)
+        if annotate_ss_page !== nothing
+            empty!(annotate_ss_page)
+        end
+    end
+
+    return pane
+end
 
 @stable default_mode = "disable" begin
 
@@ -54,7 +627,7 @@ Plot model estimates of the variables given the data. The default plot shows the
 The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
 In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
 
-For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
+For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks. Setting `marginal_contribution = true` (only meaningful for `:pruned_second_order` and `:pruned_third_order` together with `shock_decomposition = true`) instead allocates this cross-shock interaction across shocks via marginal contributions (Shapley values) and omits the `Nonlinearities` bar.
 
 If occasionally binding constraints are present in the model, they are not taken into account here.
 
@@ -68,11 +641,12 @@ If occasionally binding constraints are present in the model, they are not taken
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
-- `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
 - `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
+- `marginal_contribution` [Default: `false`, Type: `Bool`]: if `true` and the algorithm is `:pruned_second_order` or `:pruned_third_order` with `shock_decomposition = true`, attribute the cross-shock interaction across shocks via marginal contributions (Shapley values) and omit the `Nonlinearities` bar.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -127,7 +701,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
@@ -140,6 +714,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                marginal_contribution::Bool = false,
                                 label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -156,33 +731,36 @@ function plot_model_estimates(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
+
+    if marginal_contribution && shock_decomposition && !pruning
+        @info "`marginal_contribution = true` is only meaningful for pruned higher-order solutions (`:pruned_second_order`, `:pruned_third_order`). Setting `marginal_contribution = false` for `algorithm = $(algorithm)`." maxlog = 3
+        marginal_contribution = false
+    end
+    mc = marginal_contribution && shock_decomposition && pruning
+    is_pruned = pruning
+    pruning = pruning && !mc
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -227,13 +805,7 @@ function plot_model_estimates(𝓂::ℳ,
         shock_names_display = shock_names_display[shock_sort_perm]
     end
     
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     legend_columns = 1
 
@@ -250,27 +822,34 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
-    x_axis = axiskeys(data,2)
+    data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
+                                                                            require_informative_periods = true)
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
+
+    x_axis = axiskeys(data,2)[informative_periods]
 
     extra_legend_space += length(string(x_axis[1])) > 6 ? .1 : 0.0
 
-    @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
-
-    periods = presample_periods+1:size(data,2)
+    periods = presample_periods+1:size(data_in_deviations,2)
 
     x_axis = x_axis[periods]
     
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
 
-    if pruning
-        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
-        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
-        decomposition[:,end,:]                      .+= SSS_delta
+    if is_pruned
+        if mc
+            decomposition[:, end - 1, :] .+= SSS_delta
+        else
+            decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+            decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+            decomposition[:,end,:]                      .+= SSS_delta
+        end
     end
     
     variables_to_plot                           .+= SSS_delta
@@ -297,7 +876,9 @@ function plot_model_estimates(𝓂::ℳ,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
                                tol = tol,
-                               verbose = verbose)
+                               verbose = verbose,
+                               caching = caching,
+                               use_workspaces = use_workspaces)
 
         forecast_data = collect(forecast_irf)
         
@@ -308,13 +889,7 @@ function plot_model_estimates(𝓂::ℳ,
         extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
     end
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     estimate_color = :navy
 
@@ -340,18 +915,7 @@ function plot_model_estimates(𝓂::ℳ,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
                            
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = filter == :kalman),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -430,18 +994,23 @@ function plot_model_estimates(𝓂::ℳ,
                         decomp = decomposition[var_idx[i],:,periods]
                     end
 
-                    additional_indices = pruning ? [size(decomp,1)-1, size(decomp,1)-2] : [size(decomp,1)-1]
+                    initial_value_idx = size(decomp,1) - 1
+                    shock_component_idx = 1:(size(decomp,1) - 2 - Int(pruning && !mc))
+                    component_order = vcat(initial_value_idx, shock_component_idx)
+                    if pruning && !mc
+                        component_order = vcat(component_order, size(decomp,1) - 2)
+                    end
                     
                     # Prepare data with NaN padding for forecast extension
                     decomp_padded = if forecast_periods > 0
-                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in component_order]
                     else
-                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                        [decomp[k,:] for k in component_order]
                     end
                     
                     p = standard_subplot(Val(:stack),
                                         decomp_padded, 
-                                        [SS for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
+                                        [SS for _ in component_order], 
                                         variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
@@ -561,7 +1130,8 @@ function plot_model_estimates(𝓂::ℳ,
                             color = shock_decomposition ? data_color : pal[2])
 
             if shock_decomposition
-                additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+                additional_labels_prefix = ["Initial value"]
+                additional_labels_suffix = pruning && !mc ? ["Nonlinearities"] : String[]
                 
                 if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                     other_shocks = ["Other shocks (net)"]
@@ -569,7 +1139,7 @@ function plot_model_estimates(𝓂::ℳ,
                     other_shocks = []
                 end
 
-                lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+                lbls_vec = vcat(additional_labels_prefix, string.(non_zero_shock_names), other_shocks, additional_labels_suffix)
 
                 lbls = reshape(lbls_vec, 1, length(lbls_vec))
 
@@ -632,7 +1202,8 @@ function plot_model_estimates(𝓂::ℳ,
 
 
         if shock_decomposition
-            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+            additional_labels_prefix = ["Initial value"]
+            additional_labels_suffix = pruning && !mc ? ["Nonlinearities"] : String[]
 
             if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.constants.post_model_macro.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                 other_shocks = ["Other shocks (net)"]
@@ -640,7 +1211,7 @@ function plot_model_estimates(𝓂::ℳ,
                 other_shocks = []
             end
 
-            lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+            lbls_vec = vcat(additional_labels_prefix, string.(non_zero_shock_names), other_shocks, additional_labels_suffix)
 
             lbls = reshape(lbls_vec, 1, length(lbls_vec))
 
@@ -672,6 +1243,8 @@ function plot_model_estimates(𝓂::ℳ,
             StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -705,7 +1278,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
-- `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
 - `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - $LABEL®
@@ -782,7 +1355,7 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 ```
 """
 function plot_model_estimates!(𝓂::ℳ,
-                                data::KeyedArray{Float64};
+                                data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -809,8 +1382,14 @@ function plot_model_estimates!(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                caching::Bool = DEFAULT_CACHING,
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -818,19 +1397,8 @@ function plot_model_estimates!(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
@@ -880,13 +1448,7 @@ function plot_model_estimates!(𝓂::ℳ,
         shock_names_display = shock_names_display[shock_sort_perm]
     end
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     legend_columns = 1
 
@@ -903,18 +1465,20 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- NSSS[obs_idx]
+        data_in_deviations = MacroModelling.missing_data_to_nan(data) .- NSSS[obs_idx]
     else
-        data_in_deviations = data
+        data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
-    x_axis = axiskeys(data,2)
+    data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
+                                                                            require_informative_periods = true)
+    presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
+
+    x_axis = axiskeys(data,2)[informative_periods]
 
     extra_legend_space += length(string(x_axis[1])) > 6 ? .1 : 0.0
 
-    @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
-
-    periods = presample_periods+1:size(data,2)
+    periods = presample_periods+1:size(data_in_deviations,2)
 
     x_axis = x_axis[periods]
     
@@ -949,7 +1513,9 @@ function plot_model_estimates!(𝓂::ℳ,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
                                tol = tol,
-                               verbose = verbose)
+                               verbose = verbose,
+                               caching = caching,
+                               use_workspaces = use_workspaces)
         
         forecast_data = collect(forecast_irf)
         
@@ -960,13 +1526,7 @@ function plot_model_estimates!(𝓂::ℳ,
         extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
     end
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     estimate_color = :navy
 
@@ -988,18 +1548,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
                            
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = filter == :kalman),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -1019,54 +1568,11 @@ function plot_model_estimates!(𝓂::ℳ,
                            :rename_dictionary => processed_rename_dictionary
                            )
 
-    no_duplicate = all(
-        !(all((
-            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
-            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
-            # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
-            # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
-            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
-        )))
-        for dict in model_estimates_active_plot_container
-    ) # "New plot must be different from previous plot. Use the version without ! to plot."
+    push_if_no_duplicate!(model_estimates_active_plot_container, args_and_kwargs,
+        [:parameters, :rename_dictionary, :tol];
+        collect_compare_keys = [:data])
 
-    if no_duplicate 
-        push!(model_estimates_active_plot_container, args_and_kwargs)
-    else
-        @info "Plot with same parameters already exists. Using previous plot data to create plot."
-    end
-
-    # 1. Keep only certain keys from each dictionary
-    reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-        for d in model_estimates_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # 2. Group the original vector by :model_name. Check difference for keys where they matter between models. Two different models might have different shocks so that difference is less important, but the same model with different shocks is a difference to highlight.
-    grouped_by_model = Dict{Any, Vector{Dict}}()
-
-    for d in model_estimates_active_plot_container
-        model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-    end
-
-    model_names = []
-
-    for d in model_estimates_active_plot_container
-        push!(model_names, d[:model_name])
-    end
-
-    model_names = unique(model_names)
-
-    for model in model_names
-        if length(grouped_by_model[model]) > 1
-            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-            diffdict = merge_by_runid(diffdict, diffdict_grouped)
-        end
-    end
+    diffdict = compute_diffdict(model_estimates_active_plot_container, keys(args_and_kwargs), include_label_in_reduced = false)
 
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1078,13 +1584,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     len_diff = length(model_estimates_active_plot_container)
 
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
+    annotate_param_diff!(annotate_diff_input, diffdict)
 
     common_axis = []
 
@@ -1105,28 +1605,7 @@ function plot_model_estimates!(𝓂::ℳ,
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
     end
 
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end
+    annotate_rename_dict_diff!(annotate_diff_input, diffdict)
     
     # Determine common and combined x axis
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
@@ -1152,7 +1631,7 @@ function plot_model_estimates!(𝓂::ℳ,
         last_combined = combined_x_axis[end]
 
         if required_last_x > last_combined
-            xs = deepcopy(combined_x_axis)
+            xs = collect(combined_x_axis)
 
             next_x = last_combined
             while next_x < required_last_x
@@ -1185,22 +1664,15 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
 
-    for k in setdiff(keys(args_and_kwargs), 
-                        [
-                            :run_id, :parameters, :data, :data_in_levels,
-                            :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :reference_steady_state, :x_axis,
-                            :tol, :label, #:presample_periods,
-                            :shocks, :shock_names,
-                            :variables, :variable_names,
-                            :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis
-                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
-                        ]
-                    )
+    annotate_default_kwarg_diffs!(annotate_diff_input, args_and_kwargs, diffdict,
+        [:run_id, :parameters, :data, :data_in_levels,
+         :decomposition, :variables_to_plot, :data_in_deviations, :shocks_to_plot, :reference_steady_state, :x_axis,
+         :tol, :label,
+         :shocks, :shock_names,
+         :variables, :variable_names,
+         :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis])
 
-        if haskey(diffdict, k)
-            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
-        end
-    end
+    annotate_tol_diff!(annotate_diff_input, model_estimates_active_plot_container)
     
     if haskey(diffdict, :shock_names)
         if all(length.(diffdict[:shock_names]) .== 1)
@@ -1215,7 +1687,7 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(model_estimates_active_plot_container)))) && length(model_estimates_active_plot_container) > 1
+    plt_lab_switch = should_use_label_switch(annotate_diff_input, model_estimates_active_plot_container)
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         [NaN],
@@ -1537,137 +2009,36 @@ function plot_model_estimates!(𝓂::ℳ,
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...; attributes...)
-
-            pl = StatsPlots.plot(framestyle = :none)
-
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = 𝓂.model_name
-                model_string_filename = 𝓂.model_name
-            end
-
-            plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-            
-            plot_elements = [ppp, legend_plot]
-
-            layout_heights = [15, length(annotate_diff_input)]
-
-            if plt_lab_switch
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-
-                push!(layout_heights, 5)
-
-                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-            else
-                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-
-            if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady State")
-
-                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_ss)
-                
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-            end
-
-            pane += 1
-
-            annotate_ss_page = Pair{String,Any}[]
-
-            pp = []
+            pane = assemble_and_emit_page!(
+                return_plots, pp, legend_plot,
+                annotate_diff_input, diffdict,
+                attributes, attributes_redux,
+                pane, n_subplots, plots_per_page,
+                show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                𝓂.model_name;
+                annotate_ss = annotate_ss,
+                annotate_ss_page = annotate_ss_page,
+                plt_lab_switch = plt_lab_switch,
+            )
         end
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-
-        pl = StatsPlots.plot(framestyle = :none)
-
-        if haskey(diffdict, :model_name)
-            model_string = "multiple models"
-            model_string_filename = "multiple_models"
-        else
-            model_string = 𝓂.model_name
-            model_string_filename = 𝓂.model_name
-        end
-
-        plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-        
-        plot_elements = [ppp, legend_plot]
-
-        layout_heights = [15, length(annotate_diff_input)]
-
-        if plt_lab_switch
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_input_diff)
-
-            push!(layout_heights, 5)
-
-            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-        else
-            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-        end
-
-        push!(annotate_ss, annotate_ss_page)
-
-        if length(annotate_ss[pane]) > 1
-            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_ss)
-            
-            push!(layout_heights, 5)
-        end
-
-        p = StatsPlots.plot(plot_elements...,
-                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = plot_title; 
-                            attributes_redux...)
-
-        push!(return_plots,p)
-
-        if show_plots
-            display(p)
-        end
-
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-        end
+        assemble_and_emit_page!(
+            return_plots, pp, legend_plot,
+            annotate_diff_input, diffdict,
+            attributes, attributes_redux,
+            pane, n_subplots, plots_per_page,
+            show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+            𝓂.model_name;
+            annotate_ss = annotate_ss,
+            annotate_ss_page = annotate_ss_page,
+            plt_lab_switch = plt_lab_switch,
+            is_tail = true,
+        )
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -1765,27 +2136,22 @@ function plot_irf(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-                
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = false)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, shock_size, periods, 𝓂)
 
@@ -1809,31 +2175,7 @@ function plot_irf(𝓂::ℳ;
     
     initial_state_input = copy(initial_state)
 
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars]
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
     
 
     if occasionally_binding_constraints
@@ -1903,14 +2245,9 @@ function plot_irf(𝓂::ℳ;
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
     Y = Y[var_sort_perm, :, :]
 
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -1933,16 +2270,7 @@ function plot_irf(𝓂::ℳ;
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = false),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -1956,13 +2284,7 @@ function plot_irf(𝓂::ℳ;
     
     push!(irf_active_plot_container, args_and_kwargs)
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     return_plots = []
 
@@ -2056,6 +2378,8 @@ function plot_irf(𝓂::ℳ;
             end
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -2457,8 +2781,14 @@ function plot_irf!(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    caching::Bool = DEFAULT_CACHING,
+                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
 
@@ -2467,27 +2797,10 @@ function plot_irf!(𝓂::ℳ;
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = false)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-                
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
-
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, shock_size, periods, 𝓂)
     
@@ -2511,31 +2824,7 @@ function plot_irf!(𝓂::ℳ;
     
     initial_state_input = copy(initial_state)
 
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.constants.post_model_macro.nVars), zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-        else
-            initial_state = zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars], zeros(𝓂.constants.post_model_macro.nVars) - SSS_delta, zeros(𝓂.constants.post_model_macro.nVars)]
-            else
-                initial_state = initial_state - reference_steady_state[1:𝓂.constants.post_model_macro.nVars]
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
 
     if occasionally_binding_constraints
@@ -2593,13 +2882,7 @@ function plot_irf!(𝓂::ℳ;
     variable_names_display = variable_names_display[var_sort_perm]
     Y = Y[var_sort_perm, :, :]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -2618,16 +2901,7 @@ function plot_irf!(𝓂::ℳ;
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = false),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -2638,55 +2912,10 @@ function plot_irf!(𝓂::ℳ;
                            :rename_dictionary => processed_rename_dictionary
                            )
 
-    no_duplicate = all(
-        !(all((
-            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
-            get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
-            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
-            get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
-            get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
-        )))
-        for dict in irf_active_plot_container
-    )# "New plot must be different from previous plot. Use the version without ! to plot."
+    push_if_no_duplicate!(irf_active_plot_container, args_and_kwargs,
+        [:parameters, :shock_names, :rename_dictionary, :shocks, :initial_state, :tol])
 
-    if no_duplicate 
-        push!(irf_active_plot_container, args_and_kwargs)
-    else
-        @info "Plot with same parameters already exists. Using previous plot data to create plot."
-    end
-
-    # 1. Keep only certain keys from each dictionary
-    reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-        for d in irf_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # 2. Group the original vector by :model_name
-    grouped_by_model = Dict{Any, Vector{Dict}}()
-
-    for d in irf_active_plot_container
-        model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-    end
-
-    model_names = []
-
-    for d in irf_active_plot_container
-        push!(model_names, d[:model_name])
-    end
-
-    model_names = unique(model_names)
-
-    for model in model_names
-        if length(grouped_by_model[model]) > 1
-            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-            diffdict = merge_by_runid(diffdict, diffdict_grouped)
-        end
-    end
+    diffdict = compute_diffdict(irf_active_plot_container, keys(args_and_kwargs))
 
     # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(DEFAULT_ARGS_AND_KWARGS_NAMES))) "New plot must be different from previous plot. Use the version without ! to plot."
     
@@ -2700,13 +2929,7 @@ function plot_irf!(𝓂::ℳ;
 
     len_diff = length(irf_active_plot_container)
 
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
+    annotate_param_diff!(annotate_diff_input, diffdict)
 
     if haskey(diffdict, :shocks)
         # Build labels where matrices receive stable indices by content
@@ -2775,49 +2998,19 @@ function plot_irf!(𝓂::ℳ;
         push!(annotate_diff_input, "Initial state" => labels)
     end
     
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end
+    annotate_rename_dict_diff!(annotate_diff_input, diffdict)
 
     same_shock_direction = true
     
-    for k in setdiff(keys(args_and_kwargs), 
-                        [
-                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
-                            :shocks, :shock_names,
-                            :variables, :variable_names,
-                            :rename_dictionary,
-                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
-                        ]
-                    )
-
-        if haskey(diffdict, k)
-            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat,diffdict[k]))
-            
-            if k == :negative_shock
-                same_shock_direction = false
-            end
-        end
+    if annotate_default_kwarg_diffs!(annotate_diff_input, args_and_kwargs, diffdict,
+            [:run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
+             :shocks, :shock_names,
+             :variables, :variable_names,
+             :rename_dictionary])
+        same_shock_direction = false
     end
+
+    annotate_tol_diff!(annotate_diff_input, irf_active_plot_container)
 
 
 
@@ -2830,7 +3023,7 @@ function plot_irf!(𝓂::ℳ;
     single_shock_per_irf = true
     
     max_periods = 0
-    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(irf_active_plot_container)))) && length(irf_active_plot_container) > 1
+    plt_lab_switch = should_use_label_switch(annotate_diff_input, irf_active_plot_container)
     for (i,k) in enumerate(irf_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
@@ -2964,70 +3157,20 @@ function plot_irf!(𝓂::ℳ;
                     shock_name = shock
                 end
 
-                ppp = StatsPlots.plot(pp...; attributes...)
-                
-                if haskey(diffdict, :model_name)
-                    model_string = "multiple models"
-                    model_string_filename = "multiple_models"
-                else
-                    model_string = 𝓂.model_name
-                    model_string_filename = 𝓂.model_name
-                end
-
-                plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-                plot_elements = [ppp, legend_plot]
-
-                layout_heights = [15,1]
-                
-                if plt_lab_switch
-                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                    push!(plot_elements, ppp_input_diff)
-
-                    push!(layout_heights, 5)
-
-                    pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-                else
-                    pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-                end
-
-                push!(annotate_ss, annotate_ss_page)
-
-                if length(annotate_ss[pane]) > 1
-                    annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-                    ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                    push!(plot_elements, ppp_ss)
-                    
-                    push!(layout_heights, 5)
-                end
-
-                p = StatsPlots.plot(plot_elements...,
-                                    layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                    plot_title = plot_title; 
-                                    attributes_redux...)
-
-                push!(return_plots,p)
-
-                if show_plots
-                    display(p)
-                end
-
-                if save_plots
-                    if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-                end
-
-                pane += 1
-
-                annotate_ss_page = Pair{String,Any}[]
-
-                pp = []
+                pane = assemble_and_emit_page!(
+                    return_plots, pp, legend_plot,
+                    annotate_diff_input, diffdict,
+                    attributes, attributes_redux,
+                    pane, n_subplots, plots_per_page,
+                    show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                    𝓂.model_name;
+                    title_extra = "        " * shock_dir * shock_string,
+                    filename_extra = shock_name,
+                    legend_height = 1,
+                    annotate_ss = annotate_ss,
+                    annotate_ss_page = annotate_ss_page,
+                    plt_lab_switch = plt_lab_switch,
+                )
             end
         end
 
@@ -3055,70 +3198,29 @@ function plot_irf!(𝓂::ℳ;
                 shock_name = shock
             end
 
-            ppp = StatsPlots.plot(pp...; attributes...)
-            
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = 𝓂.model_name
-                model_string_filename = 𝓂.model_name
-            end
-
-            plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-            plot_elements = [ppp, legend_plot]
-
-            layout_heights = [15,1]
-
-            if plt_lab_switch
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-
-                push!(layout_heights, 5)
-                
-                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-            else
-                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-
-            if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_ss)
-                
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
+            assemble_and_emit_page!(
+                return_plots, pp, legend_plot,
+                annotate_diff_input, diffdict,
+                attributes, attributes_redux,
+                pane, n_subplots, plots_per_page,
+                show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                𝓂.model_name;
+                title_extra = "        " * shock_dir * shock_string,
+                filename_extra = shock_name,
+                legend_height = 1,
+                annotate_ss = annotate_ss,
+                annotate_ss_page = annotate_ss_page,
+                plt_lab_switch = plt_lab_switch,
+                is_tail = true,
+            )
         end
 
         annotate_ss = Vector{Pair{String, Any}}[]
 
         annotate_ss_page = Pair{String,Any}[]
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -3501,25 +3603,19 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
-                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM)
+                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                                caching::Bool = DEFAULT_CACHING,
+                                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                                            
+
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-                                            
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
@@ -3527,7 +3623,9 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                     steady_state_function = steady_state_function,
                                                     verbose = verbose,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    tol = tol)
+                                                    tol = tol,
+                                                    caching = caching,
+                                                    use_workspaces = use_workspaces)
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -3567,13 +3665,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     n_subplots = length(var_idx)
     pp = []
@@ -3664,6 +3756,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -3772,28 +3866,23 @@ function plot_solution(𝓂::ℳ,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time                    
     
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-                    
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -3814,7 +3903,9 @@ function plot_solution(𝓂::ℳ,
                             sylvester_algorithm = sylvester_algorithm,
                             lyapunov_algorithm = lyapunov_algorithm,
                             tol = tol,
-                            verbose = verbose)
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
 
     SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
     
@@ -3837,13 +3928,7 @@ function plot_solution(𝓂::ℳ,
     vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -3864,7 +3949,9 @@ function plot_solution(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     full_SS_current = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
@@ -3873,7 +3960,9 @@ function plot_solution(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
@@ -3891,7 +3980,7 @@ function plot_solution(𝓂::ℳ,
             initial_state = collect(full_SS_current) .+ state_selector * x
         end
 
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all, caching = caching, use_workspaces = use_workspaces)[:,1,1] |> collect)
     end
 
     var_state_range = hcat(var_state_range...)
@@ -3924,6 +4013,7 @@ function plot_solution(𝓂::ℳ,
                            :σ => σ,
                            :parameters => Dict(𝓂.constants.post_complete_parameters.parameters .=> 𝓂.parameter_values),
                            :ignore_obc => ignore_obc,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
@@ -3935,7 +4025,9 @@ function plot_solution(𝓂::ℳ,
     push!(solution_active_plot_container, args_and_kwargs)
 
     # Generate plots from container
-    return _plot_solution_from_container(;
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
+    return plot_solution_from_container(;
                                          show_plots = show_plots,
                                          save_plots = save_plots,
                                          save_plots_format = save_plots_format,
@@ -3947,7 +4039,7 @@ end
 
 
 # Helper function to generate plots from the solution container
-function _plot_solution_from_container(;
+function plot_solution_from_container(;
                                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -3971,22 +4063,9 @@ function _plot_solution_from_container(;
         push!(joint_states, string(apply_custom_name.(container[:state], Ref(Dict(container[:rename_dictionary])))))
     end
     
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
     
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-    
-    attributes = merge(attrbts, plot_attributes)
-    attributes_redux = copy(attributes)
-    delete!(attributes_redux, :framestyle)
-    
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-    total_pal_len = 100
-    alpha_reduction_factor = 0.7
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
     
     # Create comparison of containers to detect differences
     # Keep relevant keys for comparison: model_name, state, parameters, algorithm, ignore_obc, label
@@ -3994,57 +4073,13 @@ function _plot_solution_from_container(;
     diffdict = Dict{Symbol,Any}()
     
     if length(solution_active_plot_container) > 1
-        no_duplicate = all(
-            !(all((
-                get(dict, :parameters, nothing) == solution_active_plot_container[end][:parameters],
-                get(dict, :model_name, nothing) == solution_active_plot_container[end][:model_name],
-                get(dict, :algorithm, nothing) == solution_active_plot_container[end][:algorithm],
-                get(dict, :ignore_obc, nothing) == solution_active_plot_container[end][:ignore_obc],
-                all(get(dict, k, nothing) == get(solution_active_plot_container[end], k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
-            )))
-            for dict in solution_active_plot_container[1:end-1]
-        ) # "New plot must be different from previous plot. Use the version without ! to plot."
-
-        if !no_duplicate
-            @info "Plot with same parameters already exists. Using previous plot data to create plot."
-
-            pop!(solution_active_plot_container)
-        end
+        check_and_remove_duplicate!(solution_active_plot_container,
+            [:parameters, :model_name, :algorithm, :ignore_obc, :tol])
 
         if length(solution_active_plot_container) == 0
             diffdict[:label] = [solution_active_plot_container[1][:label]]
         else
-            # 1. Keep only certain keys from each dictionary
-            reduced_vector = [
-                Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-                for d in solution_active_plot_container
-            ]
-
-            diffdict = compare_args_and_kwargs(reduced_vector)
-
-            # 2. Group the original vector by :model_name
-            grouped_by_model = Dict{Any, Vector{Dict}}()
-
-            for d in solution_active_plot_container#[1:end-1]
-                model = d[:model_name]
-                d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-                push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-            end
-
-            model_names = []
-
-            for d in solution_active_plot_container
-                push!(model_names, d[:model_name])
-            end
-
-            model_names = unique(model_names)
-
-            for model in model_names
-                if length(grouped_by_model[model]) > 1
-                    diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-                    diffdict = merge_by_runid(diffdict, diffdict_grouped)
-                end
-            end
+            diffdict = compute_diffdict(solution_active_plot_container, keys(solution_active_plot_container[end]))
         end
     else
         # For single container, create a diffdict with just the label
@@ -4073,41 +4108,16 @@ function _plot_solution_from_container(;
     end
     
     # Add parameters if different
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
+    annotate_param_diff!(annotate_diff_input, diffdict)
    
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end 
+    annotate_rename_dict_diff!(annotate_diff_input, diffdict) 
 
     # Add ignore_obc if different
     if haskey(diffdict, :ignore_obc)
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
     end
+
+    annotate_tol_diff!(annotate_diff_input, solution_active_plot_container)
 
     # Determine legend labels based on what differs
     # If more than one input differs (besides label), use custom labels from diffdict
@@ -4117,7 +4127,7 @@ function _plot_solution_from_container(;
 
     # Create legend with 2 columns so dynamics and steady state entries are side by side
     legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
-    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(solution_active_plot_container)))) && length(solution_active_plot_container) > 1
+    plt_lab_switch = should_use_label_switch(annotate_diff_input, solution_active_plot_container)
     if plt_lab_switch
         # Multiple differences - use custom labels or plot labels
         for (i, container) in enumerate(solution_active_plot_container)
@@ -4300,104 +4310,42 @@ function _plot_solution_from_container(;
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1
             else
-                if haskey(diffdict, :model_name)
-                    model_string = "multiple models"
-                    model_string_filename = "multiple_models"
-                else
-                    model_string = solution_active_plot_container[1][:model_name]
-                    model_string_filename = solution_active_plot_container[1][:model_name]
-                end
-
                 plot_count = 1
-                
-                ppp = StatsPlots.plot(pp...; attributes...)
-                
-                # Build plot elements array
-                plot_elements = [ppp, legend_plot]
-                layout_heights = [15, length(annotate_diff_input)]
-                
-                # Add relevant input differences table if multiple inputs differ
-                if plt_lab_switch || (any_custom_label  && len_diff > 1)
-                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-                    push!(plot_elements, ppp_input_diff)
-                    push!(layout_heights, 5)
-                end
-                
-                # Create plot title including state info
+
                 state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
-                plot_title = "Model: " * model_string * state_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")"
-                
-                # Create final plot with appropriate layout
-                p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...
+                state_name = replace_indices_in_symbol(Symbol(state))
+
+                pane = assemble_and_emit_page!(
+                    return_plots, pp, legend_plot,
+                    annotate_diff_input, diffdict,
+                    attributes, attributes_redux,
+                    pane, n_subplots, plots_per_page,
+                    show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                    solution_active_plot_container[1][:model_name];
+                    title_extra = state_string,
+                    filename_extra = string(state_name),
+                    show_diff_table = plt_lab_switch || (any_custom_label && len_diff > 1),
                 )
-                
-                push!(return_plots, p)
-                
-                if show_plots
-                    display(p)
-                end
-                
-                if save_plots
-                    if !isdir(save_plots_path) mkpath(save_plots_path) end
-                    state_name = replace_indices_in_symbol(Symbol(state))
-                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
-                end
-                
-                pane += 1
-                pp = []
             end
         end
         
         # Handle remaining plots for this state
         if length(pp) > 0
-            ppp = StatsPlots.plot(pp...; attributes...)
-            
-            # Build plot elements array
-            plot_elements = [ppp, legend_plot]
-            layout_heights = [15, length(annotate_diff_input)]
-            
-            # Add relevant input differences table if multiple inputs differ
-            if plt_lab_switch || (any_custom_label  && len_diff > 1)
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-                push!(plot_elements, ppp_input_diff)
-                push!(layout_heights, 5)
-            end
-            
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = solution_active_plot_container[1][:model_name]
-                model_string_filename = solution_active_plot_container[1][:model_name]
-            end
-
-            # Create plot title including state info
             state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
-            plot_title = "Model: " * model_string * state_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")"
-            
-            # Create final plot with appropriate layout
-            p = StatsPlots.plot(plot_elements...,
-                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = plot_title; 
-                            attributes_redux...
+            state_name = replace_indices_in_symbol(Symbol(state))
+
+            assemble_and_emit_page!(
+                return_plots, pp, legend_plot,
+                annotate_diff_input, diffdict,
+                attributes, attributes_redux,
+                pane, n_subplots, plots_per_page,
+                show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                solution_active_plot_container[1][:model_name];
+                title_extra = state_string,
+                filename_extra = string(state_name),
+                show_diff_table = plt_lab_switch || (any_custom_label && len_diff > 1),
+                is_tail = true,
             )
-            
-            push!(return_plots, p)
-            
-            if show_plots
-                display(p)
-            end
-            
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-                state_name = replace_indices_in_symbol(Symbol(state))
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
         end
     end  # End of state loop
     
@@ -4498,9 +4446,15 @@ function plot_solution!(𝓂::ℳ,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                        caching::Bool = DEFAULT_CACHING,
+                        use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
     
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     # Do NOT clear container - add to existing
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -4509,19 +4463,8 @@ function plot_solution!(𝓂::ℳ,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-                    
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -4542,7 +4485,9 @@ function plot_solution!(𝓂::ℳ,
                             sylvester_algorithm = sylvester_algorithm,
                             lyapunov_algorithm = lyapunov_algorithm,
                             tol = tol,
-                            verbose = verbose)
+                            verbose = verbose,
+                            caching = caching,
+                            use_workspaces = use_workspaces)
 
     SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
     
@@ -4565,13 +4510,7 @@ function plot_solution!(𝓂::ℳ,
     vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -4587,7 +4526,9 @@ function plot_solution!(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     full_SS_current = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
@@ -4596,7 +4537,9 @@ function plot_solution!(𝓂::ℳ,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³],
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
@@ -4614,7 +4557,7 @@ function plot_solution!(𝓂::ℳ,
             initial_state = collect(full_SS_current) .+ state_selector * x
         end
 
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all, caching = caching, use_workspaces = use_workspaces)[:,1,1] |> collect)
     end
 
     var_state_range = hcat(var_state_range...)
@@ -4647,6 +4590,7 @@ function plot_solution!(𝓂::ℳ,
                            :σ => σ,
                            :parameters => Dict(𝓂.constants.post_complete_parameters.parameters .=> 𝓂.parameter_values),
                            :ignore_obc => ignore_obc,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
@@ -4657,8 +4601,10 @@ function plot_solution!(𝓂::ℳ,
 
     push!(solution_active_plot_container, args_and_kwargs)
 
+    if !use_workspaces 𝓂.workspaces = orig_ws end
+
     # Generate plots from container
-    return _plot_solution_from_container(;
+    return plot_solution_from_container(;
                                          show_plots = show_plots,
                                          save_plots = save_plots,
                                          save_plots_format = save_plots_format,
@@ -4784,22 +4730,16 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    caching::Bool = DEFAULT_CACHING,
+                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
     
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
 
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     initial_state_input = copy(initial_state)
 
@@ -4823,7 +4763,10 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 tol = tol,
-                                verbose = verbose)
+                                verbose = verbose,
+                                caching = caching,
+                                use_workspaces = use_workspaces)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
@@ -4851,7 +4794,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     tol = tol,
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
@@ -4942,13 +4887,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
     # Process rename dictionary to only include relevant keys in sorted order
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     # Combine sorted indices
     combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
@@ -4981,16 +4920,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :var_idx => var_idx,
                            :algorithm => algorithm,
 
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -5004,13 +4934,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     n_subplots = length(var_idx)
     pp = []
@@ -5122,6 +5046,8 @@ function plot_conditional_forecast(𝓂::ℳ,
             StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end
@@ -5245,24 +5171,18 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    caching::Bool = DEFAULT_CACHING,
+                                    use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
     # @nospecialize # reduce compile time
                  
+    if !caching invalidate_cache_validity!(𝓂) end
+    orig_ws = 𝓂.workspaces
+    if !use_workspaces 𝓂.workspaces = fresh_workspaces(orig_ws) end
+
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
                    
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
-    if !gr_back
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
-    else
-        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
-    end
-
-    attributes = merge(attrbts, plot_attributes)
-
-    attributes_redux = copy(attributes)
-
-    delete!(attributes_redux, :framestyle)
+    gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
     initial_state_input = copy(initial_state)
 
@@ -5286,8 +5206,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 tol = tol,
-                                verbose = verbose)
+                                verbose = verbose,
+                                caching = caching,
+                                use_workspaces = use_workspaces)
 
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = true)
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = vcat(sort(union(𝓂.constants.post_model_macro.var,𝓂.constants.post_model_macro.aux,𝓂.constants.post_model_macro.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.constants.post_model_macro.exo))
@@ -5314,7 +5237,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     tol = tol,
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm)
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    caching = caching,
+                                    use_workspaces = use_workspaces)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
@@ -5401,13 +5326,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
     # Process rename dictionary to only include relevant keys in sorted order
-    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
-
-    processed_rename_dictionary = Any[]
-
-    for k in relevant_keys
-        push!(processed_rename_dictionary, k => rename_dictionary[k])
-    end
+    processed_rename_dictionary = process_rename_dictionary(rename_dictionary, 𝓂)
 
     # Combine sorted indices
     combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
@@ -5426,13 +5345,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     # sorted_variable_names_display = sort(variable_names_display)
     sorted_shock_names_display = sort(shock_names_display)
 
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    pal = build_extended_palette(attributes_redux)
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -5448,16 +5361,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :var_idx => var_idx,
                            :algorithm => algorithm,
 
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
+                           :tol => tol_to_dict(tol, algorithm; needs_covariance = true),
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
@@ -5469,55 +5373,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :rename_dictionary => processed_rename_dictionary
                            )
                            
-    no_duplicate = all(
-        !(all((
-            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
-            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
-            get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
-            get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
-            get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
-        )))
-        for dict in conditional_forecast_active_plot_container
-    ) # "New plot must be different from previous plot. Use the version without ! to plot."
-    
-    if no_duplicate 
-        push!(conditional_forecast_active_plot_container, args_and_kwargs)
-    else
-        @info "Plot with same parameters already exists. Using previous plot data to create plot."
-    end
+    push_if_no_duplicate!(conditional_forecast_active_plot_container, args_and_kwargs,
+        [:parameters, :rename_dictionary, :conditions, :shocks, :initial_state, :tol])
 
-    # 1. Keep only certain keys from each dictionary
-    reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-        for d in conditional_forecast_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # 2. Group the original vector by :model_name
-    grouped_by_model = Dict{Any, Vector{Dict}}()
-
-    for d in conditional_forecast_active_plot_container
-        model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-    end
-
-    model_names = []
-
-    for d in conditional_forecast_active_plot_container
-        push!(model_names, d[:model_name])
-    end
-
-    model_names = unique(model_names)
-
-    for model in model_names
-        if length(grouped_by_model[model]) > 1
-            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-            diffdict = merge_by_runid(diffdict, diffdict_grouped)
-        end
-    end
+    diffdict = compute_diffdict(conditional_forecast_active_plot_container, keys(args_and_kwargs))
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -5529,13 +5388,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     len_diff = length(conditional_forecast_active_plot_container)
 
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
+    annotate_param_diff!(annotate_diff_input, diffdict)
 
     if haskey(diffdict, :shocks)
         shocks = diffdict[:shocks]
@@ -5662,49 +5515,19 @@ function plot_conditional_forecast!(𝓂::ℳ,
         push!(annotate_diff_input, "Initial state" => labels)
     end
 
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end
+    annotate_rename_dict_diff!(annotate_diff_input, diffdict)
 
     same_shock_direction = true
     
-    for k in setdiff(keys(args_and_kwargs), 
-                        [
-                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
-                            :shocks, :shock_names,
-                            :variables, :variable_names, :var_idx,
-                            :rename_dictionary,
-                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
-                        ]
-                    )
-
-        if haskey(diffdict, k)
-            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat,diffdict[k]))
-            
-            if k == :negative_shock
-                same_shock_direction = false
-            end
-        end
+    if annotate_default_kwarg_diffs!(annotate_diff_input, args_and_kwargs, diffdict,
+            [:run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
+             :shocks, :shock_names,
+             :variables, :variable_names, :var_idx,
+             :rename_dictionary])
+        same_shock_direction = false
     end
+
+    annotate_tol_diff!(annotate_diff_input, conditional_forecast_active_plot_container)
 
     if haskey(diffdict, :shock_names)
         if all(length.(diffdict[:shock_names]) .== 1)
@@ -5722,7 +5545,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     single_shock_per_irf = true
 
     max_periods = 0
-    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(conditional_forecast_active_plot_container)))) && length(conditional_forecast_active_plot_container) > 1
+    plt_lab_switch = should_use_label_switch(annotate_diff_input, conditional_forecast_active_plot_container)
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
@@ -5884,137 +5707,38 @@ function plot_conditional_forecast!(𝓂::ℳ,
         else
             plot_count = 1
 
-            shock_string = "Conditional forecast"
-
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = 𝓂.model_name
-                model_string_filename = 𝓂.model_name
-            end
-            
-            plot_title = "Model: "*model_string*"        " *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-            ppp = StatsPlots.plot(pp...; attributes...)
-
-            plot_elements = [ppp, legend_plot]
-
-            layout_heights = [15, length(annotate_diff_input)]
-            
-            if plt_lab_switch
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-
-                push!(layout_heights, 5)
-
-                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-            else
-                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-
-            if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_ss)
-                
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots# & (length(pp) > 0)
-                display(p)
-            end
-
-            if save_plots# & (length(pp) > 0)
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-            end
-
-            pane += 1
-
-            annotate_ss_page = Pair{String,Any}[]
-
-            pp = []
+            pane = assemble_and_emit_page!(
+                return_plots, pp, legend_plot,
+                annotate_diff_input, diffdict,
+                attributes, attributes_redux,
+                pane, n_subplots, plots_per_page,
+                show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+                𝓂.model_name;
+                title_extra = "        Conditional forecast",
+                annotate_ss = annotate_ss,
+                annotate_ss_page = annotate_ss_page,
+                plt_lab_switch = plt_lab_switch,
+            )
         end
     end
 
     if length(pp) > 0
-        shock_string = "Conditional forecast"
-
-        if haskey(diffdict, :model_name)
-            model_string = "multiple models"
-            model_string_filename = "multiple_models"
-        else
-            model_string = 𝓂.model_name
-            model_string_filename = 𝓂.model_name
-        end
-        
-        plot_title = "Model: "*model_string*"        " *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-        ppp = StatsPlots.plot(pp...; attributes...)
-
-        plot_elements = [ppp, legend_plot]
-
-        layout_heights = [15, length(annotate_diff_input)]
-
-        if plt_lab_switch
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_input_diff)
-
-            push!(layout_heights, 5)
-
-            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-        else
-            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-        end
-
-        push!(annotate_ss, annotate_ss_page)
-
-        if length(annotate_ss[pane]) > 1
-            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_ss)
-            
-            push!(layout_heights, 5)
-        end
-
-        p = StatsPlots.plot(plot_elements...,
-                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = plot_title; 
-                            attributes_redux...)
-                                
-        push!(return_plots,p)
-
-        if show_plots# & (length(pp) > 0)
-            display(p)
-        end
-
-        if save_plots# & (length(pp) > 0)
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-        end
+        assemble_and_emit_page!(
+            return_plots, pp, legend_plot,
+            annotate_diff_input, diffdict,
+            attributes, attributes_redux,
+            pane, n_subplots, plots_per_page,
+            show_plots, save_plots, save_plots_path, save_plots_name, save_plots_format,
+            𝓂.model_name;
+            title_extra = "        Conditional forecast",
+            annotate_ss = annotate_ss,
+            annotate_ss_page = annotate_ss_page,
+            plt_lab_switch = plt_lab_switch,
+            is_tail = true,
+        )
     end
+
+    if !use_workspaces 𝓂.workspaces = orig_ws end
 
     return return_plots
 end

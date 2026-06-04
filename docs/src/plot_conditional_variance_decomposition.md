@@ -125,6 +125,8 @@ The vertical axis shows the share of the shocks variance contribution, and the h
 
 Note that if occasionally binding constraints are present in the model, they are not taken into account here.
 
+For the unconditional variance decomposition under pruned higher-order solutions ([`get_variance_decomposition`](@ref)) you can additionally request `marginal_contribution = true` to allocate the cross-shock interaction across the individual shocks via marginal contributions (Shapley values), so that the resulting table has one column per shock and rows summing to one.
+
 The same function can be called using different names. For example: `plot_fevd`, or `plot_forecast_error_variance_decomposition`. Going forward, `plot_fevd` will be used for brevity.
 
 ## Periods Argument
@@ -526,8 +528,11 @@ The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
-custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
-    sylvester_acceptance_tol = 1e-12)
+custom_tol = Tolerances(
+    first_order = MacroModelling.FirstOrderTolerances(qme = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12))
+)
 
 plot_fevd(Smets_Wouters_2007_linear,
     tol = custom_tol,

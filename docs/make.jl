@@ -6,7 +6,7 @@
 
 using Documenter
 using MacroModelling
-import Optim, StatsPlots, Turing
+import MatrixEquations, ForwardDiff, Mooncake, Optim, StatsPlots, Turing
 using DocumenterCitations
 
 bib = CitationBibliography(
@@ -25,6 +25,9 @@ makedocs(
     format = Documenter.HTML(size_threshold = 204800*10),
     modules = [
         MacroModelling,
+        Base.get_extension(MacroModelling, :ForwardDiffExt),
+        Base.get_extension(MacroModelling, :MatrixEquationsExt),
+        Base.get_extension(MacroModelling, :MooncakeExt),
         Base.get_extension(MacroModelling, :OptimExt),
         Base.get_extension(MacroModelling, :StatsPlotsExt),
         Base.get_extension(MacroModelling, :TuringExt),
@@ -47,9 +50,12 @@ makedocs(
             "Model Estimates" => "plot_model_estimates.md",
         ],
         "Steady State" => "steady_state.md",
+        "Shapley decompositions (higher order)" => "shapley_decompositions.md",
+        "Speed Benchmarks" => "speed.md",
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
+            "Modifying a model after definition" => "how-to/modify_equations.md",
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",

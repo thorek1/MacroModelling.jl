@@ -800,8 +800,11 @@ The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
-custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
-    sylvester_acceptance_tol = 1e-12)
+custom_tol = Tolerances(
+    first_order = MacroModelling.FirstOrderTolerances(qme = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12)),
+    third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-12))
+)
 
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     tol = custom_tol,

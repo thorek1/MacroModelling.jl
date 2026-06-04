@@ -2,11 +2,13 @@ using SparseArrays
 using MacroModelling
 using Random
 using Test
-import MacroModelling: post_model_macro, get_NSSS_and_parameters, ensure_qme_workspace!, ensure_sylvester_1st_order_workspace!
+import MacroModelling: post_model_macro, get_NSSS_and_parameters
 using ForwardDiff
 import LinearAlgebra as ℒ
-using FiniteDifferences, Zygote
+using FiniteDifferences
+using Zygote, Mooncake
 import Optim, LineSearches
+import DifferentiationInterface, ADTypes
 
 Random.seed!(3)
 
@@ -66,23 +68,19 @@ get_irf(RBC_CME, algorithm = :third_order)
 get_irf(RBC_CME, algorithm = :pruned_third_order)
 get_irf(RBC_CME, algorithm = :pruned_second_order)
 
-∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.jacobian)# |> Matrix
-∇₂ = calculate_hessian(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.hessian)# * RBC_CME.constants.second_order.𝐔∇₂
-∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.third_order_derivatives)# * RBC_CME.constants.third_order.𝐔∇₃
+∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.jacobian, RBC_CME.workspaces)# |> Matrix
+∇₂ = calculate_hessian(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.hessian, RBC_CME.workspaces)# * RBC_CME.constants.second_order.𝐔∇₂
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values, SS_and_pars, RBC_CME.caches, RBC_CME.functions.third_order_derivatives, RBC_CME.workspaces)# * RBC_CME.constants.third_order.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 T = RBC_CME.constants.post_model_macro
 
-qme_ws = ensure_qme_workspace!(RBC_CME)
-sylv_ws = ensure_sylvester_1st_order_workspace!(RBC_CME)
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants, qme_ws, sylv_ws)# |> Matrix{Float32}
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.constants, RBC_CME.workspaces, RBC_CME.caches)# |> Matrix{Float32}
 
-second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces)
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.constants, RBC_CME.workspaces, RBC_CME.caches)
 
-
-# second_order_solution *= RBC_CME.constants.second_order_auxiliary_matrices.𝐔₂
-
-second_order_solution = sparse(second_order_solution * RBC_CME.constants.second_order.𝐔₂)
+# second_order_solution is now compressed (b₂ columns); pass compressed to third-order
+# (both functions expand internally)
 
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
                                                             ∇₂, 
@@ -90,7 +88,11 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             first_order_solution, 
                                                             second_order_solution, 
                                                             RBC_CME.constants, 
-                                                            RBC_CME.workspaces)
+                                                            RBC_CME.workspaces,
+                                                            RBC_CME.caches)
+
+# Expand second_order_solution to full space for comparison
+second_order_solution = sparse(second_order_solution * RBC_CME.constants.second_order.𝐔₂)
 
 # third_order_solution *= RBC_CME.constants.third_order_auxiliary_matrices.𝐔₃
 
@@ -164,7 +166,7 @@ third_order_solution = sparse(third_order_solution * RBC_CME.constants.third_ord
     -0.0226
     0.0021014511165327685
     -0.0021014511165327685],7,225)
-    @test isapprox(∇₂,hessian2,rtol = eps(Float32))
+    @test isapprox(∇₂ * RBC_CME.constants.second_order.𝐔∇₂, hessian2,rtol = eps(Float32))
 
 
     third_order_derivatives2 = sparse(vec([ 2  2  2  2  3  3  3  3  3  3  3  3  2  2  3  3  3  2  3  2  3  3  2  3  3  2  2  2  1  5  4  3  3  3  3  2  3  2  2  2  2  2  2  2  2  1  5  1  5  1  5]),
@@ -564,7 +566,7 @@ end
     [0,0.95,0,0], [1,1,1,2], [.16, .999,.022,1], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.constants.post_complete_parameters.parameters[1:4], mean = RBC_CME.constants.post_model_macro.var[[4,6]], standard_deviation = RBC_CME.constants.post_model_macro.var[4:5], autocorrelation = RBC_CME.constants.post_model_macro.var[[3,5]], autocorrelation_periods = 1:1, algorithm = :pruned_third_order)
+    out = get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.constants.post_complete_parameters.parameters[1:4], mean = RBC_CME.constants.post_model_macro.var[[4,6]], standard_deviation = RBC_CME.constants.post_model_macro.var[4:5], autocorrelation = RBC_CME.constants.post_model_macro.var[[3,5]], autocorrelation_periods = 1:1, algorithm = :pruned_third_order)
 
     @test isapprox([out[:mean], out[:standard_deviation], out[:autocorrelation], sol.minimizer[3]],
     [[1.2,1.4],[.013,.2],[.955,.997][:,:],.0215],
@@ -622,6 +624,18 @@ RBC_CME = nothing
 
     @test isapprox(forw_grad,fin_grad,rtol = 1e-5)
 
+    solution_norm_obj = x -> ℒ.norm(get_solution(RBC_CME, x)[2][1])
+    forw_grad = ForwardDiff.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))
+    reverse_grad = DifferentiationInterface.gradient(solution_norm_obj, ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
+    zygote_reverse_grad = Zygote.gradient(solution_norm_obj, Float64.(RBC_CME.parameter_values))[1]
+    fin_grad = FiniteDifferences.grad(central_fdm(4,1), solution_norm_obj, RBC_CME.parameter_values)[1]
+
+    @test isapprox(forw_grad,reverse_grad,rtol = 1e-6)
+    @test isapprox(forw_grad,zygote_reverse_grad,rtol = 1e-6)
+    @test isapprox(forw_grad,fin_grad,rtol = 1e-6)
+
+
+
 
 
     Random.seed!(3)
@@ -631,11 +645,13 @@ RBC_CME = nothing
     @test isapprox(425.7689804539224, get_loglikelihood(RBC_CME, data(observables), RBC_CME.parameter_values),rtol = 1e-5)
 
     forw_grad = ForwardDiff.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))
-    reverse_grad = Zygote.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))[1]
+    reverse_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), ADTypes.AutoMooncake(config = nothing), Float64.(RBC_CME.parameter_values))
+    zygote_reverse_grad = Zygote.gradient(x -> get_loglikelihood(RBC_CME, data(observables), x), Float64.(RBC_CME.parameter_values))[1]
 
     fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> get_loglikelihood(RBC_CME, data(observables), x), RBC_CME.parameter_values)[1]
 
     @test isapprox(forw_grad,fin_grad, rtol = 1e-6)
+    @test isapprox(forw_grad,zygote_reverse_grad, rtol = 1e-6)
     @test isapprox(forw_grad,reverse_grad, rtol = 1e-6)
 
     RBC_CME = nothing

@@ -96,13 +96,13 @@ data = data(observables,:)
 
 ## Define bayesian model
 
-Next the parameter priors are defined using the Turing package. The `@model` macro of the Turing package allows defining the prior distributions over the parameters and combining it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. The prior distributions are defined in an array and passed on to the `arraydist` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `arraydist` function is substantially faster. When defining the prior distributions the distribution implemented in the Distributions package can be relied upon. Note that the `μσ` parameter allows handing over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and upper and lower bounds truncating the distribution can also be defined as third and fourth arguments to the distribution functions. Last but not least, the loglikelihood is defined and added to the posterior loglikelihood with the help of the `@addlogprob!` macro.
+Next the parameter priors are defined using the Turing package. The `@model` macro of the Turing package allows defining the prior distributions over the parameters and combining it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. The prior distributions are defined in an array and passed on to the `product_distribution` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `product_distribution` function is substantially faster. When defining the prior distributions the distribution implemented in the Distributions package can be relied upon. Note that the `μσ` parameter allows handing over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and upper and lower bounds truncating the distribution can also be defined as third and fourth arguments to the distribution functions. Last but not least, the loglikelihood is defined and added to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
 import Turing
-import Turing: NUTS, sample, logpdf, replacenames
-import ADTypes: AutoZygote
-import Zygote
+import Turing: NUTS, sample, logpdf
+import ADTypes: AutoMooncake
+import Mooncake
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp
@@ -117,7 +117,7 @@ prior_distributions = [
 ]
 
 Turing.@model function FS2000_loglikelihood_function(prior_distributions, data, m; verbose = false)
-    parameters ~ Turing.arraydist(prior_distributions)
+    parameters ~ Turing.product_distribution(prior_distributions)
 
     Turing.@addlogprob! get_loglikelihood(m, data, parameters)
 end
@@ -127,6 +127,8 @@ end
 
 The No-U-Turn Sampler (NUTS) is used to obtain the posterior distribution of the parameters. It exploits gradients of the posterior log‑likelihood with respect to model parameters to navigate the parameter space efficiently. NUTS is regarded as robust and fast, and it simplifies tuning by automatically adapting its hyperparameters.
 
+[Mooncake.jl](https://github.com/compintell/Mooncake.jl) is the recommended reverse-mode automatic differentiation backend for gradient-based sampling. The package provides custom `rrule` definitions (via ChainRulesCore) for all solvers and filters, so other ChainRules-compatible backends (e.g. Zygote.jl) also work. For forward-mode AD (e.g. computing Jacobians of solutions or moments), [ForwardDiff.jl](https://github.com/JuliaDiff/ForwardDiff.jl) is supported via a package extension.
+
 First the loglikelihood model is defined with the specific data, and model. Next, 1000 samples are drawn from the model:
 
 ```@repl tutorial_2
@@ -134,19 +136,17 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 n_samples = 1000
 
-chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = FS2000.parameter_values)
+chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 ```
 
 ### Inspect posterior
 
 In order to understand the posterior distribution and the sequence of samples they are plotted:
 
-```@repl tutorial_2; setup = :(using HDF5; using MCMCChainsStorage; chain_NUTS = h5open("../assets/chain_NUTS.h5", "r") do f read(f, Chains) end)
+```@repl tutorial_2
 using StatsPlots
 
-chain_NUTS_rn = replacenames(chain_NUTS, Dict(["parameters[$i]" for i in 1:length(FS2000.parameters)] .=> FS2000.parameters))
-
-plot(chain_NUTS_rn);
+plot(chain_NUTS);
 ```
 
 ![NUTS chain](../assets/FS2000_chain_NUTS.png)
@@ -154,12 +154,12 @@ plot(chain_NUTS_rn);
 Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.
 
 ```@repl tutorial_2
-using ComponentArrays, MCMCChains
+using ComponentArrays
 import DynamicPPL: logjoint
 
-parameter_mean = mean(chain_NUTS)
+parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
 
-pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));
+pars = ComponentArray([parameter_mean], Axis(:parameters));
 
 logjoint(FS2000_loglikelihood, pars)
 
@@ -176,8 +176,10 @@ par2 = :gam;
 paridx1 = indexin([par1], FS2000.parameters)[1];
 paridx2 = indexin([par2], FS2000.parameters)[1];
 
-par_range1 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx1]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx1]")]), length = granularity));
-par_range2 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx2]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx2]")]), length = granularity));
+parameter_samples = chain_NUTS[:parameters, stack = true]
+
+par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));
+par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));
 
 p = surface(par_range1, par_range2, 
             (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
@@ -185,13 +187,13 @@ p = surface(par_range1, par_range2,
             colorbar=false,
             color=:inferno);
 
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray([reduce(hcat, get(chain_NUTS, :parameters)[1])[s,:]], Axis(:parameters))) for s in 1:length(chain_NUTS)];
+joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));
 
-scatter3d!(vec(collect(chain_NUTS[Symbol("parameters[$paridx1]")])),
-            vec(collect(chain_NUTS[Symbol("parameters[$paridx2]")])),
+scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
+            vec(collect(parameter_samples[:, :, paridx2])),
             joint_loglikelihood,
             mc = :viridis, 
-            marker_z = collect(1:length(chain_NUTS)), 
+            marker_z = collect(1:length(joint_loglikelihood)), 
             msw = 0,
             legend = false, 
             colorbar = false, 
@@ -211,8 +213,8 @@ Other than the mean and median of the posterior distribution the mode can also b
 
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
-                                        adtype = AutoZygote(), 
-                                        initial_params = FS2000.parameter_values)
+                                        adtype = AutoMooncake(; config=nothing), 
+                                        initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))
 ```
 
 ## Model estimates given the data and the model solution

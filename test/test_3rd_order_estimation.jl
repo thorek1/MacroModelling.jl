@@ -1,15 +1,26 @@
+using Test
 using MacroModelling
 import Turing
-import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf, PG, IS
+import Mooncake
+import ADTypes
+import ADTypes: AutoMooncake
+import DifferentiationInterface
+import FiniteDifferences
+import Turing: NUTS, sample, MvNormal
 import Optim, LineSearches
-using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import LinearAlgebra as ℒ
+using Random, DelimitedFiles, AxisKeys
+
+using FlexiChains
+include("test_helpers.jl")
 
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+dat, header = readdlm("data/usmodel.csv", ',', header = true)
+dat = Float64.(dat)
+names = vec(Symbol.(strip.(header)))
+data = KeyedArray(dat', Variable = names, Time = axes(dat, 1))
 
 # declare observables
 observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
@@ -43,8 +54,52 @@ dists = [
     Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
+n_samples = 100
+
+# ---------------------------------------------------------------------------
+# Filter-free estimation (joint sampling of parameters and latent shocks)
+# Third order — NUTS via the analytical rrule + Mooncake AD.  Same sampler
+# (NUTS, Mooncake) and number of draws as the inversion-filter run above;
+# correctness of the rrule itself is checked in
+# `test_filter_free_gradients.jl`.
+# ---------------------------------------------------------------------------
+const T_ff_3rd = size(data, 2)
+const data_ff_3rd = data
+const nExo_ff_3rd = length(get_shocks(Caldara_et_al_2012_estim))
+
+Turing.@model function Caldara_et_al_2012_filter_free_function(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
+    all_params  ~ Turing.product_distribution(dists)
+    me_std      ~ InverseGamma(0.05, Inf, μσ = true)
+    shocks_vec  ~ MvNormal(zeros(nExo * nT), ℒ.I)
+    shocks      = collect(reshape(shocks_vec, nExo, nT))
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params, shocks, me_std;
+                                                      algorithm = algorithm,
+                                                      on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+Random.seed!(30)
+
+@testset "Filter-free NUTS (third order)" begin
+    init_ff = (; all_params = Caldara_et_al_2012_estim.parameter_values,
+                 me_std     = 0.05,
+                 shocks_vec = zeros(nExo_ff_3rd * T_ff_3rd))
+    ff_samps = @time sample(
+        Caldara_et_al_2012_filter_free_function(data_ff_3rd, Caldara_et_al_2012_estim,
+                                                 :third_order, nExo_ff_3rd, T_ff_3rd, -Inf),
+        NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)),
+        n_samples,
+        progress = true,
+        initial_params = Turing.InitFromParams(init_ff))
+    posterior_summary = FlexiChains.summarystats(ff_samps)
+    show(stdout, MIME"text/plain"(), posterior_summary)
+    println()
+    println("Mean variable values (filter-free, third order): $(collect(values(FlexiChains.mean(ff_samps); parameters_only = true)))")
+    @test size(ff_samps, 1) == n_samples
+end
+
+
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
-    all_params ~ Turing.arraydist(dists)
+    all_params ~ Turing.product_distribution(dists)
 
     Turing.@addlogprob! get_loglikelihood(m, 
                                             data, 
@@ -66,34 +121,109 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
                                                 Optim.NelderMead(),
                                                 iterations = 100,
                                                 # show_trace = true,
-                                                initial_params = Caldara_et_al_2012_estim.parameter_values)
+                                                initial_params = Turing.InitFromParams((; all_params = Caldara_et_al_2012_estim.parameter_values)))
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
+                                                adtype = AutoMooncake(; config=nothing),
                                                 iterations = 100,
                                                 # show_trace = true,
-                                                initial_params = mode_estimateNM.values)
+                                                initial_params = Turing.InitFromParams(mode_estimateNM))
 
-init_params = mode_estimateLBFGS.values |> collect
+init_params = collect(mode_estimateLBFGS.params.data.all_params)
 
-println("Mode variable values (L-BFGS): $init_params")
-
-n_samples = 100
-
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
-
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
-
-sample_nuts = mean(samps).nt.mean
+println("Mode variable values (L-BFGS): $(mode_estimateLBFGS.params)")
 
 
+samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS))
+
+posterior_summary = FlexiChains.summarystats(samps)
+show(stdout, MIME"text/plain"(), posterior_summary)
+println()
+println("Mean variable values (Mooncake): $(collect(values(FlexiChains.mean(samps); parameters_only = true)))")
+
+sample_nuts = collect(values(FlexiChains.mean(samps); parameters_only = true))
+
+@testset "Mooncake vs FiniteDifferences gradient (3rd order)" begin
+    back_grad = DifferentiationInterface.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :third_order), ADTypes.AutoMooncake(config = nothing), init_params)
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1, max_range = 1e-3), x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :third_order), init_params)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
+
+
+# ---------------------------------------------------------------------------
+# Replicate the estimation problem on data with missing observations.
+# ---------------------------------------------------------------------------
+data_missing = inject_missing_observations(data)
+
+Random.seed!(3)
+
+Caldara_et_al_2012_loglikelihood_missing = Caldara_et_al_2012_loglikelihood_function(data_missing, Caldara_et_al_2012_estim, -Inf)
+
+mode_estimateNM_missing = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood_missing,
+                                                Optim.NelderMead(),
+                                                iterations = 100,
+                                                initial_params = Turing.InitFromParams((; all_params = Caldara_et_al_2012_estim.parameter_values)))
+
+mode_estimateLBFGS_missing = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood_missing,
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoMooncake(; config=nothing),
+                                                iterations = 100,
+                                                initial_params = Turing.InitFromParams(mode_estimateNM_missing))
+
+init_params_missing = collect(mode_estimateLBFGS_missing.params.data.all_params)
+
+println("Mode variable values (L-BFGS, missing data): $(mode_estimateLBFGS_missing.params)")
+
+samps_missing = sample(Caldara_et_al_2012_loglikelihood_missing, NUTS(1000, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = Turing.InitFromParams(mode_estimateLBFGS_missing))
+
+posterior_summary_missing = FlexiChains.summarystats(samps_missing)
+show(stdout, MIME"text/plain"(), posterior_summary_missing)
+println()
+println("Mean variable values (Mooncake, missing data): $(collect(values(FlexiChains.mean(samps_missing); parameters_only = true)))")
+
+sample_nuts_missing = collect(values(FlexiChains.mean(samps_missing); parameters_only = true))
+
+@testset "Estimation results (3rd order, missing data)" begin
+    @test all(isfinite, sample_nuts_missing)
+    @test length(sample_nuts_missing) == length(Caldara_et_al_2012_estim.parameter_values)
+    @test isfinite(mode_estimateLBFGS_missing.lp)
+end
+
+@testset "Mooncake vs FiniteDifferences gradient (3rd order, missing data)" begin
+    # Constant contexts avoid Mooncake's __verify_const NaN-array failure.
+    loglik_target(x, m, d) = get_loglikelihood(m, d, x, algorithm = :third_order)
+    back_grad = DifferentiationInterface.gradient(loglik_target,
+        ADTypes.AutoMooncake(config = nothing), init_params_missing,
+        DifferentiationInterface.Constant(Caldara_et_al_2012_estim),
+        DifferentiationInterface.Constant(data_missing))
+    @test !isnothing(back_grad)
+    @test all(isfinite, back_grad)
+
+    for i in 1:100
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1, max_range = 1e-3), x -> get_loglikelihood(Caldara_et_al_2012_estim, data_missing, x, algorithm = :third_order), init_params_missing)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences converged after $i iterations")
+            @test isapprox(back_grad, fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+end
 
 
 # include("../models/FS2000.jl")
 
 # # load data
-# dat = CSV.read("data/FS2000_data.csv", DataFrame)
+# dat, header = readdlm("data/FS2000_data.csv", ',', header = true)
 # data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 # data = log.(data)
 
@@ -127,10 +257,10 @@ sample_nuts = mean(samps).nt.mean
 #             n_rounds = 6,
 #             multithreaded = false)
 
-# samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+# samps = pigeons_flexichain(Pigeons.sample_array(pt), Pigeons.sample_names(pt))
 
 
-# println(mean(samps).nt.mean)
+# println(collect(values(FlexiChains.mean(samps); parameters_only = true)))
 
 
 # Random.seed!(30)
@@ -235,7 +365,7 @@ sample_nuts = mean(samps).nt.mean
 # 1
 # @testset "Estimation results" begin
 #     @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
-#     @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+#     @test isapprox(collect(values(FlexiChains.mean(samps); parameters_only = true)), [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 # end
 
 
@@ -293,4 +423,3 @@ sample_nuts = mean(samps).nt.mean
 #             alpha = 0.5);
 
 # p
-

@@ -26,8 +26,9 @@ function translate_mod_file(path_to_mod_file::AbstractString)
 
     args = [tmp * "/" * basename(path_to_mod_file), "language=julia", "json=compute"]
 
+    current_directory = pwd()
+
     if length(directory) > 0
-        current_directory = pwd()
         cd(directory)
     end
 
@@ -143,7 +144,7 @@ The recommended workflow is to use this function to write a .mod-file, and then 
 # Arguments
 - $MODEL®
 """
-function write_mod_file(𝓂::ℳ)
+function write_mod_file(𝓂::ℳ; order::Int = 1, pruning::Bool = false, irf_periods::Int = 40)
     NSSS = get_SS(𝓂, derivatives = false)
 
     index_in_name = NSSS.keys isa Base.RefValue{Vector{String}}
@@ -210,7 +211,14 @@ function write_mod_file(𝓂::ℳ)
             print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(index_in_name ? replace(string(v), "◖" => "{", "◗" => "}") : v)) * ";\n") 
         end
 
-        println(io, "end;\n\nstoch_simul(order = 1, irf = 40);")
+        stoch_opts = "order = $order, irf = $irf_periods"
+        if pruning
+            stoch_opts *= ", pruning"
+        end
+        if order > 2
+            stoch_opts *= ", k_order_solver"
+        end
+        println(io, "end;\n\nstoch_simul($stoch_opts);")
     end
 
     @info "Created " * 𝓂.model_name * ".mod"
@@ -252,3 +260,52 @@ write_to_dynare = write_mod_file
 See [`write_mod_file`](@ref)
 """
 export_model = write_mod_file
+
+
+
+
+function translate_symbol_to_ascii(x::Symbol)
+    ss = Unicode.normalize(replace(string(x),  "◖" => "__", "◗" => "__"), :NFD)
+
+    outstr = ""
+
+    for i in ss
+        out = REPL.symbol_latex(string(i))[2:end]
+        if out == ""
+            outstr *= string(i)
+        else
+            outstr *= replace(out,  
+                        r"\!" => s"_",
+                        r"\(" => s"_",
+                        r"\)" => s"_",
+                        r"\^" => s"_",
+                        r"\_\^" => s"_",
+                        r"\+" => s"plus",
+                        r"\-" => s"minus",
+                        r"\*" => s"times")
+            if i != ss[end]
+                outstr *= "_"
+            end
+        end
+    end
+
+    return outstr
+end
+
+
+function translate_expression_to_ascii(exp::Expr)
+    postwalk(x -> 
+                x isa Symbol ?
+                    begin
+                        x_tmp = translate_symbol_to_ascii(x)
+
+                        if x_tmp == string(x)
+                            x
+                        else
+                            Symbol(x_tmp)
+                        end
+                    end :
+                x,
+    exp)
+end
+
