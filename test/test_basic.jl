@@ -5,7 +5,6 @@ using Random
 import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
 import StatsPlots, Optim
-import MatrixEquations
 using Aqua
 import LinearAlgebra as ℒ
 using DelimitedFiles

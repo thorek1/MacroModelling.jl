@@ -14,7 +14,6 @@ import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, solve_ly
 const HAS_WORKSPACE_API = isdefined(MacroModelling, :Lyapunov_workspace)
 if HAS_WORKSPACE_API
     import MacroModelling: Lyapunov_workspace
-    import MatrixEquations
 end
 
 # Timings live in different places across versions.

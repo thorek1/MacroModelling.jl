@@ -73,7 +73,6 @@ using Pkg; Pkg.add(["MacroModelling", "StatsPlots"])
 ```julia
 using Pkg; Pkg.add(["Turing", "Mooncake"])         # Bayesian estimation with gradient-based samplers
 using Pkg; Pkg.add("ForwardDiff")                   # Forward-mode AD for derivatives of loglikelihood, solutions, IRFs, and moments
-using Pkg; Pkg.add("MatrixEquations")               # Bartels-Stewart algorithm for Sylvester/Lyapunov equations
 using Pkg; Pkg.add("Optim")                         # LBFGS for conditional forecasts; SAMIN for steady state solver tuning
 ```
 

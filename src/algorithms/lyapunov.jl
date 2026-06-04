@@ -166,6 +166,18 @@ end
         end
     end
 
+    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 # try bartels_stewart if previous one didn't solve it
+        A = collect(A)
+
+        C = collect(C)
+
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = tol) # timer = timer)
+
+        if verbose
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
+        end
+    end
+
     # Schur deflation fallback: when all standard solvers fail, check for unit-root
     # eigenvalues and solve only the stationary subspace.
     if !(reached_tol < acceptance_tol)
@@ -185,6 +197,35 @@ end
     end
 
     return X, reached_tol < acceptance_tol
+end
+
+
+# Bartels-Stewart via MatrixEquations.lyapd. Solves A * X * A' + C = X.
+function solve_lyapunov_equation(A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    ::Val{:bartels_stewart},
+                                    workspace::lyapunov_workspace;
+                                    tol::SolverTolerances = SolverTolerances(),
+                                    has_unit_roots::Bool = false)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+
+    𝐂 = try
+        MatrixEquations.lyapd(A, C)::Matrix{T}
+    catch
+        return C, 0, 1.0
+    end
+
+    ensure_lyapunov_doubling_buffers!(workspace)
+    𝐂A_tmp = workspace.𝐂A
+    𝐂¹_tmp = workspace.𝐂¹
+    # 𝐂¹_tmp = A * 𝐂 * A' + C - 𝐂
+    ℒ.mul!(𝐂A_tmp, 𝐂, A')
+    ℒ.mul!(𝐂¹_tmp, A, 𝐂A_tmp)
+    ℒ.axpy!(1, C, 𝐂¹_tmp)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹_tmp)
+
+    reached_tol = ℒ.norm(𝐂¹_tmp) / ℒ.norm(𝐂)
+
+    return 𝐂, 0, reached_tol
 end
 
 
@@ -868,6 +909,10 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 
     if sub_tol > tol.acceptance_tol
         X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bicgstab), ws_stable; tol = tol)
+    end
+
+    if sub_tol > tol.acceptance_tol && length(C_ss) < 5e7
+        X_ss_result, sub_iters, sub_tol = solve_lyapunov_equation(T_ss, C_ss, Val(:bartels_stewart), ws_stable; tol = tol)
     end
 
     if sub_tol > tol.acceptance_tol

@@ -41,7 +41,7 @@ jobs:
         echo $PATH
         ls -l ~/.julia/bin
         mkdir results
-        benchpkg ${{ steps.extract-package-name.outputs.package_name }} --rev="${{github.event.repository.default_branch}},${{github.event.pull_request.head.sha}}" --url=${{ github.event.repository.clone_url }} --bench-on="${{ github.event.pull_request.head.sha }}" --script="$PWD/benchmark/benchmarks.jl" --add="MatrixEquations" --output-dir=results/
+        benchpkg ${{ steps.extract-package-name.outputs.package_name }} --rev="${{github.event.repository.default_branch}},${{github.event.pull_request.head.sha}}" --url=${{ github.event.repository.clone_url }} --bench-on="${{ github.event.pull_request.head.sha }}" --script="$PWD/benchmark/benchmarks.jl" --output-dir=results/
     - name: Create plots from benchmarks
       run: |
         mkdir -p plots

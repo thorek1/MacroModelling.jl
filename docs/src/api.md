@@ -2,7 +2,6 @@
 Modules = [
     MacroModelling,
     Base.get_extension(MacroModelling, :ForwardDiffExt),
-    Base.get_extension(MacroModelling, :MatrixEquationsExt),
     Base.get_extension(MacroModelling, :MooncakeExt),
     Base.get_extension(MacroModelling, :OptimExt),
     Base.get_extension(MacroModelling, :StatsPlotsExt),

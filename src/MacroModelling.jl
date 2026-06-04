@@ -54,6 +54,7 @@ import MacroTools: unblock, postwalk, prewalk, @capture, flatten, rmlines
 import Suppressor: @suppress
 import REPL
 import Unicode
+import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 import AxisKeys

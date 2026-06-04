@@ -1,5 +1,4 @@
 import Zygote, FiniteDifferences, ForwardDiff, Mooncake, DifferentiationInterface, ADTypes
-import MatrixEquations
 import LinearAlgebra as ℒ
 import StatsPlots
 using Random

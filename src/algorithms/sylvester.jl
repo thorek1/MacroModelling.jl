@@ -129,6 +129,29 @@
         end
     end
 
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) # try bartels_stewart if previous one didn't solve it
+        aa = 𝕊ℂ.𝐀
+        copyto!(aa, A)
+
+        bb = 𝕊ℂ.𝐁
+        copyto!(bb, B)
+
+        cc = 𝕊ℂ.𝐂_dbl
+        copyto!(cc, C)
+
+        x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
+                                                            Val(:bartels_stewart), 𝕊ℂ,
+                                                            initial_guess = zeros(0,0), 
+                                                            preconditioner = preconditioner,
+                                                            tol = tol, 
+                                                            # timer = timer, 
+                                                            verbose = verbose)
+
+        if verbose && i != 0
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
+        end
+    end
+
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && reached_tol < sqrt(acceptance_tol)
         aa = 𝕊ℂ.𝐀
         copyto!(aa, A)
@@ -261,6 +284,54 @@
     # if (reached_tol > tol) println("Sylvester failed: $reached_tol") end
 
     return X, reached_tol < acceptance_tol
+end
+
+
+# Bartels-Stewart via MatrixEquations.sylvd. Solves A * X * B + C = X.
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                    B::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::DenseMatrix{T},
+                                    ::Val{:bartels_stewart},
+                                    𝕊ℂ::sylvester_workspace;
+                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    preconditioner::Symbol = :none,
+                                    verbose::Bool = false,
+                                    tol::SolverTolerances = SolverTolerances())::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+
+    if length(initial_guess) == 0
+        initial_guess = zero(C)
+    end
+
+    n = size(A, 1)
+    m = size(B, 2)
+    ensure_sylvester_krylov_buffers!(𝕊ℂ, n, m)
+
+    𝐂¹ = 𝕊ℂ.𝐂
+    tmp̄ = 𝕊ℂ.tmp
+
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess
+    ℒ.mul!(tmp̄, initial_guess, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, initial_guess, 𝐂¹)
+
+    𝐂 = try
+        MatrixEquations.sylvd(-A, B, 𝐂¹)::Matrix{T}
+    catch
+        return C, 0, 1.0
+    end
+
+    𝐂 += initial_guess
+
+    # 𝐂¹ = A * 𝐂 * B + C - 𝐂
+    ℒ.mul!(tmp̄, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    return 𝐂, -1, reached_tol
 end
 
 

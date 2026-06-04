@@ -5,7 +5,6 @@
 ## Setup
 # using Revise
 using MacroModelling
-import MatrixEquations
 import StatsPlots
 using AxisKeys
 using Statistics: mean
