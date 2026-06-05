@@ -50,9 +50,9 @@ Parameters:   9</code></pre><p>First, the package is loaded and then the <a href
            del     = 0.01
            z_e_a   = 0.035449
            z_e_m   = 0.008862
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.39 seconds
-Set up non-stochastic steady state problem:				1.583 seconds
-Find non-stochastic steady state:					8.253 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.582 seconds
+Set up non-stochastic steady state problem:				1.578 seconds
+Find non-stochastic steady state:					8.335 seconds
 Take symbolic derivatives up to first order:				0.093 seconds
 Model:        FS2000
 Variables
@@ -169,16 +169,16 @@ Parameters:   9
 <span class="sgr90">│</span>  <span class="sgr32">Float64</span>  acceptance_rate, log_density, hamiltonian_energy,                  <span class="sgr90">│</span>
 <span class="sgr90">│</span>           hamiltonian_energy_error, max_hamiltonian_energy_error, step_size, <span class="sgr90">│</span>
 <span class="sgr90">│</span>           nom_step_size, logprior, loglikelihood, logjoint                   <span class="sgr90">│</span>
-<span class="sgr90">╰──────────────────────────────────────────────────────────────────────────────╯</span></code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of samples they are plotted:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot(chain_NUTS);</code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import DynamicPPL: logjoint</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: UndefVarError: `mean` not defined in `Main`
-Suggestion: check for spelling errors or missing imports.
-Hint: a global variable of this name also exists in Statistics.
-    - Also exported by StatsBase (loaded but not imported in Main).
-    - Also exported by Distributions (loaded but not imported in Main).
-    - Also exported by Bijectors (loaded but not imported in Main).
-    - Also exported by FlexiChains (loaded but not imported in Main).
-    - Also exported by Turing.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = (; parameters = parameter_mean);</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: UndefVarError: `parameter_mean` not defined in `Main`
-Suggestion: add an appropriate import or assignment. This global was declared but not assigned.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: UndefVarError: `pars` not defined in `Main`
-Suggestion: add an appropriate import or assignment. This global was declared but not assigned.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_idx, base_pars, model)
+<span class="sgr90">╰──────────────────────────────────────────────────────────────────────────────╯</span></code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of samples they are plotted:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot(chain_NUTS);</code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import DynamicPPL: logjoint</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = collect(values(Turing.mean(chain_NUTS); parameters_only = true))</code><code class="nohighlight hljs ansi" style="display:block;">9-element Vector{Float64}:
+ 0.40443369879695884
+ 0.9904807761983975
+ 0.004581776890917079
+ 1.0141465922456792
+ 0.8448189305064904
+ 0.6820497337450111
+ 0.002514187689985769
+ 0.013796701490003064
+ 0.0033357796353166267</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = (; parameters = parameter_mean);</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.3732387707125</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_idx, base_pars, model)
            pvec = copy(base_pars.parameters)
            pvec[pars_idx[1]] = par1
            pvec[pars_idx[2]] = par2
@@ -191,19 +191,18 @@ Suggestion: add an appropriate import or assignment. This global was declared bu
 <span class="sgr90">└────────────────────────────────────────────────────────────────┘</span>
 [<span class="sgr38_5" style="color:#ff875f">:</span>, <span class="sgr38_5" style="color:#0087d7">:</span>, <span class="sgr38_5" style="color:#5fd7ff">1</span>]
     <span class="sgr38_5" style="color:#ff875f">↓</span> <span class="sgr38_5" style="color:#0087d7">→</span>  <span class="sgr38_5" style="color:#0087d7">1</span>
-  <span class="sgr38_5" style="color:#ff875f">501</span>    0.437016
-  <span class="sgr38_5" style="color:#ff875f">502</span>    0.39134
-  <span class="sgr38_5" style="color:#ff875f">503</span>    0.382322
+  <span class="sgr38_5" style="color:#ff875f">501</span>    0.397655
+  <span class="sgr38_5" style="color:#ff875f">502</span>    0.386527
+  <span class="sgr38_5" style="color:#ff875f">503</span>    0.403871
     ⋮
- <span class="sgr38_5" style="color:#ff875f">1497</span>    0.404018
- <span class="sgr38_5" style="color:#ff875f">1498</span>    0.401682
- <span class="sgr38_5" style="color:#ff875f">1499</span>    0.399595
- <span class="sgr38_5" style="color:#ff875f">1500</span>    0.423006</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
+ <span class="sgr38_5" style="color:#ff875f">1497</span>    0.420351
+ <span class="sgr38_5" style="color:#ff875f">1498</span>    0.413661
+ <span class="sgr38_5" style="color:#ff875f">1499</span>    0.424571
+ <span class="sgr38_5" style="color:#ff875f">1500</span>    0.382993</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(parameter_samples[:, :, paridx1]), stop = maximum(parameter_samples[:, :, paridx1]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(parameter_samples[:, :, paridx2]), stop = maximum(parameter_samples[:, :, paridx2]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
                    (x,y) -&gt; calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
                    camera=(30, 65),
                    colorbar=false,
-                   color=:inferno);</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: UndefVarError: `pars` not defined in `Main`
-Suggestion: add an appropriate import or assignment. This global was declared but not assigned.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
+                   color=:inferno);</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = vec(collect(logjoint(FS2000_loglikelihood, chain_NUTS)));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(parameter_samples[:, :, paridx1])),
                    vec(collect(parameter_samples[:, :, paridx2])),
                    joint_loglikelihood,
                    mc = :viridis,
@@ -214,14 +213,13 @@ Suggestion: add an appropriate import or assignment. This global was declared bu
                    xlabel = string(par1),
                    ylabel = string(par2),
                    zlabel = &quot;Log probability&quot;,
-                   alpha = 0.5);</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: UndefVarError: `p` not defined in `Main`
-Suggestion: add an appropriate import or assignment. This global was declared but not assigned.</code></pre><p><img src="../../assets/FS2000_posterior_surface.png" alt="Posterior surface"/></p><h2 id="Find-posterior-mode"><a class="docs-heading-anchor" href="#Find-posterior-mode">Find posterior mode</a><a id="Find-posterior-mode-1"></a><a class="docs-heading-anchor-permalink" href="#Find-posterior-mode" title="Permalink"></a></h2><p>Other than the mean and median of the posterior distribution the mode can also be calculated as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
+                   alpha = 0.5);</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p</code><code class="nohighlight hljs ansi" style="display:block;">Plot{Plots.GRBackend() n=2}</code></pre><p><img src="../../assets/FS2000_posterior_surface.png" alt="Posterior surface"/></p><h2 id="Find-posterior-mode"><a class="docs-heading-anchor" href="#Find-posterior-mode">Find posterior mode</a><a id="Find-posterior-mode-1"></a><a class="docs-heading-anchor-permalink" href="#Find-posterior-mode" title="Permalink"></a></h2><p>Other than the mean and median of the posterior distribution the mode can also be calculated as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                                adtype = AutoMooncake(; config=nothing),
                                                initial_params = Turing.InitFromParams((; parameters = FS2000.parameter_values)))</code><code class="nohighlight hljs ansi" style="display:block;"><span class="sgr1">ModeResult</span>
   ├ estimator    : Turing.Optimisation.MAP
-  ├ lp           : 1343.7491257505424
+  ├ lp           : 1343.749125750637
   ├ params       : VarNamedTuple with 1 entry
-  │                └ parameters =&gt; [0.4027213061408809, 0.9909439049257625, 0.004550077284887614, 1.0143227321142443, 0.8457080502062266, 0.6910342545087869, 0.0016353132402254806, 0.013479922495292989, 0.003257545118109468]
+  │                └ parameters =&gt; [0.4027213061411423, 0.9909439049258051, 0.004550077284872148, 1.01432273211424, 0.8457080502066803, 0.6910342545079368, 0.001635313240219309, 0.013479922495304662, 0.0032575451181078943]
   │ linked       : true
   └ (2 more fields: optim_result, ldf)</code></pre><h2 id="Model-estimates-given-the-data-and-the-model-solution"><a class="docs-heading-anchor" href="#Model-estimates-given-the-data-and-the-model-solution">Model estimates given the data and the model solution</a><a id="Model-estimates-given-the-data-and-the-model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-estimates-given-the-data-and-the-model-solution" title="Permalink"></a></h2><p>Having found the parameters at the posterior mode model estimates of the shocks which explain the data used to estimate it can be retrieved. This can be done with the <code>get_estimated_shocks</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_shocks(FS2000, data, parameters = NamedTuple(modeFS2000.params).parameters)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Shocks ∈ 2-element Vector{Symbol}</span>
@@ -257,7 +255,7 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>    <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.0148888   -0.00108998    0.00810035
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.0146127   -0.000913525   0.00743931
-  <span class="sgr35">(:R)</span>           -3.1609e-16  -0.000955353   0.0031234
+  <span class="sgr35">(:R)</span>           -3.9356e-16  -0.000955353   0.0031234
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>   0.0328867    8.71844e-5    0.000120402
   <span class="sgr35">(:m)</span>           -0.0         -0.00111942    0.00365979
@@ -268,10 +266,10 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>     <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.0288478     0.00602704    0.000719126
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.0283128     0.00503281    0.000705791
-  <span class="sgr35">(:R)</span>           -2.2314e-16    0.00539571    3.21953e-10
+  <span class="sgr35">(:R)</span>           -9.03391e-16   0.00539571    3.21953e-10
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>  -0.0168618     0.000336676   7.85288e-6
-  <span class="sgr35">(:m)</span>           -7.97718e-16   0.00632233    3.77243e-10
+  <span class="sgr35">(:m)</span>           -2.46053e-15   0.00632233    3.77243e-10
   <span class="sgr35">(:n)</span>            0.00624343   -0.000223709   0.000155638
   <span class="sgr35">(:y)</span>           -0.0357943    -0.000897025  -0.000892291
 
@@ -279,13 +277,13 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>     <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.00129293   -0.00565097    0.000121485
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.00126895   -0.00472692    0.000119232
-  <span class="sgr35">(:R)</span>            9.3324e-17   -0.00500928    3.81639e-17
+  <span class="sgr35">(:R)</span>            2.9491e-16   -0.00500928    3.55618e-17
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>   0.000247177   7.87663e-5    1.32661e-6
-  <span class="sgr35">(:m)</span>            1.00922e-16  -0.00586953    4.33681e-17
+  <span class="sgr35">(:m)</span>            3.11289e-16  -0.00586953    3.55618e-17
   <span class="sgr35">(:n)</span>            0.000279824   0.000195656   2.62925e-5
   <span class="sgr35">(:y)</span>           -0.00160426    0.000901756  -0.000150738</code></pre><p>A 3-dimensional array is returned with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.</p><p>Last but not least, the model estimates and the shock decomposition can also be plotted. The model estimates plot, using <code>plot_model_estimates</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_model_estimates(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">4-element Vector{Any}:
  Plot{Plots.GRBackend() n=42}
  Plot{Plots.GRBackend() n=42}
  Plot{Plots.GRBackend() n=44}
- Plot{Plots.GRBackend() n=10}</code></pre><p><img src="../../assets/estimates__FS2000__3.png" alt="Model estimates"/></p><p>shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../calibration/">« Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a><a class="docs-footer-nextpage" href="../../plotting/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 5 June 2026 09:45">Friday 5 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ Plot{Plots.GRBackend() n=10}</code></pre><p><img src="../../assets/estimates__FS2000__3.png" alt="Model estimates"/></p><p>shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../calibration/">« Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a><a class="docs-footer-nextpage" href="../../plotting/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 5 June 2026 12:07">Friday 5 June 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
