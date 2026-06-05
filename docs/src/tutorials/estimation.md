@@ -154,18 +154,19 @@ plot(chain_NUTS);
 Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.
 
 ```@repl tutorial_2
-using ComponentArrays
 import DynamicPPL: logjoint
 
 parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
 
-pars = ComponentArray([parameter_mean], Axis(:parameters));
+pars = (; parameters = parameter_mean);
 
 logjoint(FS2000_loglikelihood, pars)
 
-function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
-    orig_pars[1][pars_syms] = [par1, par2]
-    logjoint(model, orig_pars)
+function calculate_log_probability(par1, par2, pars_idx, base_pars, model)
+    pvec = copy(base_pars.parameters)
+    pvec[pars_idx[1]] = par1
+    pvec[pars_idx[2]] = par2
+    logjoint(model, (; parameters = pvec))
 end
 
 granularity = 32;
@@ -173,8 +174,9 @@ granularity = 32;
 par1 = :del;
 par2 = :gam;
 
-paridx1 = indexin([par1], FS2000.parameters)[1];
-paridx2 = indexin([par2], FS2000.parameters)[1];
+param_syms = Symbol.(get_parameters(FS2000));
+paridx1 = indexin([par1], param_syms)[1];
+paridx2 = indexin([par2], param_syms)[1];
 
 parameter_samples = chain_NUTS[:parameters, stack = true]
 
@@ -222,7 +224,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
 Having found the parameters at the posterior mode model estimates of the shocks which explain the data used to estimate it can be retrieved. This can be done with the `get_estimated_shocks` function:
 
 ```@repl tutorial_2
-get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))
+get_estimated_shocks(FS2000, data, parameters = NamedTuple(modeFS2000.params).parameters)
 ```
 
 As the first argument the model is passed, followed by the data (in levels), and then the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.

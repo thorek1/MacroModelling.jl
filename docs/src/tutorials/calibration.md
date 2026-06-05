@@ -190,7 +190,7 @@ For the optimisation problem the L-BFGS algorithm implemented in `Optim.jl` is u
 The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics `get_statistics` can be used to get the mean of real wages and the standard deviation of inflation like this:
 
 ```@repl tutorial_3
-get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Gali_2015.parameters, mean = [:W_real], standard_deviation = [:Pi])
+get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Symbol.(get_parameters(Gali_2015)), mean = [:W_real], standard_deviation = [:Pi])
 ```
 
 First the model object is passed on, followed by the parameter values and the parameter names the values correspond to. Then the desired outputs are defined: for the mean real wages are wanted and for the standard deviation inflation is wanted. Outputs for variance, covariance, correlation, or autocorrelation can also be obtained the same way as for the mean and standard deviation.

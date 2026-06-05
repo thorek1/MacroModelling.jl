@@ -75,7 +75,7 @@ end
 
 # Define a steady state function
 function my_ss(parameters)
-    # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
+    # parameters is ordered as: get_parameters(m) (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
     α, β, δ, ρᶻ, σᶻ = parameters
     
     # Compute steady state values
@@ -84,7 +84,7 @@ function my_ss(parameters)
     c_ss = q_ss - δ*k_ss
     z_ss = 0.0
     
-    # Return values in variable order: m.var (e.g., [:c, :k, :q, :z])
+    # Return values in variable order: get_variables(m) (e.g., [:c, :k, :q, :z])
     return [c_ss, k_ss, q_ss, z_ss]
 end
 
@@ -116,7 +116,7 @@ end
 
 # Define a steady state function
 function my_ss_inplace!(ss, parameters)
-    # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
+    # parameters is ordered as: get_parameters(m) (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
     α, β, δ, ρᶻ, σᶻ = parameters
     # Compute steady state values
     k_ss = ((1/β - 1 + δ) / α)^(1/(α-1))
