@@ -156,7 +156,7 @@ Next, the posterior loglikelihood is plotted along two parameters dimensions, wi
 ```@repl tutorial_2
 import DynamicPPL: logjoint
 
-parameter_mean = collect(values(mean(chain_NUTS); parameters_only = true))
+parameter_mean = collect(values(Turing.mean(chain_NUTS); parameters_only = true))
 
 pars = (; parameters = parameter_mean);
 
