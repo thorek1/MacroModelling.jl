@@ -6696,64 +6696,203 @@ end
 
 
 # Mixed-sparsity variant: A is sparse, B is dense
-function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
-                                ∂B::AbstractMatrix{R},
-                                M1::AbstractMatrix,
-                                M2::AbstractMatrix,
-                                A::SparseMatrixCSC{TA, Int},
-                                B::AbstractMatrix{TB};
-                                tol::Real = 0.0,
-                                block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
+function mul_fill_kron_adjoint!(
+    ∂A::AbstractMatrix{R},
+    ∂B::AbstractMatrix{R},
+    M1::AbstractMatrix,
+    M2::AbstractMatrix,
+    A::SparseMatrixCSC{TA, Ti},
+    B::AbstractMatrix{TB};
+    tol::Real = 0.0,
+    block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0),
+) where {R <: Real, TA <: Real, TB <: Real, Ti <: Integer}
+
     n2, m2 = size(A)
     n1, m1 = size(B)
 
-    @assert size(M1, 1) == n1 * n2
-    @assert size(M2, 2) == m1 * m2
-    @assert size(M1, 2) == size(M2, 1)
+    size(M1, 1) == n1 * n2 || throw(DimensionMismatch("size(M1, 1) must equal size(B, 1) * size(A, 1)"))
+    size(M2, 2) == m1 * m2 || throw(DimensionMismatch("size(M2, 2) must equal size(B, 2) * size(A, 2)"))
+    size(M1, 2) == size(M2, 1) || throw(DimensionMismatch("inner dimensions of M1 and M2 do not match"))
 
     nrows = n1 * n2
+    tol_R = R(tol)
 
-    if size(block, 1) == nrows && size(block, 2) >= m2
-        blk = view(block, :, 1:m2)
+    # Transpose M2 so that M2t[(j - 1) * m2 + l, s] is contiguous in l.
+    M2t = Matrix{R}(transpose(M2))
+
+    # Row compressed representation of M1.
+    # Use conditional handling instead of try/catch to obtain non‑zero indices and values.
+    # If `M1` is already a sparse matrix we can call `findnz` directly; otherwise we
+    # convert it to a sparse representation first. This satisfies the request to
+    # avoid `try … catch` while preserving the original behaviour.
+    if typeof(M1) <: AbstractSparseMatrix
+        M1_row_ids, M1_col_ids, M1_values = findnz(M1)
     else
-        blk = Matrix{R}(undef, nrows, m2)
+        M1_row_ids, M1_col_ids, M1_values = findnz(sparse(M1))
     end
 
-    A_colptr = A.colptr
-    A_rowval = A.rowval
-    A_nzval  = A.nzval
+    M1_row_counts = zeros(Int, nrows)
+
+    @inbounds for row in M1_row_ids
+        M1_row_counts[row] += 1
+    end
+
+    n_supported_rows = 0
+
+    @inbounds for row in 1:nrows
+        if M1_row_counts[row] != 0
+            n_supported_rows += 1
+        end
+    end
+
+    row_to_slot = zeros(Int, nrows)
+    supported_rows = Vector{Int}(undef, n_supported_rows)
+
+    slot = 0
+
+    @inbounds for row in 1:nrows
+        if M1_row_counts[row] != 0
+            slot += 1
+            row_to_slot[row] = slot
+            supported_rows[slot] = row
+        end
+    end
+
+    M1_row_ptr = Vector{Int}(undef, n_supported_rows + 1)
+    M1_row_ptr[1] = 1
+
+    @inbounds for slot in 1:n_supported_rows
+        M1_row_ptr[slot + 1] = M1_row_ptr[slot] + M1_row_counts[supported_rows[slot]]
+    end
+
+    M1_nz_col = Vector{Int}(undef, length(M1_values))
+    M1_nz_val = Vector{R}(undef, length(M1_values))
+    next_ptr = copy(M1_row_ptr)
+
+    @inbounds for index in eachindex(M1_values)
+        row = M1_row_ids[index]
+        slot = row_to_slot[row]
+        position = next_ptr[slot]
+        next_ptr[slot] += 1
+
+        M1_nz_col[position] = M1_col_ids[index]
+        M1_nz_val[position] = R(M1_values[index])
+    end
+
+    M1_row_k = Vector{Int}(undef, n_supported_rows)
+    M1_row_i = Vector{Int}(undef, n_supported_rows)
+
+    @inbounds for slot in 1:n_supported_rows
+        row = supported_rows[slot]
+        i = (row - 1) ÷ n2 + 1
+        k = row - (i - 1) * n2
+
+        M1_row_k[slot] = k
+        M1_row_i[slot] = i
+    end
+
+    # Row compressed representation of A.
+    A_row_ids, A_col_ids, A_values = findnz(A)
+
+    A_row_counts = zeros(Int, n2)
+
+    @inbounds for row in A_row_ids
+        A_row_counts[row] += 1
+    end
+
+    A_row_ptr = Vector{Int}(undef, n2 + 1)
+    A_row_ptr[1] = 1
+
+    @inbounds for row in 1:n2
+        A_row_ptr[row + 1] = A_row_ptr[row] + A_row_counts[row]
+    end
+
+    A_nz_col = Vector{Int}(undef, length(A_values))
+    A_nz_val = Vector{R}(undef, length(A_values))
+    next_A_ptr = copy(A_row_ptr)
+
+    @inbounds for index in eachindex(A_values)
+        row = A_row_ids[index]
+        position = next_A_ptr[row]
+        next_A_ptr[row] += 1
+
+        A_nz_col[position] = A_col_ids[index]
+        A_nz_val[position] = R(A_values[index])
+    end
+
+    work = Vector{R}(undef, m2)
 
     @inbounds for j in 1:m1
-        col_start = (j - 1) * m2 + 1
-        col_end   = j * m2
-        ℒ.mul!(blk, M1, view(M2, :, col_start:col_end))
+        column_offset = (j - 1) * m2
 
-        re_blk = reshape(blk, n2, n1, m2)
+        for row_slot in 1:n_supported_rows
+            k = M1_row_k[row_slot]
+            i = M1_row_i[row_slot]
 
-        # ∂A[k,l] += B[i,j] * re_blk[k,i,l] — B is dense, use iszero guard
-        for l in 1:m2
-            for i in 1:n1
-                bij = B[i, j]
-                if abs(bij) > tol
-                    for k in 1:n2
-                        ∂A[k, l] += bij * re_blk[k, i, l]
+            bij = R(B[i, j])
+            has_B_contribution = abs(bij) > tol_R
+
+            A_row_start = A_row_ptr[k]
+            A_row_stop = A_row_ptr[k + 1] - 1
+            has_A_contribution = A_row_start <= A_row_stop
+
+            if !(has_B_contribution || has_A_contribution)
+                continue
+            end
+
+            M1_row_start = M1_row_ptr[row_slot]
+            M1_row_stop = M1_row_ptr[row_slot + 1] - 1
+
+            if has_B_contribution
+                fill!(work, zero(R))
+
+                for M1_index in M1_row_start:M1_row_stop
+                    M1_value = M1_nz_val[M1_index]
+                    M1_col = M1_nz_col[M1_index]
+
+                    @simd for l in 1:m2
+                        work[l] += M1_value * M2t[column_offset + l, M1_col]
                     end
                 end
-            end
-        end
 
-        # ∂B[i,j] += Σ_{k,l} A[k,l] * re_blk[k,i,l] — A is sparse, use nzrange
-        for i in 1:n1
-            acc = zero(R)
-            for l in 1:m2
-                for aidx in A_colptr[l]:(A_colptr[l + 1] - 1)
-                    k = A_rowval[aidx]
-                    acc += R(A_nzval[aidx]) * re_blk[k, i, l]
+                for l in 1:m2
+                    ∂A[k, l] += bij * work[l]
                 end
+
+                if has_A_contribution
+                    acc = zero(R)
+
+                    for A_index in A_row_start:A_row_stop
+                        l = A_nz_col[A_index]
+                        acc += A_nz_val[A_index] * work[l]
+                    end
+
+                    ∂B[i, j] += acc
+                end
+
+            else
+                acc = zero(R)
+
+                for M1_index in M1_row_start:M1_row_stop
+                    M1_value = M1_nz_val[M1_index]
+                    M1_col = M1_nz_col[M1_index]
+
+                    local_acc = zero(R)
+
+                    for A_index in A_row_start:A_row_stop
+                        l = A_nz_col[A_index]
+                        local_acc += A_nz_val[A_index] * M2t[column_offset + l, M1_col]
+                    end
+
+                    acc += M1_value * local_acc
+                end
+
+                ∂B[i, j] += acc
             end
-            ∂B[i, j] += acc
         end
     end
+
+    return ∂A, ∂B
 end
 
 
@@ -7683,7 +7822,126 @@ end
 # Helper: adjoint of compressed_kron³(X) w.r.t. X.
 # Forward: out[row,col] = (aii*(ajj*akk + ajk*akj) + aij*(aji*akk + ajk*aki) + aik*(aji*akj + ajj*aki)) / divisor
 # where row ↔ (i1≥j1≥k1) and col ↔ (i2≥j2≥k2) and a_pq = X[p,q].
-function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, ∂Y::AbstractMatrix{T}, X::AbstractMatrix{T}; tol::Real = 0.0) where T <: Real
+function compressed_kron³_pullback!(
+    ∂X::AbstractMatrix{T},
+    ∂Y::AbstractSparseMatrix{T, Ti},
+    X::AbstractMatrix{T};
+    tol::Real = 0.0,
+) where {T <: Real, Ti <: Integer}
+
+    Xd = X isa DenseMatrix ? X : collect(X)
+
+    n_x_rows, n_x_cols = size(Xd)
+
+    compressed_rows = n_x_rows * (n_x_rows + 1) * (n_x_rows + 2) ÷ 6
+    compressed_cols = n_x_cols * (n_x_cols + 1) * (n_x_cols + 2) ÷ 6
+
+    size(∂Y, 1) == compressed_rows || throw(DimensionMismatch("size(∂Y, 1) is inconsistent with size(X, 1)"))
+    size(∂Y, 2) == compressed_cols || throw(DimensionMismatch("size(∂Y, 2) is inconsistent with size(X, 2)"))
+
+    tol_T = T(tol)
+
+    row_values = SparseArrays.rowvals(∂Y)
+    non_zero_values = nonzeros(∂Y)
+
+    row_first = Vector{Int}(undef, compressed_rows)
+    row_second = Vector{Int}(undef, compressed_rows)
+    row_third = Vector{Int}(undef, compressed_rows)
+    row_scale = Vector{T}(undef, compressed_rows)
+
+    @inbounds for i1 in 1:n_x_rows
+        for j1 in 1:i1
+            for k1 in 1:j1
+                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+
+                row_first[row] = i1
+                row_second[row] = j1
+                row_third[row] = k1
+
+                if i1 == j1
+                    divisor = j1 == k1 ? 6 : 2
+                else
+                    divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                end
+
+                row_scale[row] = inv(T(divisor))
+            end
+        end
+    end
+
+    col_first = Vector{Int}(undef, compressed_cols)
+    col_second = Vector{Int}(undef, compressed_cols)
+    col_third = Vector{Int}(undef, compressed_cols)
+
+    @inbounds for i2 in 1:n_x_cols
+        for j2 in 1:i2
+            for k2 in 1:j2
+                col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+
+                col_first[col] = i2
+                col_second[col] = j2
+                col_third[col] = k2
+            end
+        end
+    end
+
+    @inbounds for col in 1:compressed_cols
+        i2 = col_first[col]
+        j2 = col_second[col]
+        k2 = col_third[col]
+
+        for stored_index in SparseArrays.nzrange(∂Y, col)
+            row = Int(row_values[stored_index])
+            g = non_zero_values[stored_index]
+
+            abs(g) <= tol_T && continue
+
+            i1 = row_first[row]
+            j1 = row_second[row]
+            k1 = row_third[row]
+
+            g_d = g * row_scale[row]
+
+            aii = Xd[i1, i2]
+            aij = Xd[i1, j2]
+            aik = Xd[i1, k2]
+
+            aji = Xd[j1, i2]
+            ajj = Xd[j1, j2]
+            ajk = Xd[j1, k2]
+
+            aki = Xd[k1, i2]
+            akj = Xd[k1, j2]
+            akk = Xd[k1, k2]
+
+            q_i2 = aij * ajk + aik * ajj
+            q_j2 = aik * aji + aii * ajk
+            q_k2 = aii * ajj + aij * aji
+
+            ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+            ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+            ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+
+            ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+            ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+            ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+
+            ∂X[k1, i2] += g_d * q_i2
+            ∂X[k1, j2] += g_d * q_j2
+            ∂X[k1, k2] += g_d * q_k2
+        end
+    end
+
+    return ∂X
+end
+
+function compressed_kron³_pullback!(∂X::AbstractMatrix{T}, 
+                                    ∂Y::DenseMatrix{T}, 
+                                    X::AbstractMatrix{T}; 
+                                    tol::Real = 0.0) where T <: Real
+                                    println("size(∂X) = ", size(∂X), " approxzeros/length = ", count(x -> abs(x) <= tol, ∂X) / length(∂X))
+                                    println("size(∂Y) = ", size(∂Y), " approxzeros/length = ", count(x -> abs(x) <= tol, ∂Y) / length(∂Y))
+                                    println("size(X) = ", size(X), " approxzeros/length = ", count(x -> abs(x) <= tol, X) / length(X))
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
     # Unlike the forward pass, the pullback must iterate over ALL row/column
@@ -7746,60 +8004,179 @@ end
 # Equivalent to:
 #   compressed_kron³_pullback!(∂X, M1 * M2, X)
 # but avoids the n_compressed³ × n_compressed³ allocation.
-function mul_compressed_kron³_pullback!(∂X::AbstractMatrix{T},
-                                        M1::AbstractMatrix,
-                                        M2::AbstractMatrix,
-                                        X::AbstractMatrix{T};
-                                        tol::Real = 0.0) where T <: Real
+function mul_compressed_kron³_pullback!(
+    ∂X::AbstractMatrix,
+    M1::AbstractMatrix,
+    M2::AbstractMatrix,
+    X::AbstractMatrix;
+    tol::Real = 0.0,
+)
+
     Xd = X isa DenseMatrix ? X : collect(X)
-    n_rows, n_cols = size(Xd)
 
-    g_col = Vector{T}(undef, size(M1, 1))
+    n_x_rows, n_x_cols = size(Xd)
 
-    for i2 in 1:n_cols, j2 in 1:i2
-        for k2 in 1:j2
-            col = (i2 - 1) * i2 * (i2 + 1) ÷ 6 + (j2 - 1) * j2 ÷ 2 + k2
+    compressed_rows = n_x_rows * (n_x_rows + 1) * (n_x_rows + 2) ÷ 6
+    compressed_cols = n_x_cols * (n_x_cols + 1) * (n_x_cols + 2) ÷ 6
 
-            # Compute g_col = M1 * M2[:, col] lazily for this triple
-            ℒ.mul!(g_col, M1, view(M2, :, col))
+    size(M1, 1) == compressed_rows || throw(DimensionMismatch("size(M1, 1) is inconsistent with size(X, 1)"))
+    size(M2, 2) == compressed_cols || throw(DimensionMismatch("size(M2, 2) is inconsistent with size(X, 2)"))
+    size(M1, 2) == size(M2, 1) || throw(DimensionMismatch("inner dimensions of M1 and M2 do not match"))
 
-            for i1 in 1:n_rows
-                # Hoist i1-dependent reads
-                @inbounds aii = Xd[i1, i2]; aij = Xd[i1, j2]; aik = Xd[i1, k2]
-                for j1 in 1:i1
-                    # Hoist j1-dependent reads
-                    @inbounds aji = Xd[j1, i2]; ajj = Xd[j1, j2]; ajk = Xd[j1, k2]
-                    # Precompute sub-expressions for ∂X[k1, ...] updates
-                    q_i2 = aij * ajk + aik * ajj
-                    q_j2 = aik * aji + aii * ajk
-                    q_k2 = aii * ajj + aij * aji
-                    @inbounds for k1 in 1:j1
-                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
-                        g = g_col[row]
-                        abs(g) <= tol && continue
-                        if i1 == j1
-                            divisor = (j1 == k1) ? 6 : 2
-                        else
-                            divisor = (j1 == k1 || i1 == k1) ? 2 : 1
-                        end
-                        g_d = g / divisor
-                        aki = Xd[k1, i2]
-                        akj = Xd[k1, j2]
-                        akk = Xd[k1, k2]
-                        ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
-                        ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
-                        ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
-                        ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
-                        ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
-                        ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
-                        ∂X[k1, i2] += g_d * q_i2
-                        ∂X[k1, j2] += g_d * q_j2
-                        ∂X[k1, k2] += g_d * q_k2
+    T = promote_type(eltype(∂X), eltype(M1), eltype(M2), eltype(Xd))
+    tol_T = T(tol)
+
+    # Avoid try/catch: directly handle dense vs sparse `M1`.
+    if typeof(M1) <: AbstractSparseMatrix
+        row_ids, col_ids, values = findnz(M1)
+    else
+        row_ids, col_ids, values = findnz(sparse(M1))
+    end
+
+    row_counts = zeros(Int, compressed_rows)
+
+    @inbounds for row in row_ids
+        row_counts[row] += 1
+    end
+
+    n_supported_rows = 0
+
+    @inbounds for row in 1:compressed_rows
+        if row_counts[row] != 0
+            n_supported_rows += 1
+        end
+    end
+
+    row_to_slot = zeros(Int, compressed_rows)
+    supported_rows = Vector{Int}(undef, n_supported_rows)
+
+    slot = 0
+
+    @inbounds for row in 1:compressed_rows
+        if row_counts[row] != 0
+            slot += 1
+            row_to_slot[row] = slot
+            supported_rows[slot] = row
+        end
+    end
+
+    row_ptr = Vector{Int}(undef, n_supported_rows + 1)
+    row_ptr[1] = 1
+
+    @inbounds for slot in 1:n_supported_rows
+        row_ptr[slot + 1] = row_ptr[slot] + row_counts[supported_rows[slot]]
+    end
+
+    nz_col = Vector{Int}(undef, length(values))
+    nz_val = Vector{T}(undef, length(values))
+    next_ptr = copy(row_ptr)
+
+    @inbounds for index in eachindex(values)
+        row = row_ids[index]
+        slot = row_to_slot[row]
+        position = next_ptr[slot]
+        next_ptr[slot] += 1
+
+        nz_col[position] = col_ids[index]
+        nz_val[position] = values[index]
+    end
+
+    row_first = Vector{Int}(undef, n_supported_rows)
+    row_second = Vector{Int}(undef, n_supported_rows)
+    row_third = Vector{Int}(undef, n_supported_rows)
+    row_scale = Vector{T}(undef, n_supported_rows)
+
+    @inbounds for i1 in 1:n_x_rows
+        for j1 in 1:i1
+            for k1 in 1:j1
+                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                slot = row_to_slot[row]
+
+                if slot != 0
+                    row_first[slot] = i1
+                    row_second[slot] = j1
+                    row_third[slot] = k1
+
+                    if i1 == j1
+                        divisor = j1 == k1 ? 6 : 2
+                    else
+                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
                     end
+
+                    row_scale[slot] = inv(T(divisor))
                 end
             end
         end
     end
+
+    work = zeros(T, compressed_cols)
+
+    @inbounds for row_slot in 1:n_supported_rows
+        fill!(work, zero(T))
+
+        row_start = row_ptr[row_slot]
+        row_stop = row_ptr[row_slot + 1] - 1
+
+        for nz_index in row_start:row_stop
+            m1_value = nz_val[nz_index]
+            m1_col = nz_col[nz_index]
+
+            @simd for col in 1:compressed_cols
+                work[col] += m1_value * M2[m1_col, col]
+            end
+        end
+
+        i1 = row_first[row_slot]
+        j1 = row_second[row_slot]
+        k1 = row_third[row_slot]
+        scale = row_scale[row_slot]
+
+        col = 0
+
+        for i2 in 1:n_x_cols
+            for j2 in 1:i2
+                for k2 in 1:j2
+                    col += 1
+
+                    g = work[col]
+
+                    abs(g) <= tol_T && continue
+
+                    g_d = g * scale
+
+                    aii = Xd[i1, i2]
+                    aij = Xd[i1, j2]
+                    aik = Xd[i1, k2]
+
+                    aji = Xd[j1, i2]
+                    ajj = Xd[j1, j2]
+                    ajk = Xd[j1, k2]
+
+                    aki = Xd[k1, i2]
+                    akj = Xd[k1, j2]
+                    akk = Xd[k1, k2]
+
+                    q_i2 = aij * ajk + aik * ajj
+                    q_j2 = aik * aji + aii * ajk
+                    q_k2 = aii * ajj + aij * aji
+
+                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+
+                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+
+                    ∂X[k1, i2] += g_d * q_i2
+                    ∂X[k1, j2] += g_d * q_j2
+                    ∂X[k1, k2] += g_d * q_k2
+                end
+            end
+        end
+    end
+
+    return ∂X
 end
 
 # =====================================================================================
@@ -8103,7 +8480,8 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
         ℒ.mul!(∂𝐗₃, At, ∂C_adj)
         ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
-        # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
+
+        ∂B_from_sylv = choose_matrix_format(∂B_from_sylv)
         # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
         # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
         ∂𝐗₃ = choose_matrix_format(spinv' * ∂C_adj)

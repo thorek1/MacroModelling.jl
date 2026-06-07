@@ -862,6 +862,10 @@ end
     if count(x -> abs(x) > tol, A) / length(A) < density_threshold && length(A) > min_length
         # Use dense_to_sparse to avoid Julia 1.12 SparseArrays bug in SparseMatrixCSC(::Matrix)
         a = dense_to_sparse(A, tol)
+
+        # a = sparse(A)
+        # droptol!(a, tol)
+
         if multithreaded
             return ThreadedSparseArrays.ThreadedSparseMatrixCSC(a)
         else
