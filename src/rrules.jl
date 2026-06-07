@@ -7939,9 +7939,6 @@ function compressed_kron³_pullback!(∂X::AbstractMatrix{T},
                                     ∂Y::DenseMatrix{T}, 
                                     X::AbstractMatrix{T}; 
                                     tol::Real = 0.0) where T <: Real
-                                    println("size(∂X) = ", size(∂X), " approxzeros/length = ", count(x -> abs(x) <= tol, ∂X) / length(∂X))
-                                    println("size(∂Y) = ", size(∂Y), " approxzeros/length = ", count(x -> abs(x) <= tol, ∂Y) / length(∂Y))
-                                    println("size(X) = ", size(X), " approxzeros/length = ", count(x -> abs(x) <= tol, X) / length(X))
     Xd = X isa DenseMatrix ? X : collect(X)
     n_rows, n_cols = size(Xd)
     # Unlike the forward pass, the pullback must iterate over ALL row/column
