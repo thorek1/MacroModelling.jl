@@ -382,12 +382,6 @@ function plot_observation_std_band!(p,
     return p
 end
 
-function has_observed_series(variable_idx::Int, obs_idx::AbstractVector{<:Integer}, data_in_deviations, periods)
-    obs_pos = findfirst(==(variable_idx), obs_idx)
-    isnothing(obs_pos) && return false
-    return any(isfinite, vec(data_in_deviations[obs_pos, periods]))
-end
-
 function process_rename_dictionary(rename_dictionary::AbstractDict, 𝓂::ℳ)
     relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
     processed = Any[]
@@ -1025,8 +1019,7 @@ function plot_model_estimates(𝓂::ℳ,
     plot_count = 1
 
     for v in var_idx
-        if all(isapprox.(variables_to_plot[v, periods], 0, atol = eps(Float32))) &&
-           !has_observed_series(v, obs_idx, data_in_deviations, periods)
+        if all(isapprox.(variables_to_plot[v, periods], 0, atol = eps(Float32)))
             n_subplots -= 1
         end
     end
@@ -1058,8 +1051,7 @@ function plot_model_estimates(𝓂::ℳ,
                 continue
             end
         else
-            if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))) &&
-                 !has_observed_series(var_idx[i], obs_idx, data_in_deviations, periods))
+            if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
                 SS = reference_steady_state[var_idx[i]]
 
                 if shock_decomposition
@@ -1948,7 +1940,6 @@ function plot_model_estimates!(𝓂::ℳ,
 
     for var in joint_variables
         not_zero_anywhere = false
-        has_data_anywhere = false
 
         for k in model_estimates_active_plot_container
             var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
@@ -1957,26 +1948,16 @@ function plot_model_estimates!(𝓂::ℳ,
             if isnothing(var_idx) || not_zero_anywhere
                 # If the variable or shock is not present in the current plot_container,
                 # we skip this iteration.
-                if !isnothing(var_idx)
-                    obs_axis = collect(axiskeys(k[:data],1))
-                    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
-                    obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
-                    has_data_anywhere = has_data_anywhere || (var ∈ string.(obs_symbols_display))
-                end
                 continue
             else
                 if any(.!isapprox.(k[:variables_to_plot][var_idx, periods], 0, atol = eps(Float32)))
                     not_zero_anywhere = not_zero_anywhere || true
                     # break # If any irf data is not approximately zero, we set the flag to true.
                 end
-                obs_axis = collect(axiskeys(k[:data],1))
-                obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
-                obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
-                has_data_anywhere = has_data_anywhere || (var ∈ string.(obs_symbols_display))
             end
         end
         
-        if not_zero_anywhere || has_data_anywhere
+        if not_zero_anywhere
             push!(joint_non_zero_variables, var)
         else
             # If all irf data for this variable and shock is approximately zero, we skip this subplot.
