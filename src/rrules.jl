@@ -6563,8 +6563,8 @@ function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
                                 ∂B::AbstractMatrix{R},
                                 M1::AbstractMatrix,
                                 M2::AbstractMatrix,
-                                A::AbstractMatrix{TA},
-                                B::AbstractMatrix{TB};
+                                A::DenseMatrix{TA},
+                                B::DenseMatrix{TB};
                                 tol::Real = 0.0,
                                 block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
     n2, m2 = size(A)
@@ -6702,7 +6702,7 @@ function mul_fill_kron_adjoint!(
     M1::AbstractMatrix,
     M2::AbstractMatrix,
     A::SparseMatrixCSC{TA, Ti},
-    B::AbstractMatrix{TB};
+    B::DenseMatrix{TB};
     tol::Real = 0.0,
     block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0),
 ) where {R <: Real, TA <: Real, TB <: Real, Ti <: Integer}
@@ -6895,46 +6895,12 @@ function mul_fill_kron_adjoint!(
     return ∂A, ∂B
 end
 
-
-# Disambiguation for mixed-sparsity methods when both A and B are sparse
-function mul_fill_kron_adjoint!(
-    ∂A::AbstractMatrix{R},
-    ∂B::AbstractMatrix{R},
-    M1::AbstractMatrix,
-    M2::AbstractMatrix,
-    A::SparseMatrixCSC{TA, Ti},
-    B::SparseMatrixCSC{TB, Int};
-    tol::Real = 0.0,
-    block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0),
-) where {R <: Real, TA <: Real, TB <: Real, Ti <: Integer}
-    return invoke(
-        mul_fill_kron_adjoint!,
-        Tuple{
-            AbstractMatrix{R},
-            AbstractMatrix{R},
-            AbstractMatrix,
-            AbstractMatrix,
-            SparseMatrixCSC{TA, Ti},
-            AbstractMatrix{TB},
-        },
-        ∂A,
-        ∂B,
-        M1,
-        M2,
-        A,
-        B;
-        tol = tol,
-        block = block,
-    )
-end
-
-
 # Mixed-sparsity variant: A is dense, B is sparse
 function mul_fill_kron_adjoint!(∂A::AbstractMatrix{R},
                                 ∂B::AbstractMatrix{R},
                                 M1::AbstractMatrix,
                                 M2::AbstractMatrix,
-                                A::AbstractMatrix{TA},
+                                A::DenseMatrix{TA},
                                 B::SparseMatrixCSC{TB, Int};
                                 tol::Real = 0.0,
                                 block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0)) where {R <: Real, TA <: Real, TB <: Real}
