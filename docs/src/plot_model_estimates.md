@@ -73,6 +73,28 @@ plot_shock_decomposition(FS2000, data)
 
 This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
 
+## Filter-Free Shock Paths
+
+Filter-free estimates sample the latent structural shocks directly. These shock paths can be passed as a positional argument after the data:
+
+```julia
+filter_free_shocks = zeros(length(get_shocks(FS2000)), size(data, 2))
+
+plot_model_estimates(FS2000, data, filter_free_shocks;
+                     algorithm = :second_order)
+```
+
+The shock path must have one row per exogenous shock and one column per data period. If `warmup_iterations > 1`, prepend `warmup_iterations - 1` additional shock columns, matching the filter-free `get_loglikelihood` convention. The model-implied endogenous path is forward-simulated from the supplied shocks and shown next to the observations. The existing keyword `shocks = :all/:none/...` still selects which shock subplots are displayed.
+
+An optional fourth positional argument adds a transparent +/- 1 standard-deviation band around the observations:
+
+```julia
+plot_model_estimates(FS2000, data, filter_free_shocks, 0.01;
+                     algorithm = :second_order)
+```
+
+The standard-deviation input can be a scalar, a vector with one entry per observable, or a matrix with dimensions `(n_observables, n_periods)`. Matrix inputs allow the band width to vary by observable and period. The same positional forms are supported by `plot_model_estimates!` for overlays.
+
 ## Compare Model Estimates with `plot_model_estimates!`
 
 The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot created with `plot_model_estimates`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) can be varied to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
