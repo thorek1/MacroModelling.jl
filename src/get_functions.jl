@@ -4832,6 +4832,247 @@ period_me_std(me_std::AbstractVector, idx::AbstractVector{Int}, ::Int) = view(me
 period_me_std(me_std::AbstractMatrix, idx::AbstractVector{Int}, t::Int) = view(me_std, idx, t)
 
 
+function materialize_filter_free_measurement_error_std(me_std::Nothing,
+                                                       n_obs::Int,
+                                                       nT_input::Int,
+                                                       period_range::UnitRange{Int},
+                                                       ::Type{R}) where R <: Real
+    return nothing
+end
+
+function materialize_filter_free_measurement_error_std(me_std::Real,
+                                                       n_obs::Int,
+                                                       nT_input::Int,
+                                                       period_range::UnitRange{Int},
+                                                       ::Type{R}) where R <: Real
+    @assert isfinite(me_std) && me_std > zero(me_std) "`measurement_error_std` must be finite and positive."
+    return fill(convert(R, me_std), n_obs, length(period_range))
+end
+
+function materialize_filter_free_measurement_error_std(me_std::AbstractVector{<:Real},
+                                                       n_obs::Int,
+                                                       nT_input::Int,
+                                                       period_range::UnitRange{Int},
+                                                       ::Type{R}) where R <: Real
+    @assert length(me_std) == n_obs "`measurement_error_std` vector must have one entry per observable (got $(length(me_std)), expected $n_obs)."
+    @assert all(x -> isfinite(x) && x > zero(x), me_std) "`measurement_error_std` entries must be finite and positive."
+    return repeat(reshape(convert(Vector{R}, me_std), :, 1), 1, length(period_range))
+end
+
+function materialize_filter_free_measurement_error_std(me_std::AbstractMatrix{<:Real},
+                                                       n_obs::Int,
+                                                       nT_input::Int,
+                                                       period_range::UnitRange{Int},
+                                                       ::Type{R}) where R <: Real
+    @assert size(me_std) == (n_obs, nT_input) "`measurement_error_std` matrix must have dimensions (n_observables, n_periods) = ($n_obs, $nT_input); got $(size(me_std))."
+    @assert all(x -> isfinite(x) && x > zero(x), me_std) "`measurement_error_std` entries must be finite and positive."
+    return convert(Matrix{R}, me_std[:, period_range])
+end
+
+
+function filter_free_state_path(::Val{:first_order},
+                                𝐒::AbstractMatrix,
+                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                shocks::AbstractMatrix{T},
+                                nT::Int,
+                                past_idx::Vector{Int},
+                                n_warm::Int,
+                                nVars::Int) where T <: Real
+    𝐒₁ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(state[1]))
+    variables = zeros(R, nVars, nT)
+    cur_state = convert(Vector{R}, state[1])
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        cur_state = 𝐒₁ * vcat(cur_state[past_idx], ϵ)
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        cur_state = 𝐒₁ * vcat(cur_state[past_idx], ϵ)
+        variables[:, t] = cur_state
+    end
+
+    return variables
+end
+
+function filter_free_state_path(::Val{:second_order},
+                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
+                                state::AbstractVector{<:Real},
+                                shocks::AbstractMatrix{T},
+                                nT::Int,
+                                past_idx::Vector{Int},
+                                n_warm::Int,
+                                nVars::Int) where T <: Real
+    𝐒₁, 𝐒₂ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(shocks), eltype(state))
+    variables = zeros(R, nVars, nT)
+    cur_state = convert(Vector{R}, state)
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+        variables[:, t] = cur_state
+    end
+
+    return variables
+end
+
+function filter_free_state_path(::Val{:third_order},
+                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
+                                state::AbstractVector{<:Real},
+                                shocks::AbstractMatrix{T},
+                                nT::Int,
+                                past_idx::Vector{Int},
+                                n_warm::Int,
+                                nVars::Int) where T <: Real
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(𝐒₃), eltype(shocks), eltype(state))
+    variables = zeros(R, nVars, nT)
+    cur_state = convert(Vector{R}, state)
+
+    for t in 1:n_warm
+        ϵ = view(shocks, :, t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        kaug = ℒ.kron(aug, aug)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+    end
+
+    for t in 1:nT
+        ϵ = view(shocks, :, n_warm + t)
+        aug = vcat(cur_state[past_idx], one(R), ϵ)
+        kaug = ℒ.kron(aug, aug)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+        variables[:, t] = cur_state
+    end
+
+    return variables
+end
+
+function filter_free_state_path(::Val{:pruned_second_order},
+                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
+                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                shocks::AbstractMatrix{T},
+                                nT::Int,
+                                past_idx::Vector{Int},
+                                n_warm::Int,
+                                nVars::Int) where T <: Real
+    𝐒₁, 𝐒₂ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(shocks), eltype(state[1]), eltype(state[2]))
+    variables = zeros(R, nVars, nT)
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2])]
+
+    for t in 1:n_warm
+        cur_state = pruned_second_order_state_update(cur_state, collect(view(shocks, :, t)), past_idx, nVars, 𝐒₁, 𝐒₂)
+    end
+
+    for t in 1:nT
+        cur_state = pruned_second_order_state_update(cur_state, collect(view(shocks, :, n_warm + t)), past_idx, nVars, 𝐒₁, 𝐒₂)
+        variables[:, t] = cur_state[1] + cur_state[2]
+    end
+
+    return variables
+end
+
+function filter_free_state_path(::Val{:pruned_third_order},
+                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
+                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                shocks::AbstractMatrix{T},
+                                nT::Int,
+                                past_idx::Vector{Int},
+                                n_warm::Int,
+                                nVars::Int) where T <: Real
+    𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
+    R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(𝐒₃), eltype(shocks), eltype(state[1]), eltype(state[2]), eltype(state[3]))
+    variables = zeros(R, nVars, nT)
+    cur_state = [convert(Vector{R}, state[1]), convert(Vector{R}, state[2]), convert(Vector{R}, state[3])]
+
+    for t in 1:n_warm
+        cur_state = pruned_third_order_state_update(cur_state, collect(view(shocks, :, t)), past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+    end
+
+    for t in 1:nT
+        cur_state = pruned_third_order_state_update(cur_state, collect(view(shocks, :, n_warm + t)), past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
+        variables[:, t] = cur_state[1] + cur_state[2] + cur_state[3]
+    end
+
+    return variables
+end
+
+
+function filter_free_data_with_model(𝓂::ℳ,
+                                     data_in_deviations::KeyedArray,
+                                     shocks::AbstractMatrix{T},
+                                     measurement_error_std::Union{Nothing,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
+                                     initial_state = DEFAULT_INITIAL_STATE;
+                                     algorithm::Symbol = :second_order,
+                                     warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                                     opts::CalculationOptions = merge_calculation_options()) where T <: Real
+    @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`plot_model_estimates` with positional shocks only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+    @assert warmup_iterations >= 0 "`warmup_iterations` must be non-negative."
+
+    observables = get_and_check_observables(𝓂.constants.post_model_macro, data_in_deviations)
+    raw_data = missing_data_to_nan(collect(data_in_deviations))
+    trimmed_data, _, _, period_range = trim_informative_sample(raw_data; require_informative_periods = true)
+
+    n_obs = length(observables)
+    nT_input = size(data_in_deviations, 2)
+    n_warm = max(warmup_iterations - 1, 0)
+    nT_total = nT_input + n_warm
+    nT = size(trimmed_data, 2)
+    nExo = 𝓂.constants.post_model_macro.nExo
+
+    @assert size(shocks, 1) == nExo "`shocks` must have one row per exogenous shock (got $(size(shocks, 1)), expected $nExo)."
+    @assert size(shocks, 2) == nT_total "`shocks` must have $(nT_total) columns: $nT_input data periods plus $n_warm filter-free warmup shock columns (got $(size(shocks, 2)))."
+
+    constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), 𝓂.parameter_values, 𝓂, opts = opts, estimation = true)
+    @assert solved "No solution for these parameters."
+
+    nVars = 𝓂.constants.post_model_macro.nVars
+    if initial_state isa AbstractVector{<:Real}
+        if length(initial_state) == nVars
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
+            if algorithm == :first_order
+                state = [state]
+            end
+        end
+    elseif !isempty(initial_state)
+        if state isa AbstractVector{<:AbstractVector{<:Real}}
+            R_state = promote_type(eltype(eltype(state)), eltype(initial_state[1]))
+            state = [convert(Vector{R_state}, i <= length(initial_state) ? initial_state[i] : state[i]) for i in eachindex(state)]
+        else
+            R_state = promote_type(eltype(state), eltype(initial_state[1]))
+            state = convert(Vector{R_state}, initial_state[1])
+        end
+    end
+
+    visible_cols = isempty(period_range) ? Int[] : n_warm .+ collect(period_range)
+    aligned_shocks = shocks[:, vcat(1:n_warm, visible_cols)]
+    filter_free_surface = algorithm == :first_order ? 𝐒 : Tuple(𝐒)
+    variables = filter_free_state_path(Val(algorithm), filter_free_surface, state, aligned_shocks, nT, 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, n_warm, nVars)
+    visible_shocks = aligned_shocks[:, n_warm + 1:end]
+    R = promote_type(eltype(variables), eltype(shocks), Float64)
+    aligned_measurement_error_std = materialize_filter_free_measurement_error_std(measurement_error_std, n_obs, nT_input, period_range, R)
+    names = AxisKeys.NamedDims.dimnames(data_in_deviations)
+    trimmed_keyed_data = KeyedArray(trimmed_data; NamedTuple{names}((axiskeys(data_in_deviations, 1), axiskeys(data_in_deviations, 2)[period_range]))...)
+
+    return (variables = variables,
+            shocks = visible_shocks,
+            measurement_error_std = aligned_measurement_error_std,
+            data_in_deviations = trimmed_keyed_data,
+            period_range = period_range)
+end
+
+
 function filter_free_reduction_indices(past_idx::Vector{Int}, obs_indices::Vector{Int})
     kept_rows = sort(unique(vcat(past_idx, obs_indices)))
     past_in_kept_raw = indexin(past_idx, kept_rows)

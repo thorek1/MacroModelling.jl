@@ -49,6 +49,8 @@ elseif test_set == "plots_4"
     include("test_plots_4.jl")
 elseif test_set == "plots_5"
     include("test_plots_5.jl")
+elseif test_set == "filter_free_plotting"
+    include("test_filter_free_plotting.jl")
 elseif test_set == "higher_order_1"
     include("test_higher_order_1.jl")
 elseif test_set == "higher_order_2"
