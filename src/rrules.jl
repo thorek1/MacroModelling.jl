@@ -18789,6 +18789,43 @@ function contract_filter_free_me_std_cotangent(d_me_std::AbstractMatrix, user_me
     return out
 end
 
+function expand_filter_free_matrix_cotangent(d_red::AbstractMatrix,
+                                             needed::AbstractVector{Int},
+                                             n_vars_full::Int,
+                                             n_cols::Int)
+    d_full = zeros(eltype(d_red), n_vars_full, n_cols)
+    @inbounds d_full[needed, :] .= d_red
+    return d_full
+end
+
+function expand_filter_free_state_cotangent(d_red::AbstractVector,
+                                            needed::AbstractVector{Int},
+                                            n_vars_full::Int)
+    d_full = zeros(eltype(d_red), n_vars_full)
+    @inbounds d_full[needed] .= d_red
+    return d_full
+end
+
+function expand_filter_free_state_cotangent(d_red::AbstractVector{<:AbstractVector},
+                                            needed::AbstractVector{Int},
+                                            n_vars_full::Int)
+    d_full = [zeros(eltype(d_red[i]), n_vars_full) for i in eachindex(d_red)]
+    @inbounds for i in eachindex(d_red)
+        d_full[i][needed] .= d_red[i]
+    end
+    return d_full
+end
+
+function scatter_filter_free_ss_and_pars_cotangent(d_SS_obs::AbstractVector,
+                                                   obs_indices::AbstractVector{Int},
+                                                   n_ss_and_pars::Int)
+    d_SS_and_pars = zeros(eltype(d_SS_obs), n_ss_and_pars)
+    @inbounds for k in eachindex(obs_indices)
+        d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+    end
+    return d_SS_and_pars
+end
+
 # Visible-period filter-free pullbacks run on the reduced `needed` row slice of
 # the policy matrices. They propagate the state cotangent backward across only
 # the retained visible sample, accumulate reduced-matrix cotangents, and return
@@ -19536,35 +19573,38 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_𝐒₁_full_cot = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁)
-            @inbounds d_𝐒₁_full_cot[needed, :] .= d_𝐒₁_red
-            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
-            @inbounds for k in eachindex(obs_indices)
-                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
-            end
-            # backprop through initial_state_deviations = initial_state - SS_and_pars[1:nVars]
-            # AND compute d_initial_state (positional tangent for the user-facing
-            # `initial_state` argument).
-            d_initial_state = NoTangent()
-            if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
-                d_state_full_init = zeros(eltype(d_state_red), nVars_full_for_init)
-                @inbounds d_state_full_init[needed] .= d_state_red
-                if initial_state_is_levels
-                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full_init
-                    d_initial_state = d_state_full_init
-                else
-                    d_is_vec = Vector{Vector{eltype(d_state_red)}}(undef, n_overridden_components)
-                    d_is_vec[1] = d_state_full_init
-                    for k in 2:n_overridden_components
-                        d_is_vec[k] = zeros(eltype(d_state_red), length(initial_state[k]))
+            d_params = @thunk begin
+                d_𝐒₁_full_cot = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
+                    d_state_full = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full_for_init)
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full
                     end
-                    d_initial_state = d_is_vec
                 end
+                ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁_full_cot, NoTangent()))[3]
             end
-            # first_order ss rrule expects bare 𝐒₁ cotangent and ignores Δstate
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, d_𝐒₁_full_cot, NoTangent()))
-            d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
+            d_initial_state = if has_override
+                @thunk begin
+                    d_𝐒₁_full_cot = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                    d_state_full_init = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full_for_init)
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full_init
+                        initial_state_pullback_tangent(initial_state, d_state_full_init)
+                    else
+                        d_is_vec = Vector{Vector{eltype(d_state_red)}}(undef, n_overridden_components)
+                        d_is_vec[1] = d_state_full_init
+                        for k in 2:n_overridden_components
+                            d_is_vec[k] = zeros(eltype(d_state_red), length(initial_state[k]))
+                        end
+                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                    end
+                end
+            else
+                NoTangent()
+            end
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19621,35 +19661,45 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
-            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
-            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
-            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
-            @inbounds for k in eachindex(obs_indices)
-                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
-            end
-            d_initial_state = NoTangent()
-            if has_override
-                if initial_state_is_levels
-                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                    d_is = zeros(eltype(d_state), length(initial_state))
-                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
-                    d_initial_state = d_is
-                else
-                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
-                    d_is_vec[1] = collect(d_state)
-                    for k in 2:n_overridden_components
-                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+            d_params = @thunk begin
+                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                if has_override
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
                     end
-                    d_initial_state = d_is_vec
+                    d_state_for_ss = zeros(eltype(d_state), nVars_full)
+                else
+                    d_state_for_ss = d_state
                 end
-                d_state_for_ss = zeros(eltype(d_state), nVars_full)
-            else
-                d_state_for_ss = d_state
+                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))[3]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
-            d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
+            d_initial_state = if has_override
+                @thunk begin
+                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                        d_is = zeros(eltype(d_state), length(initial_state))
+                        @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                        initial_state_pullback_tangent(initial_state, d_is)
+                    else
+                        d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                        d_is_vec[1] = collect(d_state)
+                        for k in 2:n_overridden_components
+                            d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+                        end
+                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                    end
+                end
+            else
+                NoTangent()
+            end
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19712,35 +19762,40 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
-            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
-            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
-                       zeros(eltype(d_state_red[2]), nVars_full)]
-            @inbounds d_state[1][needed] .= d_state_red[1]
-            @inbounds d_state[2][needed] .= d_state_red[2]
-            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
-            @inbounds for k in eachindex(obs_indices)
-                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
-            end
-            d_initial_state = NoTangent()
-            if has_override
-                if initial_state_is_levels
-                    # Only first-order component depends on SS (higher-order initialized to zero)
-                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                    d_is = zeros(eltype(d_state[1]), length(initial_state))
-                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
-                    d_initial_state = d_is
+            d_params = @thunk begin
+                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                if has_override
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                    end
+                    d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
                 else
-                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
+                    d_state_for_ss = d_state
                 end
-                # Zero only the components the user overrode; preserve others.
-                d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
-            else
-                d_state_for_ss = d_state
+                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))[3]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
-            d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
+            d_initial_state = if has_override
+                @thunk begin
+                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                        d_is = zeros(eltype(d_state[1]), length(initial_state))
+                        @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                        initial_state_pullback_tangent(initial_state, d_is)
+                    else
+                        initial_state_pullback_tangent(initial_state, [collect(d_state[i]) for i in 1:n_overridden_components])
+                    end
+                end
+            else
+                NoTangent()
+            end
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19803,36 +19858,47 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
-            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
-            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
-            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
-            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
-            @inbounds for k in eachindex(obs_indices)
-                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
-            end
-            d_initial_state = NoTangent()
-            if has_override
-                if initial_state_is_levels
-                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                    d_is = zeros(eltype(d_state), length(initial_state))
-                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
-                    d_initial_state = d_is
-                else
-                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
-                    d_is_vec[1] = collect(d_state)
-                    for k in 2:n_overridden_components
-                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+            d_params = @thunk begin
+                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
+                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                if has_override
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
                     end
-                    d_initial_state = d_is_vec
+                    d_state_for_ss = zeros(eltype(d_state), nVars_full)
+                else
+                    d_state_for_ss = d_state
                 end
-                d_state_for_ss = zeros(eltype(d_state), nVars_full)
-            else
-                d_state_for_ss = d_state
+                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))[3]
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
-            d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
+            d_initial_state = if has_override
+                @thunk begin
+                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                    d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
+                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                        d_is = zeros(eltype(d_state), length(initial_state))
+                        @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                        initial_state_pullback_tangent(initial_state, d_is)
+                    else
+                        d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                        d_is_vec[1] = collect(d_state)
+                        for k in 2:n_overridden_components
+                            d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
+                        end
+                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                    end
+                end
+            else
+                NoTangent()
+            end
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19911,37 +19977,44 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
-            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
-            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
-            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
-                       zeros(eltype(d_state_red[2]), nVars_full),
-                       zeros(eltype(d_state_red[3]), nVars_full)]
-            @inbounds d_state[1][needed] .= d_state_red[1]
-            @inbounds d_state[2][needed] .= d_state_red[2]
-            @inbounds d_state[3][needed] .= d_state_red[3]
-            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
-            @inbounds for k in eachindex(obs_indices)
-                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
-            end
-            d_initial_state = NoTangent()
-            if has_override
-                if initial_state_is_levels
-                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                    d_is = zeros(eltype(d_state[1]), length(initial_state))
-                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
-                    d_initial_state = d_is
-                    d_state_for_ss = [zeros(eltype(d_state[1]), nVars_full), d_state[2], level_override_zeroes_third_state ? zeros(eltype(d_state[3]), nVars_full) : d_state[3]]
+            d_params = @thunk begin
+                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
+                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                if has_override
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                        d_state_for_ss = [zeros(eltype(d_state[1]), nVars_full), d_state[2], level_override_zeroes_third_state ? zeros(eltype(d_state[3]), nVars_full) : d_state[3]]
+                    else
+                        d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
+                    end
                 else
-                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
-                    d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
+                    d_state_for_ss = d_state
+                end
+                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))[3]
+            end
+            d_initial_state = if has_override
+                @thunk begin
+                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
+                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
+                    d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
+                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
+                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
+                    if initial_state_is_levels
+                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                        d_is = zeros(eltype(d_state[1]), length(initial_state))
+                        @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                        initial_state_pullback_tangent(initial_state, d_is)
+                    else
+                        initial_state_pullback_tangent(initial_state, [collect(d_state[i]) for i in 1:n_overridden_components])
+                    end
                 end
             else
-                d_state_for_ss = d_state
+                NoTangent()
             end
-            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
-            d_params = ss_grads[3]
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
     end
