@@ -516,7 +516,6 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             forecast_periods = forecast_periods)
                 end
             end
-        end
 
         # filter-free positional shocks — zero shocks, data (deviations), no std
         nExo = length(m.constants.post_model_macro.exo)
@@ -762,6 +761,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                               algorithm = algorithm,
                               data_in_levels = true,
                               forecast_periods = 6)
+        end
 
         @testset "plot_solution" begin
             states  = vcat(get_state_variables(m), m.constants.post_model_macro.past_not_future_and_mixed)
