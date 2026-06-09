@@ -997,6 +997,7 @@ function plot_model_estimates(𝓂::ℳ,
                            :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
                            :measurement_error_std => measurement_error_std_to_plot,
+                           :filter_free_shocks => filter_free_shocks,
                            :filter_free_plot => filter_free_plot,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
@@ -1732,6 +1733,7 @@ function plot_model_estimates!(𝓂::ℳ,
                            :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
                            :measurement_error_std => measurement_error_std_to_plot,
+                           :filter_free_shocks => filter_free_shocks,
                            :filter_free_plot => filter_free_plot,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
@@ -1779,6 +1781,42 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
+    end
+
+    filter_free_shocks_idx = Int[]
+
+    if haskey(diffdict, :filter_free_shocks)
+        unique_ffs = unique(map(x -> isnothing(x) ? nothing : collect(x), diffdict[:filter_free_shocks]))
+
+        for init in diffdict[:filter_free_shocks]
+            normalized = isnothing(init) ? nothing : collect(init)
+            for (i,u) in enumerate(unique_ffs)
+                if u == normalized
+                    push!(filter_free_shocks_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Filter-free shocks" => ["#$i" for i in filter_free_shocks_idx])
+    end
+
+    measurement_error_std_idx = Int[]
+
+    if haskey(diffdict, :measurement_error_std)
+        unique_mes = unique(map(x -> isnothing(x) ? nothing : collect(x), diffdict[:measurement_error_std]))
+
+        for init in diffdict[:measurement_error_std]
+            normalized = isnothing(init) ? nothing : collect(init)
+            for (i,u) in enumerate(unique_mes)
+                if u == normalized
+                    push!(measurement_error_std_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Obs. error std" => ["#$i" for i in measurement_error_std_idx])
     end
 
     annotate_rename_dict_diff!(annotate_diff_input, diffdict)
@@ -1847,7 +1885,7 @@ function plot_model_estimates!(𝓂::ℳ,
          :shocks, :shock_names,
          :variables, :variable_names,
          :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis,
-         :measurement_error_std, :filter_free_plot])
+         :filter_free_shocks, :measurement_error_std])
 
     annotate_tol_diff!(annotate_diff_input, model_estimates_active_plot_container)
     
