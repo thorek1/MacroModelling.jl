@@ -17,12 +17,6 @@
 #   - Matrix equations: solve_sylvester_equation, solve_lyapunov_equation
 #   - Filters: calculate_loglikelihood, run_kalman_iterations, find_shocks
 
-# Instrumentation counter: incremented inside the @thunk body for d_params in the
-# filter-free get_loglikelihood pullback.  Used by tests to verify that the
-# expensive ss_pb computation is NOT triggered when differentiating only w.r.t.
-# shocks / me_std.
-const _params_pullback_counter = Ref{Int}(0)
-
 # clear_solution_caches! is a pure side-effect (cache invalidation) with no
 # differentiable outputs, so the pullback is a no-op.
 function rrule(::typeof(clear_solution_caches!), 𝓂::ℳ, algorithm::Symbol)
@@ -19580,7 +19574,6 @@ function rrule(::typeof(get_loglikelihood),
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_params = @thunk begin
-                _params_pullback_counter[] += 1
                 d_𝐒₁_full_cot = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
                 if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
@@ -19669,7 +19662,6 @@ function rrule(::typeof(get_loglikelihood),
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_params = @thunk begin
-                _params_pullback_counter[] += 1
                 d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
                 d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
@@ -19771,7 +19763,6 @@ function rrule(::typeof(get_loglikelihood),
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_params = @thunk begin
-                _params_pullback_counter[] += 1
                 d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
                 d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
@@ -19868,7 +19859,6 @@ function rrule(::typeof(get_loglikelihood),
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_params = @thunk begin
-                _params_pullback_counter[] += 1
                 d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
                 d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
@@ -19988,7 +19978,6 @@ function rrule(::typeof(get_loglikelihood),
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
             d_params = @thunk begin
-                _params_pullback_counter[] += 1
                 d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
                 d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
