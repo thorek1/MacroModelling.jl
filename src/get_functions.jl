@@ -4871,13 +4871,13 @@ end
 
 
 function filter_free_state_path(::Val{:first_order},
-                                𝐒::AbstractMatrix,
-                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                𝐒::AbstractMatrix{S},
+                                state::AbstractVector{<:AbstractVector{StateT}},
                                 shocks::AbstractMatrix{T},
                                 nT::Int,
                                 past_idx::Vector{Int},
                                 n_warm::Int,
-                                nVars::Int) where T <: Real
+                                nVars::Int)::Matrix{promote_type(S, T, StateT)} where {S <: Real, T <: Real, StateT <: Real}
     𝐒₁ = 𝐒
     R = promote_type(eltype(𝐒₁), eltype(shocks), eltype(state[1]))
     variables = zeros(R, nVars, nT)
@@ -4898,13 +4898,13 @@ function filter_free_state_path(::Val{:first_order},
 end
 
 function filter_free_state_path(::Val{:second_order},
-                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
-                                state::AbstractVector{<:Real},
+                                𝐒::Tuple{<:AbstractMatrix{S1},<:AbstractMatrix{S2}},
+                                state::AbstractVector{StateT},
                                 shocks::AbstractMatrix{T},
                                 nT::Int,
                                 past_idx::Vector{Int},
                                 n_warm::Int,
-                                nVars::Int) where T <: Real
+                                nVars::Int)::Matrix{promote_type(S1, S2, T, StateT)} where {S1 <: Real, S2 <: Real, T <: Real, StateT <: Real}
     𝐒₁, 𝐒₂ = 𝐒
     R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(shocks), eltype(state))
     variables = zeros(R, nVars, nT)
@@ -4927,13 +4927,13 @@ function filter_free_state_path(::Val{:second_order},
 end
 
 function filter_free_state_path(::Val{:third_order},
-                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
-                                state::AbstractVector{<:Real},
+                                𝐒::Tuple{<:AbstractMatrix{S1},<:AbstractMatrix{S2},<:AbstractMatrix{S3}},
+                                state::AbstractVector{StateT},
                                 shocks::AbstractMatrix{T},
                                 nT::Int,
                                 past_idx::Vector{Int},
                                 n_warm::Int,
-                                nVars::Int) where T <: Real
+                                nVars::Int)::Matrix{promote_type(S1, S2, S3, T, StateT)} where {S1 <: Real, S2 <: Real, S3 <: Real, T <: Real, StateT <: Real}
     𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
     R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(𝐒₃), eltype(shocks), eltype(state))
     variables = zeros(R, nVars, nT)
@@ -4958,13 +4958,13 @@ function filter_free_state_path(::Val{:third_order},
 end
 
 function filter_free_state_path(::Val{:pruned_second_order},
-                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix},
-                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                𝐒::Tuple{<:AbstractMatrix{S1},<:AbstractMatrix{S2}},
+                                state::AbstractVector{<:AbstractVector{StateT}},
                                 shocks::AbstractMatrix{T},
                                 nT::Int,
                                 past_idx::Vector{Int},
                                 n_warm::Int,
-                                nVars::Int) where T <: Real
+                                nVars::Int)::Matrix{promote_type(S1, S2, T, StateT)} where {S1 <: Real, S2 <: Real, T <: Real, StateT <: Real}
     𝐒₁, 𝐒₂ = 𝐒
     R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(shocks), eltype(state[1]), eltype(state[2]))
     variables = zeros(R, nVars, nT)
@@ -4983,13 +4983,13 @@ function filter_free_state_path(::Val{:pruned_second_order},
 end
 
 function filter_free_state_path(::Val{:pruned_third_order},
-                                𝐒::Tuple{<:AbstractMatrix,<:AbstractMatrix,<:AbstractMatrix},
-                                state::AbstractVector{<:AbstractVector{<:Real}},
+                                𝐒::Tuple{<:AbstractMatrix{S1},<:AbstractMatrix{S2},<:AbstractMatrix{S3}},
+                                state::AbstractVector{<:AbstractVector{StateT}},
                                 shocks::AbstractMatrix{T},
                                 nT::Int,
                                 past_idx::Vector{Int},
                                 n_warm::Int,
-                                nVars::Int) where T <: Real
+                                nVars::Int)::Matrix{promote_type(S1, S2, S3, T, StateT)} where {S1 <: Real, S2 <: Real, S3 <: Real, T <: Real, StateT <: Real}
     𝐒₁, 𝐒₂, 𝐒₃ = 𝐒
     R = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(𝐒₃), eltype(shocks), eltype(state[1]), eltype(state[2]), eltype(state[3]))
     variables = zeros(R, nVars, nT)
@@ -5058,7 +5058,7 @@ function filter_free_data_with_model(𝓂::ℳ,
     visible_cols = isempty(period_range) ? Int[] : n_warm .+ collect(period_range)
     aligned_shocks = shocks[:, vcat(1:n_warm, visible_cols)]
     filter_free_surface = algorithm == :first_order ? 𝐒 : Tuple(𝐒)
-    variables = filter_free_state_path(Val(algorithm), filter_free_surface, state, aligned_shocks, nT, 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, n_warm, nVars)
+    variables = filter_free_state_path(Val(algorithm), filter_free_surface, state, aligned_shocks, nT, 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, n_warm, nVars)::Matrix{promote_type(T, Float64)}
     visible_shocks = aligned_shocks[:, n_warm + 1:end]
     R = promote_type(eltype(variables), eltype(shocks), Float64)
     aligned_measurement_error_std = materialize_filter_free_measurement_error_std(measurement_error_std, n_obs, nT_input, period_range, R)
