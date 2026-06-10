@@ -32,7 +32,7 @@ function rrule(::typeof(mat_mult_kron),
     Y = mat_mult_kron(A, B, C, D)
 
     function mat_mult_kron_pullback(Ȳ)
-        Ȳ = (Ȳ)
+        Ȳ = unthunk(Ȳ)
         if Ȳ isa AbstractZero
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -124,7 +124,7 @@ function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_
     project_Ŝ = ProjectTo(Ŝ)
 
     function sparse_preallocated_pullback(Ω̄)
-        ΔΩ = (Ω̄)
+        ΔΩ = unthunk(Ω̄)
         ΔŜ = project_Ŝ(ΔΩ)
         return NoTangent(), ΔŜ, NoTangent()
     end
@@ -210,7 +210,7 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
 
     function second_order_stochastic_steady_state_pullback(∂x)
         # @timeit_debug timer "Calculate SSS - pullback" begin
-        ∂x₁ = (∂x[1])
+        ∂x₁ = unthunk(∂x[1])
         S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
@@ -304,7 +304,7 @@ function rrule(::typeof(solve_stochastic_steady_state_newton),
     ∂𝐒₃ =  zero(𝐒₃)
 
     function third_order_stochastic_steady_state_pullback(∂x)
-        ∂x₁ = (∂x[1])
+        ∂x₁ = unthunk(∂x[1])
         S = -∂x₁' / (A + B * ℒ.kron(x_aug, I_nPast) + C * ℒ.kron(kron_x_aug, I_nPast) / 2 - I_nPast)
 
         ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed] = S' * x'
@@ -334,7 +334,7 @@ function rrule(::typeof(calculate_jacobian),
             return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
-        ∂∇₁u = (∂∇₁)
+        ∂∇₁u = unthunk(∂∇₁)
         copyto!(∂∇₁_vec, ∂∇₁u)
 
         jacobian_funcs.f_parameters(caches_obj.jacobian_parameters, parameters, SS_and_pars)
@@ -363,7 +363,7 @@ function rrule(::typeof(calculate_hessian),
             return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
-        ∂∇₂u = (∂∇₂)
+        ∂∇₂u = unthunk(∂∇₂)
         copyto!(∂∇₂_vec, ∂∇₂u)
 
         hessian_funcs.f_parameters(caches_obj.hessian_parameters, parameters, SS_and_pars)
@@ -393,7 +393,7 @@ function rrule(::typeof(calculate_third_order_derivatives),
             return NoTangent(), zero(parameters), zero(SS_and_pars), NoTangent(), NoTangent(), NoTangent()
         end
 
-        ∂∇₃u = (∂∇₃)
+        ∂∇₃u = unthunk(∂∇₃)
         copyto!(∂∇₃_vec, ∂∇₃u)
 
         third_order_derivatives_funcs.f_parameters(caches_obj.third_order_derivatives_parameters, parameters, SS_and_pars)
@@ -414,7 +414,7 @@ function incremental_cotangent!(Δ, prev_ref::Base.RefValue)
         return Δ
     end
 
-    Δu = (Δ)
+    Δu = unthunk(Δ)
     prev = prev_ref[]
     prev_ref[] = copy(Δu)
 
@@ -597,7 +597,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        ∂SS = (∂SS_and_pars[1])
+        ∂SS = unthunk(∂SS_and_pars[1])
         if ∂SS isa Union{NoTangent, AbstractZero}
             return NoTangent(), NoTangent(), zeros(S, size(jvp_no_exo, 2)), NoTangent()
         end
@@ -631,7 +631,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
 
         pullback = function (ȳ)
-            Δy = (ȳ)
+            Δy = unthunk(ȳ)
             if Δy isa NoTangent || Δy isa AbstractZero
                 return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
             end
@@ -671,7 +671,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         y = (𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], false)
 
         pullback = function (ȳ)
-            Δy = (ȳ)
+            Δy = unthunk(ȳ)
             if Δy isa NoTangent || Δy isa AbstractZero
                 return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
             end
@@ -690,7 +690,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     y = (𝓂.constants, SS_and_pars, 𝐒₁, [state], true)
 
     pullback = function (ȳ)
-        Δy = (ȳ)
+        Δy = unthunk(ȳ)
         if Δy isa NoTangent || Δy isa AbstractZero
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
@@ -958,7 +958,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -991,7 +991,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1011,7 +1011,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
-        Δ = (Δresult)
+        Δ = unthunk(Δresult)
         Δsss = zeros(Float64, length(sss))
         ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
         Δ∇₁ = zeros(Float64, size(∇₁))
@@ -1091,7 +1091,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1120,7 +1120,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂)
 
     pullback = function (Δresult)
-        Δ = (Δresult)
+        Δ = unthunk(Δresult)
         Δsss = zeros(Float64, length(sss))
         ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
         Δ∇₁ = zeros(Float64, size(∇₁))
@@ -1186,7 +1186,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1222,7 +1222,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1257,7 +1257,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1281,7 +1281,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     result = (sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
-        Δ = (Δresult)
+        Δ = unthunk(Δresult)
         Δsss = zeros(Float64, length(sss))
         ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
         Δ∇₁ = zeros(Float64, size(∇₁))
@@ -1394,7 +1394,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1430,7 +1430,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
         result = (all_SS, false, SS_and_pars, solution_error,
                   zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0), zeros(Float64,0,0), spzeros(Float64,0,0), spzeros(Float64,0,0))
         pullback = function (Δresult)
-            Δ = (Δresult)
+            Δ = unthunk(Δresult)
             Δsss = zeros(Float64, length(all_SS))
             ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
             if !(Δ isa Union{NoTangent, AbstractZero}) && hasmethod(getindex, Tuple{typeof(Δ), Int})
@@ -1458,7 +1458,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     result = (sss, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂)
 
     pullback = function (Δresult)
-        Δ = (Δresult)
+        Δ = unthunk(Δresult)
         Δsss = zeros(Float64, length(sss))
         ΔSS_and_pars = zeros(Float64, length(SS_and_pars))
         Δ∇₁ = zeros(Float64, size(∇₁))
@@ -1572,7 +1572,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
 
     pullback = function (ȳ)
-        Δy = (ȳ)
+        Δy = unthunk(ȳ)
         if Δy isa NoTangent || Δy isa AbstractZero
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
@@ -1646,7 +1646,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
 
     pullback = function (ȳ)
-        Δy = (ȳ)
+        Δy = unthunk(ȳ)
         if Δy isa NoTangent || Δy isa AbstractZero
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
@@ -1720,7 +1720,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
 
     pullback = function (ȳ)
-        Δy = (ȳ)
+        Δy = unthunk(ȳ)
         if Δy isa NoTangent || Δy isa AbstractZero
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
@@ -1798,7 +1798,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
 
     pullback = function (ȳ)
-        Δy = (ȳ)
+        Δy = unthunk(ȳ)
         if Δy isa NoTangent || Δy isa AbstractZero
             return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
         end
@@ -1974,7 +1974,7 @@ function rrule(::typeof(get_loglikelihood),
 
     # ── pullback ──
     pullback = function (∂llh_bar)
-        ∂llh = (∂llh_bar)
+        ∂llh = unthunk(∂llh_bar)
 
         # backprop through calculate_loglikelihood
         # returns: (_, _, _, _, ∂𝐒, ∂data_in_deviations, _, ∂state, _)
@@ -2544,7 +2544,7 @@ function rrule(::typeof(get_irf),
 
     # Pullback (common structure, algorithm-specific parts dispatched)
     function get_irf_pullback(∂result_bar)
-        ∂result = (∂result_bar)
+        ∂result = unthunk(∂result_bar)
 
         if ∂result isa Union{NoTangent, AbstractZero}
             return NoTangent(), NoTangent(), zeros(S, length(parameters))
@@ -2657,10 +2657,10 @@ function rrule(::typeof(calculate_covariance),
         Δcovar, Δsol_ret, Δ∇₁_ret, ΔSS_ret, _ = Δout
 
         # Materialise any InplaceableThunk / Thunk wrappers
-        Δcovar   = (Δcovar)
-        Δsol_ret = (Δsol_ret)
-        Δ∇₁_ret  = (Δ∇₁_ret)
-        ΔSS_ret  = (ΔSS_ret)
+        Δcovar   = unthunk(Δcovar)
+        Δsol_ret = unthunk(Δsol_ret)
+        Δ∇₁_ret  = unthunk(Δ∇₁_ret)
+        ΔSS_ret  = unthunk(ΔSS_ret)
 
         # Accumulators
         ∂sol_total = zeros(S, size(sol))
@@ -2767,7 +2767,7 @@ function rrule(::typeof(calculate_mean),
         mean_of_variables = SS_and_pars[1:nVars]
 
         function first_order_mean_pullback(∂out)
-            ∂mean = (∂out[1])
+            ∂mean = unthunk(∂out[1])
             if ∂mean isa AbstractZero
                 return NoTangent(), zeros(S, np), NoTangent()
             end
@@ -2880,7 +2880,7 @@ function rrule(::typeof(calculate_mean),
 
     # ── Pullback ──
     function calculate_mean_pullback(∂out)
-        ∂mean_in = (∂out[1])
+        ∂mean_in = unthunk(∂out[1])
 
         if ∂mean_in isa AbstractZero
             return NoTangent(), zeros(S, np), NoTangent()
@@ -3083,15 +3083,15 @@ function rrule(::typeof(calculate_second_order_moments),
             ∂𝐒₁_pass, ∂∇₁_pass, ∂𝐒₂_pass, ∂∇₂_pass, _ = ∂out
 
         # Materialise any InplaceableThunk / Thunk wrappers
-        ∂μʸ₂_in   = (∂μʸ₂_in)
-        ∂Δμˢ₂_in  = (∂Δμˢ₂_in)
-        ∂Σʸ₁_pass = (∂Σʸ₁_pass)
-        ∂Σᶻ₁_pass = (∂Σᶻ₁_pass)
-        ∂SS_pass   = (∂SS_pass)
-        ∂𝐒₁_pass   = (∂𝐒₁_pass)
-        ∂∇₁_pass   = (∂∇₁_pass)
-        ∂𝐒₂_pass   = (∂𝐒₂_pass)
-        ∂∇₂_pass   = (∂∇₂_pass)
+        ∂μʸ₂_in   = unthunk(∂μʸ₂_in)
+        ∂Δμˢ₂_in  = unthunk(∂Δμˢ₂_in)
+        ∂Σʸ₁_pass = unthunk(∂Σʸ₁_pass)
+        ∂Σᶻ₁_pass = unthunk(∂Σᶻ₁_pass)
+        ∂SS_pass   = unthunk(∂SS_pass)
+        ∂𝐒₁_pass   = unthunk(∂𝐒₁_pass)
+        ∂∇₁_pass   = unthunk(∂∇₁_pass)
+        ∂𝐒₂_pass   = unthunk(∂𝐒₂_pass)
+        ∂∇₂_pass   = unthunk(∂∇₂_pass)
 
         # Accumulators
         ∂𝐒₁_acc = zeros(S, size(𝐒₁))
@@ -3362,20 +3362,20 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
             ∂𝐒₁_pass, ∂∇₁_pass, ∂𝐒₂_pass, ∂∇₂_pass, _ = ∂out
 
         # Materialise any InplaceableThunk / Thunk wrappers
-        ∂Σʸ₂_in   = (∂Σʸ₂_in)
-        ∂Σᶻ₂_pass = (∂Σᶻ₂_pass)
-        ∂μʸ₂_in   = (∂μʸ₂_in)
-        ∂Δμˢ₂_in  = (∂Δμˢ₂_in)
-        ∂at_in    = (∂at_in)
-        ∂ŝŝ₂_pass = (∂ŝŝ₂_pass)
-        ∂ŝy₂_pass = (∂ŝy₂_pass)
-        ∂Σʸ₁_pass = (∂Σʸ₁_pass)
-        ∂Σᶻ₁_pass = (∂Σᶻ₁_pass)
-        ∂SS_pass   = (∂SS_pass)
-        ∂𝐒₁_pass   = (∂𝐒₁_pass)
-        ∂∇₁_pass   = (∂∇₁_pass)
-        ∂𝐒₂_pass   = (∂𝐒₂_pass)
-        ∂∇₂_pass   = (∂∇₂_pass)
+        ∂Σʸ₂_in   = unthunk(∂Σʸ₂_in)
+        ∂Σᶻ₂_pass = unthunk(∂Σᶻ₂_pass)
+        ∂μʸ₂_in   = unthunk(∂μʸ₂_in)
+        ∂Δμˢ₂_in  = unthunk(∂Δμˢ₂_in)
+        ∂at_in    = unthunk(∂at_in)
+        ∂ŝŝ₂_pass = unthunk(∂ŝŝ₂_pass)
+        ∂ŝy₂_pass = unthunk(∂ŝy₂_pass)
+        ∂Σʸ₁_pass = unthunk(∂Σʸ₁_pass)
+        ∂Σᶻ₁_pass = unthunk(∂Σᶻ₁_pass)
+        ∂SS_pass   = unthunk(∂SS_pass)
+        ∂𝐒₁_pass   = unthunk(∂𝐒₁_pass)
+        ∂∇₁_pass   = unthunk(∂∇₁_pass)
+        ∂𝐒₂_pass   = unthunk(∂𝐒₂_pass)
+        ∂∇₂_pass   = unthunk(∂∇₂_pass)
 
         # Accumulators
         ∂𝐒₁_acc = zeros(S, size(𝐒₁))
@@ -3911,9 +3911,9 @@ function rrule(::typeof(calculate_third_order_moments),
     function calculate_third_order_moments_pullback(∂out)
         ∂Σʸ₃_in, ∂μʸ₂_in, ∂SS_in, _ = ∂out
 
-        ∂Σʸ₃_in = (∂Σʸ₃_in)
-        ∂μʸ₂_in = (∂μʸ₂_in)
-        ∂SS_in  = (∂SS_in)
+        ∂Σʸ₃_in = unthunk(∂Σʸ₃_in)
+        ∂μʸ₂_in = unthunk(∂μʸ₂_in)
+        ∂SS_in  = unthunk(∂SS_in)
 
         n₋ = T_pm.nPast_not_future_and_mixed
 
@@ -4842,10 +4842,10 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     function calculate_third_order_moments_with_autocorrelation_pullback(∂out)
         ∂Σʸ₃_in, ∂μʸ₂_in, ∂autocorr_in, ∂SS_in, _ = ∂out
 
-        ∂Σʸ₃_in = (∂Σʸ₃_in)
-        ∂μʸ₂_in = (∂μʸ₂_in)
-        ∂autocorr_in = (∂autocorr_in)
-        ∂SS_in  = (∂SS_in)
+        ∂Σʸ₃_in = unthunk(∂Σʸ₃_in)
+        ∂μʸ₂_in = unthunk(∂μʸ₂_in)
+        ∂autocorr_in = unthunk(∂autocorr_in)
+        ∂SS_in  = unthunk(∂SS_in)
 
         n₋ = T_pm.nPast_not_future_and_mixed
 
@@ -5742,7 +5742,7 @@ function rrule(::typeof(calculate_first_order_solution),
         # Guard: if the cotangent for the solution matrix is NoTangent
         # (e.g. because a downstream filter failure returned all-NoTangent),
         # return zero gradients immediately.
-        ∂𝐒_mat = (∂𝐒[1])
+        ∂𝐒_mat = unthunk(∂𝐒[1])
         if ∂𝐒_mat isa Union{NoTangent, AbstractZero}
             return NoTangent(), zero(∇₁), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -6047,7 +6047,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # end # timeit_debug
 
-        ∂𝐒₂ = (∂𝐒₂_solved[1])
+        ∂𝐒₂ = unthunk(∂𝐒₂_solved[1])
 
         if size(∂𝐒₂, 2) == size(𝐒₂_stable, 2)
             nothing
@@ -6698,12 +6698,12 @@ end
 # Mixed-sparsity variant: A is sparse, B is dense
 function mul_fill_kron_adjoint!(
     ∂A::AbstractMatrix{R},
-    ∂B::AbstractMatrix{R},
-    M1::AbstractMatrix,
-    M2::AbstractMatrix,
+                                ∂B::AbstractMatrix{R},
+                                M1::AbstractMatrix,
+                                M2::AbstractMatrix,
     A::SparseMatrixCSC{TA, Ti},
     B::DenseMatrix{TB};
-    tol::Real = 0.0,
+                                tol::Real = 0.0,
     block::AbstractMatrix{R} = Matrix{R}(undef, size(M1, 1), 0),
 ) where {R <: Real, TA <: Real, TB <: Real, Ti <: Integer}
 
@@ -6852,15 +6852,15 @@ function mul_fill_kron_adjoint!(
 
                     @simd for l in 1:m2
                         work[l] += M1_value * M2t[column_offset + l, M1_col]
-                    end
                 end
+            end
 
                 for l in 1:m2
                     ∂A[k, l] += bij * work[l]
-                end
+        end
 
                 if has_A_contribution
-                    acc = zero(R)
+            acc = zero(R)
 
                     for A_index in A_row_start:A_row_stop
                         l = A_nz_col[A_index]
@@ -6882,15 +6882,15 @@ function mul_fill_kron_adjoint!(
                     for A_index in A_row_start:A_row_stop
                         l = A_nz_col[A_index]
                         local_acc += A_nz_val[A_index] * M2t[column_offset + l, M1_col]
-                    end
-
-                    acc += M1_value * local_acc
                 end
 
-                ∂B[i, j] += acc
+                    acc += M1_value * local_acc
             end
+
+            ∂B[i, j] += acc
         end
     end
+end
 
     return ∂A, ∂B
 end
@@ -8002,8 +8002,8 @@ end
 # but avoids the n_compressed³ × n_compressed³ allocation.
 function mul_compressed_kron³_pullback!(
     ∂X::AbstractMatrix,
-    M1::AbstractMatrix,
-    M2::AbstractMatrix,
+                                        M1::AbstractMatrix,
+                                        M2::AbstractMatrix,
     X::AbstractMatrix;
     tol::Real = 0.0,
 )
@@ -8083,9 +8083,9 @@ function mul_compressed_kron³_pullback!(
     row_scale = Vector{T}(undef, n_supported_rows)
 
     @inbounds for i1 in 1:n_x_rows
-        for j1 in 1:i1
+                for j1 in 1:i1
             for k1 in 1:j1
-                row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
+                        row = (i1 - 1) * i1 * (i1 + 1) ÷ 6 + (j1 - 1) * j1 ÷ 2 + k1
                 slot = row_to_slot[row]
 
                 if slot != 0
@@ -8093,11 +8093,11 @@ function mul_compressed_kron³_pullback!(
                     row_second[slot] = j1
                     row_third[slot] = k1
 
-                    if i1 == j1
+                        if i1 == j1
                         divisor = j1 == k1 ? 6 : 2
-                    else
-                        divisor = (j1 == k1 || i1 == k1) ? 2 : 1
-                    end
+                        else
+                            divisor = (j1 == k1 || i1 == k1) ? 2 : 1
+                        end
 
                     row_scale[slot] = inv(T(divisor))
                 end
@@ -8148,29 +8148,29 @@ function mul_compressed_kron³_pullback!(
                     ajj = Xd[j1, j2]
                     ajk = Xd[j1, k2]
 
-                    aki = Xd[k1, i2]
-                    akj = Xd[k1, j2]
-                    akk = Xd[k1, k2]
+                        aki = Xd[k1, i2]
+                        akj = Xd[k1, j2]
+                        akk = Xd[k1, k2]
 
                     q_i2 = aij * ajk + aik * ajj
                     q_j2 = aik * aji + aii * ajk
                     q_k2 = aii * ajj + aij * aji
 
-                    ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
-                    ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
-                    ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
+                        ∂X[i1, i2] += g_d * (ajj * akk + ajk * akj)
+                        ∂X[i1, j2] += g_d * (aji * akk + ajk * aki)
+                        ∂X[i1, k2] += g_d * (aji * akj + ajj * aki)
 
-                    ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
-                    ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
-                    ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
+                        ∂X[j1, i2] += g_d * (aij * akk + aik * akj)
+                        ∂X[j1, j2] += g_d * (aii * akk + aik * aki)
+                        ∂X[j1, k2] += g_d * (aij * aki + aii * akj)
 
-                    ∂X[k1, i2] += g_d * q_i2
-                    ∂X[k1, j2] += g_d * q_j2
-                    ∂X[k1, k2] += g_d * q_k2
+                        ∂X[k1, i2] += g_d * q_i2
+                        ∂X[k1, j2] += g_d * q_j2
+                        ∂X[k1, k2] += g_d * q_k2
+                    end
                 end
             end
         end
-    end
 
     return ∂X
 end
@@ -8410,7 +8410,7 @@ function rrule(::typeof(calculate_third_order_solution),
     #   PULLBACK
     # =========================================================================
     function third_order_solution_pullback(∂𝐒₃_solved)
-        ∂𝐒₃ = choose_matrix_format((∂𝐒₃_solved[1]))
+        ∂𝐒₃ = choose_matrix_format(unthunk(∂𝐒₃_solved[1]))
 
         if ℒ.norm(∂𝐒₃) < opts.tol.third_order.ad.sylvester.acceptance_tol
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -8751,7 +8751,7 @@ function rrule(::typeof(solve_sylvester_equation),
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        ∂P₁ = (∂P[1])
+        ∂P₁ = unthunk(∂P[1])
         if ℒ.norm(∂P₁) < tol.rtol
             return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -8835,7 +8835,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        ∂P₁ = (∂P[1])
+        ∂P₁ = unthunk(∂P[1])
         if ℒ.norm(∂P₁) < tol.rtol
             return NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -8924,7 +8924,7 @@ function rrule(::typeof(find_shocks),
     # ∂𝐒ⁱ²ᵉ = similar(𝐒ⁱ²ᵉ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat((∂x[1]), zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
@@ -8989,7 +8989,7 @@ function rrule(::typeof(find_shocks),
     xxλ = ℒ.kron(x,xλ)
 
     function find_shocks_pullback(∂x)
-        ∂x = vcat((∂x[1]), zero(λ))
+        ∂x = vcat(unthunk(∂x[1]), zero(λ))
 
         S = -fXλp' \ ∂x
 
@@ -17573,7 +17573,7 @@ end
 
 
 function get_statistics_cotangent_helper(Δret, key::Symbol)
-    Δ = (Δret)
+    Δ = unthunk(Δret)
     if Δ isa Union{NoTangent, AbstractZero}
         return NoTangent()
     end
@@ -17751,7 +17751,7 @@ function rrule(::typeof(get_statistics),
             end
 
             ∂SS = zeros(T, length(SS))
-            ∂SS[SS_var_idx] .+= (Δnsss)
+            ∂SS[SS_var_idx] .+= unthunk(Δnsss)
 
             ∂SS_and_pars = zeros(T, length(SS_and_pars))
             ∂SS_and_pars[1:length(SS)] .+= ∂SS
@@ -18336,27 +18336,27 @@ function rrule(::typeof(get_solution),
         result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw], true)
 
         pullback_2nd = function (∂result_bar)
-            Δ = (∂result_bar)
+            Δ = unthunk(∂result_bar)
 
             if Δ isa Union{NoTangent, AbstractZero}
                 return NoTangent(), NoTangent(), zeros(S, length(parameters))
             end
 
             ∂NSSS    = Δ[1]
-            ∂mats    = (Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
             # Δ[3] is ∂solved — not differentiable
 
             # Extract per-matrix cotangents defensively
             ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[1])
+                m = unthunk(∂mats[1])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
             ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[2])
+                m = unthunk(∂mats[2])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
 
@@ -18468,33 +18468,33 @@ function rrule(::typeof(get_solution),
         result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂_raw, 𝐒₃_raw], true)
 
         pullback_3rd = function (∂result_bar)
-            Δ = (∂result_bar)
+            Δ = unthunk(∂result_bar)
 
             if Δ isa Union{NoTangent, AbstractZero}
                 return NoTangent(), NoTangent(), zeros(S, length(parameters))
             end
 
             ∂NSSS    = Δ[1]
-            ∂mats    = (Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
             # Δ[3] is ∂solved — not differentiable
 
             # Extract per-matrix cotangents defensively
             ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[1])
+                m = unthunk(∂mats[1])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
             ∂𝐒₂_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[2])
+                m = unthunk(∂mats[2])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
             ∂𝐒₃_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[3])
+                m = unthunk(∂mats[3])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
 
@@ -18577,21 +18577,21 @@ function rrule(::typeof(get_solution),
         result = (SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁], true)
 
         pullback_1st = function (∂result_bar)
-            Δ = (∂result_bar)
+            Δ = unthunk(∂result_bar)
 
             if Δ isa Union{NoTangent, AbstractZero}
                 return NoTangent(), NoTangent(), zeros(S, length(parameters))
             end
 
             ∂NSSS    = Δ[1]
-            ∂mats    = (Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
+            ∂mats    = unthunk(Δ[2])  # cotangent for Vector{AbstractMatrix{S}}
             # Δ[3] is ∂solved — not differentiable
 
             # Extract ∂𝐒₁ defensively
             ∂𝐒₁_ext = if ∂mats isa Union{NoTangent, AbstractZero}
                 NoTangent()
             else
-                m = (∂mats[1])
+                m = unthunk(∂mats[1])
                 m isa Union{NoTangent, AbstractZero} ? NoTangent() : m
             end
 
@@ -19551,7 +19551,7 @@ function rrule(::typeof(get_loglikelihood),
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
         pullback = function (Δ)
-            Δllh = (Δ)
+            Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        me_std_zero_tan, NoTangent()
@@ -19576,7 +19576,7 @@ function rrule(::typeof(get_loglikelihood),
             d_params = @thunk begin
                 d_𝐒₁_full_cot = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                 d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
+            if has_override && !(d_state_red isa Union{NoTangent, AbstractZero})
                     d_state_full = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full_for_init)
                     if initial_state_is_levels
                         @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full
@@ -19589,18 +19589,18 @@ function rrule(::typeof(get_loglikelihood),
                     d_𝐒₁_full_cot = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
                     d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
                     d_state_full_init = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full_for_init)
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full_init
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state_full_init
                         initial_state_pullback_tangent(initial_state, d_state_full_init)
-                    else
-                        d_is_vec = Vector{Vector{eltype(d_state_red)}}(undef, n_overridden_components)
-                        d_is_vec[1] = d_state_full_init
-                        for k in 2:n_overridden_components
-                            d_is_vec[k] = zeros(eltype(d_state_red), length(initial_state[k]))
-                        end
-                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                else
+                    d_is_vec = Vector{Vector{eltype(d_state_red)}}(undef, n_overridden_components)
+                    d_is_vec[1] = d_state_full_init
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state_red), length(initial_state[k]))
                     end
+                        initial_state_pullback_tangent(initial_state, d_is_vec)
                 end
+            end
             else
                 NoTangent()
             end
@@ -19638,7 +19638,7 @@ function rrule(::typeof(get_loglikelihood),
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
         pullback = function (Δ)
-            Δllh = (Δ)
+            Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        me_std_zero_tan, NoTangent()
@@ -19661,45 +19661,35 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_params = @thunk begin
-                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                if has_override
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                    end
-                    d_state_for_ss = zeros(eltype(d_state), nVars_full)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                    d_initial_state = d_is
                 else
-                    d_state_for_ss = d_state
-                end
-                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))[3]
-            end
-            d_initial_state = if has_override
-                @thunk begin
-                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                        d_is = zeros(eltype(d_state), length(initial_state))
-                        @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
-                        initial_state_pullback_tangent(initial_state, d_is)
-                    else
-                        d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
-                        d_is_vec[1] = collect(d_state)
-                        for k in 2:n_overridden_components
-                            d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
-                        end
-                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                    d_is_vec[1] = collect(d_state)
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
                     end
+                    d_initial_state = d_is_vec
                 end
+                d_state_for_ss = zeros(eltype(d_state), nVars_full)
             else
-                NoTangent()
+                d_state_for_ss = d_state
             end
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19739,7 +19729,7 @@ function rrule(::typeof(get_loglikelihood),
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
         pullback = function (Δ)
-            Δllh = (Δ)
+            Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        me_std_zero_tan, NoTangent()
@@ -19762,40 +19752,35 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_params = @thunk begin
-                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                if has_override
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                    end
-                    d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
+                       zeros(eltype(d_state_red[2]), nVars_full)]
+            @inbounds d_state[1][needed] .= d_state_red[1]
+            @inbounds d_state[2][needed] .= d_state_red[2]
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    # Only first-order component depends on SS (higher-order initialized to zero)
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state[1]), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                    d_initial_state = d_is
                 else
-                    d_state_for_ss = d_state
+                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
                 end
-                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))[3]
-            end
-            d_initial_state = if has_override
-                @thunk begin
-                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                        d_is = zeros(eltype(d_state[1]), length(initial_state))
-                        @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
-                        initial_state_pullback_tangent(initial_state, d_is)
-                    else
-                        initial_state_pullback_tangent(initial_state, [collect(d_state[i]) for i in 1:n_overridden_components])
-                    end
-                end
+                # Zero only the components the user overrode; preserve others.
+                d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
             else
-                NoTangent()
+                d_state_for_ss = d_state
             end
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂], d_state_for_ss, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19834,7 +19819,7 @@ function rrule(::typeof(get_loglikelihood),
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
         pullback = function (Δ)
-            Δllh = (Δ)
+            Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        me_std_zero_tan, NoTangent()
@@ -19858,47 +19843,36 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_params = @thunk begin
-                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
-                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                if has_override
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                    end
-                    d_state_for_ss = zeros(eltype(d_state), nVars_full)
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
+            d_state = zeros(eltype(d_state_red), nVars_full); @inbounds d_state[needed] .= d_state_red
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
+            end
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
+                    d_initial_state = d_is
                 else
-                    d_state_for_ss = d_state
-                end
-                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))[3]
-            end
-            d_initial_state = if has_override
-                @thunk begin
-                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                    d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
-                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1:nVars_full_for_init]
-                        d_is = zeros(eltype(d_state), length(initial_state))
-                        @views d_is[1:nVars_full_for_init] .+= d_state[1:nVars_full_for_init]
-                        initial_state_pullback_tangent(initial_state, d_is)
-                    else
-                        d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
-                        d_is_vec[1] = collect(d_state)
-                        for k in 2:n_overridden_components
-                            d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
-                        end
-                        initial_state_pullback_tangent(initial_state, d_is_vec)
+                    d_is_vec = Vector{Vector{eltype(d_state)}}(undef, n_overridden_components)
+                    d_is_vec[1] = collect(d_state)
+                    for k in 2:n_overridden_components
+                        d_is_vec[k] = zeros(eltype(d_state), length(initial_state[k]))
                     end
+                    d_initial_state = d_is_vec
                 end
+                d_state_for_ss = zeros(eltype(d_state), nVars_full)
             else
-                NoTangent()
+                d_state_for_ss = d_state
             end
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
 
@@ -19953,7 +19927,7 @@ function rrule(::typeof(get_loglikelihood),
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
         pullback = function (Δ)
-            Δllh = (Δ)
+            Δllh = unthunk(Δ)
             if Δllh isa AbstractZero
                 return NoTangent(), NoTangent(), NoTangent(), zeros(S, nP), zero(shocks),
                        me_std_zero_tan, NoTangent()
@@ -19977,44 +19951,37 @@ function rrule(::typeof(get_loglikelihood),
             end
             d_shocks_full = expand_filter_free_shock_cotangent(d_shocks, shocks, visible_cols, n_warm)
             d_me_std_full = contract_filter_free_me_std_cotangent(expand_filter_free_me_std_cotangent(d_me_std, measurement_error_std, period_range), user_me_std)
-            d_params = @thunk begin
-                d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
-                d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                if has_override
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                        d_state_for_ss = [zeros(eltype(d_state[1]), nVars_full), d_state[2], level_override_zeroes_third_state ? zeros(eltype(d_state[3]), nVars_full) : d_state[3]]
-                    else
-                        d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
-                    end
-                else
-                    d_state_for_ss = d_state
-                end
-                ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))[3]
+            d_𝐒₁ = zeros(eltype(d_𝐒₁_red), nVars_full, ncols₁); @inbounds d_𝐒₁[needed, :] .= d_𝐒₁_red
+            d_𝐒₂ = zeros(eltype(d_𝐒₂_red), nVars_full, ncols₂); @inbounds d_𝐒₂[needed, :] .= d_𝐒₂_red
+            d_𝐒₃ = zeros(eltype(d_𝐒₃_red), nVars_full, ncols₃); @inbounds d_𝐒₃[needed, :] .= d_𝐒₃_red
+            d_state = [zeros(eltype(d_state_red[1]), nVars_full),
+                       zeros(eltype(d_state_red[2]), nVars_full),
+                       zeros(eltype(d_state_red[3]), nVars_full)]
+            @inbounds d_state[1][needed] .= d_state_red[1]
+            @inbounds d_state[2][needed] .= d_state_red[2]
+            @inbounds d_state[3][needed] .= d_state_red[3]
+            d_SS_and_pars = zeros(eltype(d_SS_obs), length(SS_and_pars))
+            @inbounds for k in eachindex(obs_indices)
+                d_SS_and_pars[obs_indices[k]] += d_SS_obs[k]
             end
-            d_initial_state = if has_override
-                @thunk begin
-                    d_𝐒₁ = expand_filter_free_matrix_cotangent(d_𝐒₁_red, needed, nVars_full, ncols₁)
-                    d_𝐒₂ = expand_filter_free_matrix_cotangent(d_𝐒₂_red, needed, nVars_full, ncols₂)
-                    d_𝐒₃ = expand_filter_free_matrix_cotangent(d_𝐒₃_red, needed, nVars_full, ncols₃)
-                    d_state = expand_filter_free_state_cotangent(d_state_red, needed, nVars_full)
-                    d_SS_and_pars = scatter_filter_free_ss_and_pars_cotangent(d_SS_obs, obs_indices, length(SS_and_pars))
-                    if initial_state_is_levels
-                        @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
-                        d_is = zeros(eltype(d_state[1]), length(initial_state))
-                        @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
-                        initial_state_pullback_tangent(initial_state, d_is)
-                    else
-                        initial_state_pullback_tangent(initial_state, [collect(d_state[i]) for i in 1:n_overridden_components])
-                    end
+            d_initial_state = NoTangent()
+            if has_override
+                if initial_state_is_levels
+                    @views d_SS_and_pars[1:nVars_full_for_init] .-= d_state[1][1:nVars_full_for_init]
+                    d_is = zeros(eltype(d_state[1]), length(initial_state))
+                    @views d_is[1:nVars_full_for_init] .+= d_state[1][1:nVars_full_for_init]
+                    d_initial_state = d_is
+                    d_state_for_ss = [zeros(eltype(d_state[1]), nVars_full), d_state[2], level_override_zeroes_third_state ? zeros(eltype(d_state[3]), nVars_full) : d_state[3]]
+                else
+                    d_initial_state = [collect(d_state[i]) for i in 1:n_overridden_components]
+                    d_state_for_ss = [i <= n_overridden_components ? zeros(eltype(d_state[i]), nVars_full) : d_state[i] for i in 1:length(d_state)]
                 end
             else
-                NoTangent()
+                d_state_for_ss = d_state
             end
-            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, d_initial_state
+            ss_grads = ss_pb((NoTangent(), d_SS_and_pars, [d_𝐒₁, d_𝐒₂, d_𝐒₃], d_state_for_ss, NoTangent()))
+            d_params = ss_grads[3]
+            return NoTangent(), NoTangent(), NoTangent(), d_params, d_shocks_full, d_me_std_full, initial_state_pullback_tangent(initial_state, d_initial_state)
         end
         return isfinite(llh) ? (llh, pullback) : on_failure
     end
