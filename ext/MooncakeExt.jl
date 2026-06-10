@@ -77,9 +77,11 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_irf), M
 # 5-arg kwarg-only path (no AD through initial_state)
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T} where {T<:Base.IEEEFloat} true
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Matrix{T}} where {T<:Base.IEEEFloat} true
 # 6-arg positional path (AD through initial_state)
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, T, Vector{Float64}} where {T<:Base.IEEEFloat} true
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Vector{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_loglikelihood), MacroModelling.ℳ, KeyedArray{Float64}, Vector{T}, Matrix{T}, Matrix{T}, Vector{Float64}} where {T<:Base.IEEEFloat} true
 # Nested Vector{Vector} initial_state forms are implemented manually below.
 
 # ── DynamicPPL compatibility: wider @is_primitive declarations ──
