@@ -1,5 +1,7 @@
 # Todo list
 ## High priority
+- [ ] get_solution for third order is off as in the SSS is not on the line
+- [ ] higher order solution matrix is set to zero at some point
 - [ ] do triage of helpers. either make sure they are used across the package where applciable but then also check that there is no more consice or already existing implmentation in the ecosystem.
 - [ ] with these large models being used, make returns that are scaling with the number of variables and shocks output only the selected variables and shocks in order not to bloat memory and speed up computations. this includes IRFs, variance decompositions, etc.
 - [ ] rethink very long input types
