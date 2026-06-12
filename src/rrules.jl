@@ -1906,7 +1906,7 @@ function rrule(::typeof(get_loglikelihood),
     state_overridden = state
     if initial_state isa AbstractVector{<:Real}
         if length(initial_state) == nVars
-            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : zero(state)
             state_overridden = adjust_initial_state(initial_state, algorithm, nVars, state_shift, SS_and_pars[1:nVars])
             if algorithm == :first_order
                 state_overridden = [state_overridden]
@@ -19492,7 +19492,7 @@ function rrule(::typeof(get_loglikelihood),
     nVars_full_for_init = 𝓂.constants.post_model_macro.nVars
     if initial_state isa AbstractVector{<:Real}
         if length(initial_state) == nVars_full_for_init
-            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : -state
+            state_shift = state isa AbstractVector{<:AbstractVector{<:Real}} ? (length(state) == 1 ? zero(state[1]) : -state[2]) : zero(state)
             state = adjust_initial_state(initial_state, algorithm, nVars_full_for_init, state_shift, SS_and_pars[1:nVars_full_for_init])
             if algorithm == :first_order
                 state = [state]
