@@ -120,7 +120,7 @@ function adjust_initial_state(initial_state,
         elseif algorithm == :pruned_third_order
             return [initial_state - reference_steady_state[1:nVars], zeros(R, nVars) - SSS_delta, zeros(R, nVars)]
         else
-            return initial_state - reference_steady_state[1:nVars]
+            return initial_state - (reference_steady_state[1:nVars] + SSS_delta[1:nVars])
         end
     end
 
