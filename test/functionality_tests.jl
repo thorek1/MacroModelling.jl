@@ -3834,6 +3834,17 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         end
     end
 
+    @testset "no-shock IRF from steady state stays at steady state" begin
+        periods = 10
+        steady_state = SS(m, algorithm = algorithm, stochastic = true, derivatives = false, return_variables_only = true)
+        irf = get_irf(m, algorithm = algorithm, levels = true, shocks = :none, initial_state = collect(steady_state), periods = periods)
+        for var in m.constants.post_model_macro.var
+            for t in 1:periods
+                @test isapprox(irf(var, t, :)[1], steady_state(var), atol = 1e-10)
+            end
+        end
+    end
+
     @testset "get_non_stochastic_steady_state_residuals" begin
         stst = SS(m, derivatives = false)
         
