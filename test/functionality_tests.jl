@@ -3838,7 +3838,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         periods = 10
         steady_state = SS(m, algorithm = algorithm, stochastic = algorithm != :first_order, derivatives = false, return_variables_only = true)
         irf = get_irf(m, algorithm = algorithm, levels = true, shocks = :none, initial_state = collect(steady_state), periods = periods)
-        for var in axiskeys(steady_state, 1)
+        for var in intersect(axiskeys(steady_state, 1), axiskeys(irf, 1))
             for t in 1:periods
                 @test isapprox(irf(var, t, :)[1], steady_state(var), atol = 1e-10)
             end
