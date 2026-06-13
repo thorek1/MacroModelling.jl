@@ -2467,29 +2467,32 @@ end
             end
         elseif algorithm ∈ [:second_order, :third_order]
             S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
 
             if algorithm == :second_order
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
                 end
             else  # :third_order
                 𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
                 end
             end
         elseif algorithm == :pruned_second_order
             S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
-            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, S₁, 𝐒₂)
+            state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂)
         elseif algorithm == :pruned_third_order
             S₁ = 𝓂.caches.first_order_solution_matrix
+            𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
             𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
             𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
-            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, S₁, 𝐒₂, 𝐒₃)
+            state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
         end
     end
 
