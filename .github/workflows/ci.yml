@@ -174,7 +174,7 @@ jobs:
             arch: x64
             test_set: "system_prior_estimation"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
@@ -272,7 +272,7 @@ jobs:
     name: Dynare Comparison
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
