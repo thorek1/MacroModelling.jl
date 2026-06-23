@@ -1,3 +1,6 @@
+# Fernández-Villaverde, J. and Rubio-Ramírez, J.F. (2006). A Baseline DSGE Model.
+# Manuscript, University of Pennsylvania.
+#
 # Fernández-Villaverde, J. (2010). The econometrics of DSGE models.
 # SERIEs, 1(1–2), 3–49. https://doi.org/10.1007/s13209-009-0001-0
 
