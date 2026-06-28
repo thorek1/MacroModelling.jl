@@ -1,3 +1,7 @@
+# Guerrieri, L. and Iacoviello, M. (2017). Collateral constraints and macroeconomic
+# asymmetries. Journal of Monetary Economics, 90, 28–49.
+# https://doi.org/10.1016/j.jmoneco.2017.06.004
+
 @model Guerrieri_Iacoviello_2017 begin
 	c[0] + c1[0] + ik[0] = y[0]
 

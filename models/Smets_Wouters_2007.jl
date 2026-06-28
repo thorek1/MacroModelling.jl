@@ -1,3 +1,7 @@
+# Smets, F. and Wouters, R. (2007). Shocks and frictions in US business cycles: A Bayesian
+# DSGE approach. American Economic Review, 97(3), 586–606.
+# https://doi.org/10.1257/aer.97.3.586
+
 @model Smets_Wouters_2007 begin
 	y[0] = c[0] + inve[0] + y[ss] * gy[0] + afunc[0] * kp[-1] / cgamma
 

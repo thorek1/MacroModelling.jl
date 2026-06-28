@@ -1,3 +1,6 @@
+# Jermann, U. and Quadrini, V. (2012). Macroeconomic effects of financial shocks.
+# American Economic Review, 102(1), 238–271. https://doi.org/10.1257/aer.102.1.238
+
 @model JQ_2012_RBC begin
 	w[0] / c[0] ^ σ = α / (1 - n[0])
 

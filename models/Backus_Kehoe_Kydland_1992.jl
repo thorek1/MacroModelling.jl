@@ -1,3 +1,6 @@
+# Backus, D.K., Kehoe, P.J., and Kydland, F.E. (1992). International real business cycles.
+# Journal of Political Economy, 100(4), 745–775. https://www.jstor.org/stable/2138686
+
 @model Backus_Kehoe_Kydland_1992 begin
     # To scale to N countries, add/remove symbols in every [H, F] list below.
     # Update the @parameters block rho definitions and steady-state calibration accordingly.
