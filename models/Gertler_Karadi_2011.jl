@@ -1,5 +1,5 @@
-# TODO: add reference here
-# TODO: add tests and verify against paper / other implementations
+# Gertler, M. and Karadi, P. (2011). A model of unconventional monetary policy.
+# Journal of Monetary Economics, 58(1), 17–34. https://doi.org/10.1016/j.jmoneco.2010.10.004
 
 @model Gertler_Karadi_2011 begin
     # [4] Marginal utility of consumption with external habit.

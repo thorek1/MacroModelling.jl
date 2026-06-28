@@ -1,5 +1,7 @@
-# TODO: add reference here
-# TODO: add tests and verify against paper / other implementations
+# Bernanke, B., Gertler, M., and Gilchrist, S. (1999). The financial accelerator in a
+# quantitative business cycle framework. In J. B. Taylor and M. Woodford (Eds.),
+# Handbook of Macroeconomics (Vol. 1, pp. 1341–1393). Elsevier.
+# https://doi.org/10.1016/S1574-0048(99)10034-X
 
 @model Bernanke_Gertler_Gilchrist_1999 begin
     # [B.3] Household Euler equation: intertemporal optimality for deposits.
