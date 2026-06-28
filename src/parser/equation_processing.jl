@@ -852,7 +852,10 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
     par_defined_more_than_once = Set()
     
     bounded_vars = []
-    parameter_definitions = replace_indices(parameter_block_in)
+    parameter_definitions = parse_for_loops(parameter_block_in)
+    parameter_definitions = resolve_if_expr(parameter_definitions)
+    parameter_definitions = remove_nothing(parameter_definitions)
+    parameter_definitions = replace_indices(parameter_definitions)
 
     # parse parameter inputs
     # label all variables parameters and exogenous variables and timings across all equations
