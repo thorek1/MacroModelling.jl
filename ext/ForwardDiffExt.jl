@@ -402,7 +402,17 @@ function MacroModelling.get_NSSS_and_parameters(𝓂::ℳ,
 
         ∂SS_equations_∂SS_and_pars = jac_cache
 
-        if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
+        # Balanced growth path: the augmented SS Jacobian is singular (free trend
+        # levels + two-time-point duplicate rows); use a minimum-norm least-squares
+        # solve so ∂SS/∂param propagates through the growth unknowns. See rrules.jl.
+        growth_model = any(s -> endswith(string(s), "ᴳ"), 𝓂.constants.post_model_macro.vars_in_ss_equations)
+        if growth_model
+            jvp_no_exo = custom_ss_expand_matrix * (-(ℒ.pinv(Matrix(∂SS_equations_∂SS_and_pars)) * Matrix(∂SS_equations_∂parameters)))
+            for i in 1:N
+                parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
+                @view(∂SS_and_pars[:,i]) .= jvp_no_exo * parameter_values_partials
+            end
+        elseif ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
             rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)
             rhs_n_cols = size(∂SS_equations_∂parameters, 2)
 

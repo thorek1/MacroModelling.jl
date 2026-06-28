@@ -528,7 +528,17 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     ∂SS_equations_∂SS_and_pars = jac_cache
     qme_ws = 𝓂.workspaces.first_order
-    if ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
+    # Balanced growth path: the augmented (level+growth) SS Jacobian is singular
+    # (free trend levels → zero columns, two-time-point duplicate rows), so the
+    # plain LU below fails. Use the minimum-norm least-squares solution instead:
+    # it pins free-level sensitivities to 0 and resolves the consistent duplicate
+    # rows exactly, giving correct ∂SS/∂param through the growth unknowns.
+    growth_model = any(s -> endswith(string(s), "ᴳ"), 𝓂.constants.post_model_macro.vars_in_ss_equations)
+    if growth_model
+        A = Matrix(∂SS_equations_∂SS_and_pars)
+        B = Matrix(∂SS_equations_∂parameters)
+        JVP = -(ℒ.pinv(A) * B)
+    elseif ∂SS_equations_∂SS_and_pars isa SparseMatrixCSC
         rhs_n_rows = size(∂SS_equations_∂SS_and_pars, 1)::Int
         rhs_n_cols = size(∂SS_equations_∂parameters, 2)::Int
 

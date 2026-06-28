@@ -1,5 +1,6 @@
 using Test
 using MacroModelling
+using AxisKeys: axiskeys
 
 # Balanced growth path (BGP) support: models written in levels with non-stationary
 # I(1) variables on a common growth path. Steady state uses the IRIS-style
@@ -28,6 +29,15 @@ using MacroModelling
         # first-order solution exists (one unit root) and is finite
         sol = get_solution(RWdrift)
         @test all(isfinite, collect(sol))
+
+        # ∂SS/∂param must propagate through the growth unknowns (dx = g ⇒ ∂dx/∂g = 1;
+        # x is a free unit root ⇒ ∂x/∂g = 0). The augmented SS Jacobian is singular,
+        # so this exercises the minimum-norm derivative path.
+        ssd  = get_SS(RWdrift)   # derivatives = true
+        M    = collect(ssd)
+        rows = axiskeys(ssd, 1)
+        @test isapprox(M[findfirst(==(:dx), rows), 2], 1.0; atol = 1e-6)
+        @test isapprox(M[findfirst(==(:x),  rows), 2], 0.0; atol = 1e-6)
     end
 
     @testset "cointegration (two trends, shared growth path)" begin
