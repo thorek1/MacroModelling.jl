@@ -105,7 +105,7 @@
 - [ ] add balanced growth path handling
 - [x] autocorr and corr with derivatives. return 3d array
 - [ ] add pydsge and econpizza to overview
-- [ ] add for loop parser in @parameters
+- [x] add for loop parser in @parameters
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
