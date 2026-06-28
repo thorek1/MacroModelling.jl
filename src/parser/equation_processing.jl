@@ -916,7 +916,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                             end :
                             x :
                         x :
-                x.args[2].head == :block ?
+                x.args[2] isa Expr && x.args[2].head == :block ?
                     x.args[1].args[1] == :| ?
                         x :
                     x.args[2].args[2].args[1] == :| ?
@@ -929,7 +929,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                         @warn "Invalid parameter input ignored: " * repr(x)
                         x
                     end :
-                x.args[2].head == :call ?
+                x.args[2] isa Expr && x.args[2].head == :call ?
                     x.args[1].args[1] == :| ?
                             x :
                     begin # this is calibration by targeting SS values (conditional parameter at the end)
