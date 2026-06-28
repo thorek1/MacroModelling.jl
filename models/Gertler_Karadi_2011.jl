@@ -1,4 +1,5 @@
-using MacroModelling
+# TODO: add reference here
+# TODO: add tests and verify against paper / other implementations
 
 @model Gertler_Karadi_2011 begin
     # [4] Marginal utility of consumption with external habit.

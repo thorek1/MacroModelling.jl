@@ -1,4 +1,5 @@
-using MacroModelling
+# TODO: add reference here
+# TODO: add tests and verify against paper / other implementations
 
 @model Bernanke_Gertler_Gilchrist_1999 begin
     # [B.3] Household Euler equation: intertemporal optimality for deposits.
