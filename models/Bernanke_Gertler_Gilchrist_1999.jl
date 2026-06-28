@@ -1,6 +1,6 @@
 using MacroModelling
 
-@model Bernanke_Gertler_Gilchrist_1999_nonlinear begin
+@model Bernanke_Gertler_Gilchrist_1999 begin
     # [B.3] Household Euler equation: intertemporal optimality for deposits.
     C[0]^(-1) = β * C[1]^(-1) * R[0] / π[1]
 
@@ -98,7 +98,7 @@ using MacroModelling
     premium_ann[0] = 400 * log(s[0])
 end
 
-@parameters Bernanke_Gertler_Gilchrist_1999_nonlinear begin
+@parameters Bernanke_Gertler_Gilchrist_1999 begin
     β = 0.99
     α = 0.35
     δ = 0.025

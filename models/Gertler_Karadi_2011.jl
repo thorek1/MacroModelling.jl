@@ -1,6 +1,6 @@
 using MacroModelling
 
-@model Gertler_Karadi_2011_nonlinear begin
+@model Gertler_Karadi_2011 begin
     # [4] Marginal utility of consumption with external habit.
     ϱ[0] = (C[0] - h * C[-1])^(-σ) - β * h * (C[1] - h * C[0])^(-σ)
 
@@ -119,7 +119,7 @@ using MacroModelling
     prem[0] = Rᵏ[1] / R[0]
 end
 
-@parameters Gertler_Karadi_2011_nonlinear begin
+@parameters Gertler_Karadi_2011 begin
     β = 0.99
     σ = 1.0
     h = 0.815
