@@ -54,6 +54,41 @@ Additional information can guide the automatic solver toward convergence and val
   
   which returns steady-state equation residuals in absolute value.
 
+## Balanced Growth Path (Models in Levels)
+
+Semistructural and policy models (IRIS / QPM style) are often written directly in **levels**, with non-stationary I(1) variables that share a common balanced growth path (BGP), rather than being hand-stationarized into gaps and growth rates. `MacroModelling.jl` supports such models for first-order analysis: the balanced growth path is **detected automatically**, so fully stationary models are unaffected and require no changes.
+
+When a model contains a trending (unit-root) variable, the steady state is computed by giving every variable both a **level** and an additive per-period **growth** `xᴳ`, and evaluating each steady-state equation at two time origins. This pins the growth rates and any cointegration relationships automatically, while the absolute level of each independent stochastic trend is a free initial condition that is anchored to a particular solution (`0`). For a linear model the dynamics and impulse responses are invariant to this anchor — only the growth rates (slopes) are determined by the model.
+
+As a minimal example, consider a random walk with drift `g` and its first difference `dx`:
+
+```@repl ss_bgp
+using MacroModelling
+
+@model RWdrift begin
+    x[0]  = x[-1] + g + e[x]
+    dx[0] = x[0] - x[-1]
+end
+
+@parameters RWdrift begin
+    g = 0.02
+end
+
+get_steady_state(RWdrift, derivatives = false)
+```
+
+The stationary first difference `dx` equals the drift `g`, while the trending level `x` is anchored to `0`. The solved growth rates also drive the level paths: with `levels = true`, impulse responses and simulations of trending variables follow `x_t = anchor + xᴳ · t`, so the level accumulates the deterministic drift while deviations (`levels = false`) do not:
+
+```@repl ss_bgp
+get_irf(RWdrift, shocks = :none, periods = 4, levels = true)
+```
+
+Notes and current scope:
+
+- Growth is **additive** and the treatment applies to **first-order** solutions.
+- Cointegrated systems are handled automatically: growth-rate identities such as `xᴳ = aᴳ - bᴳ` follow from the level relationships without any additional equations.
+- Unconditional variances of trending levels are infinite and are reported as `NaN` (stationary variables are unaffected).
+
 ## Custom Steady State Functions
 
 For models where the internal solver fails, or when analytical solutions are available (often faster to compute), a custom steady state function can be provided. There are two primary ways to specify this:
