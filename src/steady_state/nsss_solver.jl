@@ -1143,10 +1143,27 @@ end
         colpos = Dict(n => i for (i, n) in enumerate(check_unknowns))
         growth_idx = [i for i in eachindex(unknown_names) if endswith(string(unknown_names[i]), "ᴳ")]
         level_idx  = [i for i in eachindex(unknown_names) if !endswith(string(unknown_names[i]), "ᴳ")]
+        anchored_any = false
+
+        # M4: user-supplied `x[ss] = expr` level anchors force that trend's level to
+        # be pinned (to the anchor value, handled in the indeterminate step below)
+        # rather than left to the automatic pick. Force-anchor them first, then let
+        # the rank pass cover any remaining free directions.
+        ss_anchors = 𝓂.equations.ss_anchors
+        forced = Int[]
+        if !isempty(ss_anchors)
+            for i in level_idx
+                if haskey(ss_anchors, unknown_names[i])
+                    incidence_matrix[i, :] .= 0
+                    push!(forced, i)
+                    anchored_any = true
+                end
+            end
+        end
+
         kept = Int[]
         currank = 0
-        anchored_any = false
-        for i in vcat(growth_idx, level_idx)   # keep growths first, anchor redundant levels
+        for i in vcat(growth_idx, setdiff(level_idx, forced))   # keep growths first, anchor redundant levels
             c = get(colpos, unknown_names[i], 0)
             c == 0 && continue
             r = ℒ.rank(view(Jdense, :, vcat(kept, c)))
@@ -1154,7 +1171,7 @@ end
                 push!(kept, c)
                 currank = r
             else
-                incidence_matrix[i, :] .= 0   # anchor this free level → default 0
+                incidence_matrix[i, :] .= 0   # anchor this free level → default value
                 anchored_any = true
             end
         end
@@ -1348,31 +1365,50 @@ end
     builder = NSSSSolverBuilder()
     numerical_block_count = 0
 
-    # Emit analytical steps for unmatched (indeterminate) variables
+    # Emit analytical steps for unmatched (indeterminate) variables. Balanced growth
+    # path: a free trend level carrying a user anchor `x[ss] = expr` is set to that
+    # expression (typically a parameter/constant); otherwise it defaults to the user
+    # guess or 0 (an arbitrary particular solution of the cointegrated system).
     if n_unmatched > 0
+        ss_anchors = 𝓂.equations.ss_anchors
         for vn in unmatched_var_names
             var_sym = Symbol(vn)
-            default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
-                Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
-
             widx = sol_name_to_index[var_sym]
 
-            eval_func! = let cv = default_val
-                (out, _sol_vec, _params_vec) -> begin
-                    out[1] = cv
-                    return nothing
+            if haskey(ss_anchors, var_sym)
+                anchor_expr = ss_anchors[var_sym]
+                eval_func! = compile_exprs_to_func([anchor_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                anchor_atoms = anchor_expr isa Expr ? get_symbols(anchor_expr) :
+                               anchor_expr isa Symbol ? Set([anchor_expr]) : Symbol[]
+                push!(solved_vars, var_sym)
+                push!(solved_vals, anchor_expr)
+                push!(atoms_in_equations_list, anchor_atoms)
+                push_analytical_step!(builder;
+                    eval_func! = eval_func!,
+                    write_indices = [widx],
+                    description = "BGP anchor: $var_sym = $anchor_expr",
+                )
+            else
+                default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
+                    Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
+
+                eval_func! = let cv = default_val
+                    (out, _sol_vec, _params_vec) -> begin
+                        out[1] = cv
+                        return nothing
+                    end
                 end
+
+                push!(solved_vars, var_sym)
+                push!(solved_vals, default_val)
+                push!(atoms_in_equations_list, [])
+
+                push_analytical_step!(builder;
+                    eval_func! = eval_func!,
+                    write_indices = [widx],
+                    description = "Indeterminate: $var_sym = $default_val",
+                )
             end
-
-            push!(solved_vars, var_sym)
-            push!(solved_vals, default_val)
-            push!(atoms_in_equations_list, [])
-
-            push_analytical_step!(builder;
-                eval_func! = eval_func!,
-                write_indices = [widx],
-                description = "Indeterminate: $var_sym = $default_val",
-            )
         end
     end
 

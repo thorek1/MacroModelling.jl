@@ -71,6 +71,30 @@ using AxisKeys: axiskeys
         @test isapprox(ss(:b), ss(:a) + ss(:c); atol = 1e-10)
     end
 
+    @testset "steady-state level anchor (x[ss] = value)" begin
+        # `x[ss] = xbar` pins the trend's level to the parameter; the growth is still
+        # pinned by the dynamic law, and the dynamics are invariant to the anchor.
+        @model RWanchor begin
+            x[0]  = x[-1] + g + e[x]
+            dx[0] = x[0] - x[-1]
+            x[ss] = xbar
+        end
+        @parameters RWanchor begin
+            g    = 0.02
+            xbar = 5.0
+        end
+
+        @test RWanchor.equations.ss_anchors == Dict(:x => :xbar)
+
+        ss = get_SS(RWanchor, derivatives = false)
+        @test isapprox(ss(:x), 5.0; atol = 1e-8)    # level pinned to the anchor
+        @test isapprox(ss(:dx), 0.02; atol = 1e-8)  # growth still pinned by the law
+
+        # levels drift from the anchored level
+        lir = get_irf(RWanchor, shocks = :none, periods = 3, levels = true)
+        @test isapprox(collect(lir(:x, :, :))[:], [5.02, 5.04, 5.06]; atol = 1e-8)
+    end
+
     @testset "stationary model is unaffected" begin
         @model RBCbgp begin
             1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))

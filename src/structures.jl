@@ -113,6 +113,9 @@ mutable struct equations
     calibration_no_var::Vector{Expr}
     calibration_parameters::Vector{Symbol}
     calibration_original::Vector{Expr}
+    # Balanced growth path: user-supplied steady-state level anchors `x[ss] = expr`,
+    # pinning a trending variable's level (growth stays pinned by its dynamic law).
+    ss_anchors::Dict{Symbol, Any}
 end
 
 """

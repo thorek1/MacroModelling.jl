@@ -83,6 +83,25 @@ The stationary first difference `dx` equals the drift `g`, while the trending le
 get_irf(RWdrift, shocks = :none, periods = 4, levels = true)
 ```
 
+By default the absolute level of each independent trend is anchored to `0`. To pin a trend to a specific level instead — for example to match a reference steady state or to express a constant trend — add a **steady-state level anchor** `x[ss] = expr` as an equation in the `@model` block (analogous to an IRIS `!!` steady-state override). It constrains the level only; the growth remains determined by the variable's dynamic law:
+
+```@repl ss_bgp
+@model RWanchored begin
+    x[0]  = x[-1] + g + e[x]
+    dx[0] = x[0] - x[-1]
+    x[ss] = xbar
+end
+
+@parameters RWanchored begin
+    g    = 0.02
+    xbar = 5.0
+end
+
+get_steady_state(RWanchored, derivatives = false)
+```
+
+The anchor expression is typically a parameter or constant. Anchors should target the model's independent (fundamental) trends; for a linear model the dynamics are unaffected by the choice of anchor.
+
 Notes and current scope:
 
 - Growth is **additive** and the treatment applies to **first-order** solutions.

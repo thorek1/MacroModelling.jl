@@ -47,8 +47,29 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
     model_ex = remove_nothing(model_ex::Expr)::Expr
 
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
-    
+
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
+
+    # Balanced growth path: extract steady-state level anchors `x[ss] = expr` before
+    # any dynamic processing. These pin a trending variable's steady level (an IRIS
+    # `!!`-style steady-state override); they are not dynamic equations, so we remove
+    # them from the model block and apply them during steady-state anchoring. The RHS
+    # is collapsed to steady-state form (timed/`[ss]` refs → bare level symbols).
+    ss_anchors = Dict{Symbol, Any}()
+    let kept_args = Any[]
+        for arg in model_ex.args
+            if isa(arg, Expr) && arg.head == :(=) && arg.args[1] isa Expr &&
+               arg.args[1].head == :ref &&
+               occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(arg.args[1].args[2]))
+                anchored_var = arg.args[1].args[1]
+                anchor_rhs = postwalk(x -> x isa Expr && x.head == :ref ? x.args[1] : x, arg.args[2])
+                ss_anchors[anchored_var] = anchor_rhs
+            else
+                push!(kept_args, arg)
+            end
+        end
+        model_ex = Expr(model_ex.head, kept_args...)
+    end
 
     # write down dynamic equations and add auxiliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
@@ -604,6 +625,22 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
 
     all_vars = union(all_dyn_vars, dyn_var_ss)
 
+    # Balanced growth path: parameters referenced only in steady-state level anchors
+    # (`x[ss] = expr`) are otherwise invisible to the parser (the anchor equation was
+    # extracted before dynamic processing). Register the non-variable anchor symbols
+    # as parameters so they enter the parameter vector and steady-state machinery.
+    if !isempty(ss_anchors)
+        anchor_symbols = Symbol[]
+        for v in values(ss_anchors)
+            if v isa Expr
+                append!(anchor_symbols, collect(get_symbols(v)))
+            elseif v isa Symbol
+                push!(anchor_symbols, v)
+            end
+        end
+        parameters_in_equations = sort(union(parameters_in_equations, setdiff(anchor_symbols, all_vars)))
+    end
+
     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
     past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
@@ -834,6 +871,7 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
         Expr[],            # calibration_no_var
         Symbol[],          # calibration_parameters
         Expr[],            # calibration_original
+        ss_anchors,        # balanced growth path steady-state level anchors
     )
 
     return T, equations_struct, ℂ, 𝓦
