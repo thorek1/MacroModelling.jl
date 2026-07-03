@@ -26,9 +26,11 @@ using AxisKeys: axiskeys
         @test isapprox(ss(:dx), 0.02; atol = 1e-10)
         @test isapprox(ss(:x), 0.0; atol = 1e-10)
 
-        # first-order solution exists (one unit root) and is finite
+        # first-order solution and IRFs exist (one unit root) and are finite
         sol = get_solution(RWdrift)
         @test all(isfinite, collect(sol))
+        irf = get_irf(RWdrift)
+        @test all(isfinite, collect(irf))
 
         # ∂SS/∂param must propagate through the growth unknowns (dx = g ⇒ ∂dx/∂g = 1;
         # x is a free unit root ⇒ ∂x/∂g = 0). The augmented SS Jacobian is singular,
