@@ -65,6 +65,8 @@ elseif test_set == "gradient_checks"
     include("test_inversion_filter_gradients.jl")
     include("test_filter_free_gradients.jl")
     include("test_initial_state.jl")
+elseif test_set == "balanced_growth_path"
+    include("test_balanced_growth_path.jl")
 elseif test_set == "update_equations"
     include("test_update_equations.jl")
 elseif test_set == "jet_hot_paths"

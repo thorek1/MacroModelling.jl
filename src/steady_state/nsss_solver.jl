@@ -363,7 +363,10 @@ end
     end
 
     other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
+    # Balanced growth path: growth unknowns (`xᴳ`) are SS unknowns but not in `var`;
+    # include them so a block using a growth solved in another block receives it.
+    growth_vars = filter(s -> endswith(string(s), "ᴳ"), 𝓂.constants.post_model_macro.vars_in_ss_equations)
+    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars, growth_vars),
                                         sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
 
@@ -1121,6 +1124,45 @@ end
         end
     end
 
+    # ── Balanced growth path: anchor free trend levels to 0 ───────────────────
+    # A cointegrated system of I(1) levels is rank-deficient in steady state: the
+    # absolute level of each independent stochastic trend is a free initial
+    # condition. The structural unmatched mechanism only catches levels that are
+    # entirely absent from the SS equations (single-trend / all-zero column); for
+    # multiple cointegrated trends the free directions are numeric. Detect them
+    # from the augmented SS Jacobian (rank-revealing, keeping growth unknowns and
+    # anchoring redundant level unknowns) and zero their incidence rows so the
+    # existing indeterminate→default path pins them to 0 (a valid particular
+    # solution; for a linear model dynamics/IRFs are anchor-invariant).
+    unknown_names = Symbol.(string.(unknowns))
+    if symbolics_data !== nothing && any(n -> endswith(string(n), "ᴳ"), unknown_names)
+        check_unknowns = Symbol.(string.(union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)))
+        Jbuf = 𝓂.caches.NSSS_∂equations_∂SS_and_pars
+        𝓂.functions.NSSS_∂equations_∂SS_and_pars(Jbuf, 𝓂.parameter_values, zeros(length(check_unknowns)))
+        Jdense = Matrix(Jbuf)
+        colpos = Dict(n => i for (i, n) in enumerate(check_unknowns))
+        growth_idx = [i for i in eachindex(unknown_names) if endswith(string(unknown_names[i]), "ᴳ")]
+        level_idx  = [i for i in eachindex(unknown_names) if !endswith(string(unknown_names[i]), "ᴳ")]
+        kept = Int[]
+        currank = 0
+        anchored_any = false
+        for i in vcat(growth_idx, level_idx)   # keep growths first, anchor redundant levels
+            c = get(colpos, unknown_names[i], 0)
+            c == 0 && continue
+            r = ℒ.rank(view(Jdense, :, vcat(kept, c)))
+            if r > currank
+                push!(kept, c)
+                currank = r
+            else
+                incidence_matrix[i, :] .= 0   # anchor this free level → default 0
+                anchored_any = true
+            end
+        end
+        # `.= 0` leaves explicit stored zeros; drop them so BlockTriangularForm
+        # (which reads the sparsity structure) treats the row as truly empty.
+        anchored_any && SparseArrays.dropzeros!(incidence_matrix)
+    end
+
     # Precomputed per-equation symbol sets used as a cheap Julia-side filter for
     # SymPy solve/subs calls in the analytical branch. Aligned with ss_equations.
     eq_symbol_sets = [Set{Symbol}(Symbol.(collect(e))) for e in eq_list]
@@ -1188,7 +1230,10 @@ end
         𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
     plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
-    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names)
+    # Balanced growth path: store solved growth unknowns (`xᴳ`) so later stages
+    # (linearization, IRFs) can read them. They are extra SS unknowns, not levels.
+    growth_var_names = Symbol[s for s in 𝓂.constants.post_model_macro.vars_in_ss_equations if endswith(string(s), "ᴳ")]
+    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names, growth_var_names)
     n_sol = length(all_sol_names)
     sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
     plus_var_count_at_start = length(plus_var_names)
@@ -2459,7 +2504,17 @@ function solve_nsss_steps(
             # large finite values from log/sqrt/power at the same solution point).
             residual = nsss_ws.check_residual
             fill!(residual, 0.0)
-            𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
+            # NSSS_check's unknown vector is ordered as the SS-equation unknowns
+            # (incl. balanced-growth-path growth symbols `xᴳ`), which for stationary
+            # models coincides with the output (var+calib) vector. When growth
+            # unknowns are present they must be gathered from the full solution.
+            check_unknowns = union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)
+            if length(check_unknowns) == n_output
+                𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
+            else
+                check_input = sol_vec[Int.(indexin(check_unknowns, 𝓂.constants.post_complete_parameters.nsss_sol_names))]
+                𝓂.functions.NSSS_check(residual, parameters, check_input)
+            end
             residual_error = ℒ.norm(residual)
             if isfinite(residual_error) && residual_error > solution_error
                 solution_error = residual_error

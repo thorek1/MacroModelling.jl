@@ -670,6 +670,41 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
     vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
 
+    # ── Balanced growth path (BGP) auto-detection & augmentation ──────────────
+    # A model needs the balanced-growth-path treatment when it contains a unit
+    # root / non-stationary level. Two tell-tales of a difference (unit-root) law
+    # collapsing in steady state, gated on the model actually being dynamic
+    # (≥1 variable at ≥2 time indices) so fully stationary models are untouched:
+    #   (a) a multi-time variable whose level cancels entirely (absent from the
+    #       collapsed `vars_in_ss_equations`), e.g. a lone random walk; and
+    #   (b) an equation that collapses to contain no SS variable (only params /
+    #       constants), e.g. `x[0]=x[-1]+g` → `-g`. This also catches cointegrated
+    #       trends that survive in identities yet have a varless own-law.
+    multi_time_vars = union(intersect(dyn_var_present, dyn_var_past),
+                            intersect(dyn_var_present, dyn_var_future),
+                            intersect(dyn_var_past, dyn_var_future))
+    cancelling_level = !isempty(setdiff(multi_time_vars, vars_in_ss_equations))
+    varless_equation = any(eq -> isempty(intersect(get_symbols(eq), vars_in_ss_equations)), ss_aux_equations)
+    growth_detected = !isempty(multi_time_vars) && (cancelling_level || varless_equation)
+
+    if growth_detected
+        @assert isempty(➕_vars) "Balanced growth path (levels) models with nonnegativity (`➕`) auxiliary variables are not yet supported."
+
+        (ss_aux_equations,
+         var_list_aux_SS, ss_list_aux_SS, par_list_aux_SS,
+         var_future_list_aux_SS, var_present_list_aux_SS, var_past_list_aux_SS,
+         ss_equations_with_aux_variables,
+         vars_in_ss_equations) =
+            augment_ss_system_for_growth(ss_and_aux_equations, ss_equations_with_aux_variables)
+
+        vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
+
+        # Keep the (non-aux) steady-state equations consistent with the augmented
+        # system so the NSSS residual cross-check sees the same growth identities.
+        # With no `➕` aux variables these coincide with `ss_aux_equations`.
+        ss_equations = copy(ss_aux_equations)
+    end
+
     dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
     dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
