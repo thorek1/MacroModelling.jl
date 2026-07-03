@@ -40,6 +40,15 @@ using AxisKeys: axiskeys
         rows = axiskeys(ssd, 1)
         @test isapprox(M[findfirst(==(:dx), rows), 2], 1.0; atol = 1e-6)
         @test isapprox(M[findfirst(==(:x),  rows), 2], 0.0; atol = 1e-6)
+
+        # levels output of a trending variable carries the deterministic BGP drift
+        # x_t = anchor + xᴳ·t (here xᴳ = g); the stationary dx stays at g; and
+        # deviations (levels = false) carry no drift.
+        lir = get_irf(RWdrift, shocks = :none, periods = 4, levels = true)
+        @test isapprox(collect(lir(:x,  :, :))[:], [0.02, 0.04, 0.06, 0.08]; atol = 1e-8)
+        @test isapprox(collect(lir(:dx, :, :))[:], fill(0.02, 4); atol = 1e-8)
+        dir = get_irf(RWdrift, shocks = :none, periods = 4, levels = false)
+        @test all(iszero, collect(dir(:x, :, :)))
     end
 
     @testset "cointegration (two trends, shared growth path)" begin

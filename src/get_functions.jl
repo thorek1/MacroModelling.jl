@@ -1596,9 +1596,28 @@ And data, 4×40×1 Array{Float64, 3}:
   (:z)    0.01          0.002             2.74878e-29     5.49756e-30
 ```
 """
-@unstable function get_irf(𝓂::ℳ; 
-                periods::Int = DEFAULT_PERIODS, 
-                algorithm::Symbol = DEFAULT_ALGORITHM, 
+# Balanced growth path: map each variable to its solved additive per-period growth
+# `xᴳ` (the deterministic BGP drift), read from the last non-stochastic steady-state
+# solution. Keys are base variable names; trending lead/lag auxiliaries (`xᴸ⁽…⁾`)
+# inherit the base variable's growth (resolved at the call site by stripping the
+# auxiliary suffix). Returns only nonzero growths; empty for stationary models.
+function bgp_growth_by_name(𝓂::ℳ)::Dict{Symbol, Float64}
+    growths = Dict{Symbol, Float64}()
+    names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+    sol   = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+    (isempty(names) || length(sol) < length(names)) && return growths
+    for (i, n) in enumerate(names)
+        s = string(n)
+        if endswith(s, "ᴳ") && sol[i] != 0
+            growths[Symbol(chop(s, tail = 1))] = sol[i]
+        end
+    end
+    return growths
+end
+
+@unstable function get_irf(𝓂::ℳ;
+                periods::Int = DEFAULT_PERIODS,
+                algorithm::Symbol = DEFAULT_ALGORITHM,
                 parameters::ParameterType = nothing,
                 steady_state_function::SteadyStateFunctionType = missing,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
@@ -1690,6 +1709,25 @@ And data, 4×40×1 Array{Float64, 3}:
                                         generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
                                         algorithm = algorithm)
+
+    # Balanced growth path: levels of trending variables follow x_t = anchor + xᴳ·t.
+    # The first-order solution works in deviations from the constant anchored steady
+    # state, so add the deterministic drift xᴳ·t (period index t) to the level paths.
+    # Only the slope xᴳ is meaningful — the anchor is an arbitrary particular solution.
+    if levels
+        growths = bgp_growth_by_name(𝓂)
+        if !isempty(growths)
+            P = size(responses, 2)
+            for (vi, nm) in enumerate(axiskeys(responses, 1))
+                base = Symbol(replace(string(nm), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+                g = get(growths, base, 0.0)
+                g == 0.0 && continue
+                for t in 1:P
+                    @views responses[vi, t, :] .+= g * t
+                end
+            end
+        end
+    end
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
