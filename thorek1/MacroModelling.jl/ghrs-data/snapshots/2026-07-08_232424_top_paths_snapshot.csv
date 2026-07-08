@@ -1,0 +1,11 @@
+url_path,views_total,views_unique
+/thorek1/MacroModelling.jl,47,25
+/thorek1/MacroModelling.jl/actions/workflows/ci.yml,12,2
+/thorek1/MacroModelling.jl/actions/runs/28333446481,9,1
+/thorek1/MacroModelling.jl/tree/main/models,7,5
+/thorek1/MacroModelling.jl/blob/main/models/Smets_Wouters_2007.jl,6,2
+/thorek1/MacroModelling.jl/actions/runs/28333974485,6,1
+/thorek1/MacroModelling.jl/tree/main/src,5,4
+/thorek1/MacroModelling.jl/blob/main/src/parser/equation_processing.jl,5,1
+/thorek1/MacroModelling.jl/compare/main...ylevch:MacroModelling.jl:feature/balanced-growth-path,5,1
+/thorek1/MacroModelling.jl/issues,4,4
