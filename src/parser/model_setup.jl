@@ -68,7 +68,9 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+                              ndims(relevant_SS) == 1 ? relevant_SS(s) : relevant_SS(s, :Steady_state)
+                              for s in full_NSSS]
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -79,7 +81,9 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+            ndims(relevant_NSSS) == 1 ? relevant_NSSS(s) : relevant_NSSS(s, :Steady_state)
+            for s in full_NSSS]
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -199,7 +203,6 @@ function augment_ss_system_for_growth(ss_and_aux_equations::Vector,
     var_present_list_aug = []
     var_past_list_aug    = []
     aux_idx_aug          = Int[]
-
     for shift in (0, GROWTH_SHIFT_K)
         for (idx, eq) in enumerate(ss_and_aux_equations)
             res = growth_ss_subst(eq, shift)

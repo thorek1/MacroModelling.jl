@@ -104,9 +104,20 @@ The anchor expression is typically a parameter or constant. Anchors should targe
 
 Notes and current scope:
 
-- Growth is **additive** and the treatment applies to **first-order** solutions.
+- Growth is **additive**. BGP models support first-, second-, and third-order
+  solution and moment calculations, including models with forward-looking
+  expectations.
 - Cointegrated systems are handled automatically: growth-rate identities such as `xᴳ = aᴳ - bᴳ` follow from the level relationships without any additional equations.
-- Unconditional variances of trending levels are infinite and are reported as `NaN` (stationary variables are unaffected).
+- BGP steady-state output has `Steady_state` and `Growth_rate` columns before
+  parameter derivatives. Growth rates are the solved per-period additive
+  changes; growth-rate derivatives are not included.
+- Dynamic models with calibrated persistence parameters on or outside the unit
+  circle are also recognized after `@parameters`, including models with
+  forward-looking expectations.
+- Moment outputs use the stationary first-difference basis for trending
+  variables. Such variables are labeled `Delta_x` (for `x`), so covariance,
+  variance, standard-deviation, and correlation outputs are finite while
+  stationary variables retain their usual labels.
 
 ## Custom Steady State Functions
 

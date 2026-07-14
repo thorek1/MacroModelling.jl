@@ -1615,6 +1615,129 @@ function bgp_growth_by_name(𝓂::ℳ)::Dict{Symbol, Float64}
     return growths
 end
 
+function is_bgp_model(𝓂::ℳ)::Bool
+    has_growth_unknowns = any(
+        endswith(string(name), "ᴳ")
+        for name in 𝓂.constants.post_model_macro.vars_in_ss_equations
+    )
+    has_growth_unknowns || has_nonstationary_persistence(
+        𝓂.constants.post_model_macro,
+        𝓂.constants.post_complete_parameters.parameters,
+        𝓂.parameter_values,
+    )
+end
+
+function bgp_growth_rate(𝓂::ℳ, name::Symbol)::Float64
+    base = Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    get(bgp_growth_by_name(𝓂), base, 0.0)
+end
+
+function bgp_growth_column(𝓂::ℳ, names)::Vector{Float64}
+    rates = bgp_growth_by_name(𝓂)
+    return [get(rates, Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 0.0) for name in names]
+end
+
+function bgp_difference_labels(𝓂::ℳ, names)
+    rates = bgp_growth_by_name(𝓂)
+    return [
+        get(rates, Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 0.0) == 0.0 ?
+        name : Symbol("Delta_" * string(name))
+        for name in names
+    ]
+end
+
+function bgp_difference_covariance(covar::AbstractMatrix{R}, sol::AbstractMatrix{R}, 𝓂::ℳ)::Matrix{R} where R <: Real
+    !is_bgp_model(𝓂) && return Matrix(covar)
+
+    T = 𝓂.constants.post_model_macro
+    n_state = T.nPast_not_future_and_mixed
+    size(sol, 1) == T.nVars && size(sol, 2) == n_state + T.nExo ||
+        return Matrix(covar)
+
+    state_idx = T.past_not_future_and_mixed_idx
+    state_covariance = Matrix(covar[state_idx, state_idx])
+    state_covariance .= ifelse.(isfinite.(state_covariance), state_covariance, zero(R))
+
+    states_to_variables = Matrix(sol[:, 1:n_state])
+    shocks_to_variables = Matrix(sol[:, n_state + 1:end])
+    states_to_differences = copy(states_to_variables)
+    rates = bgp_growth_by_name(𝓂)
+
+    for (row, name) in enumerate(T.var)
+        base = Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        get(rates, base, 0.0) == 0.0 && continue
+        state_position = findfirst(==(name), T.past_not_future_and_mixed)
+        state_position === nothing && continue
+        states_to_differences[row, state_position] -= one(R)
+    end
+
+    return states_to_differences * state_covariance * states_to_differences' +
+           shocks_to_variables * shocks_to_variables'
+end
+
+function bgp_difference_covariance_pullback(cotangent::AbstractMatrix{R},
+                                            covar::AbstractMatrix{R},
+                                            sol::AbstractMatrix{R},
+                                            𝓂::ℳ)::Tuple{Matrix{R}, Matrix{R}} where R <: Real
+    !is_bgp_model(𝓂) && return Matrix(cotangent), zeros(R, size(sol))
+
+    T = 𝓂.constants.post_model_macro
+    n_state = T.nPast_not_future_and_mixed
+    size(sol, 1) == T.nVars && size(sol, 2) == n_state + T.nExo ||
+        return Matrix(cotangent), zeros(R, size(sol))
+
+    state_idx = T.past_not_future_and_mixed_idx
+    state_covariance = Matrix(covar[state_idx, state_idx])
+    finite_state_covariance = ifelse.(isfinite.(state_covariance), state_covariance, zero(R))
+    states_to_differences = Matrix(sol[:, 1:n_state])
+    rates = bgp_growth_by_name(𝓂)
+
+    for (row, name) in enumerate(T.var)
+        base = Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        get(rates, base, 0.0) == 0.0 && continue
+        state_position = findfirst(==(name), T.past_not_future_and_mixed)
+        state_position === nothing && continue
+        states_to_differences[row, state_position] -= one(R)
+    end
+
+    covariance_cotangent = zeros(R, size(covar))
+    covariance_cotangent[state_idx, state_idx] .=
+        states_to_differences' * cotangent * states_to_differences
+
+    solution_cotangent = zeros(R, size(sol))
+    state_solution_cotangent =
+        cotangent * states_to_differences * finite_state_covariance' +
+        cotangent' * states_to_differences * finite_state_covariance
+    shock_solution_cotangent = (cotangent + cotangent') * sol[:, n_state + 1:end]
+    solution_cotangent[:, 1:n_state] .= state_solution_cotangent
+    solution_cotangent[:, n_state + 1:end] .= shock_solution_cotangent
+
+    covariance_cotangent[.!isfinite.(covar)] .= zero(R)
+    return covariance_cotangent, solution_cotangent
+end
+
+function apply_bgp_difference_output!(states_to_variables::AbstractMatrix{R},
+                                      output_names,
+                                      state_names,
+                                      𝓂::ℳ;
+                                      state_blocks::Tuple = (1,)) where R <: Real
+    !is_bgp_model(𝓂) && return states_to_variables
+
+    rates = bgp_growth_by_name(𝓂)
+    n_state = length(state_names)
+    for (row, name) in enumerate(output_names)
+        base = Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        get(rates, base, 0.0) == 0.0 && continue
+        state_position = findfirst(==(name), state_names)
+        state_position === nothing && continue
+        for block in state_blocks
+            column = (block - 1) * n_state + state_position
+            column <= size(states_to_variables, 2) && (states_to_variables[row, column] -= one(R))
+        end
+    end
+    return states_to_variables
+end
+
 @unstable function get_irf(𝓂::ℳ;
                 periods::Int = DEFAULT_PERIODS,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1952,8 +2075,15 @@ And data, 4×6 Matrix{Float64}:
     var_axis = 𝓂.constants.post_complete_parameters.var_axis
     calib_axis = 𝓂.constants.post_complete_parameters.calib_axis
     axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
+    ss_names = return_variables_only ?
+               𝓂.constants.post_model_macro.var[var_idx] :
+               vcat(𝓂.constants.post_model_macro.var[var_idx], 𝓂.equations.calibration_parameters)
+    bgp_model = is_bgp_model(𝓂)
+    growth_column = bgp_model ? bgp_growth_column(𝓂, ss_names) : Float64[]
 
-    axis2 = vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters[param_idx])
+    axis2 = bgp_model ?
+            vcat(:Steady_state, :Growth_rate, 𝓂.constants.post_complete_parameters.parameters[param_idx]) :
+            vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters[param_idx])
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
@@ -1987,6 +2117,9 @@ And data, 4×6 Matrix{Float64}:
 
                 SS_and_pars = SSS_result[3]
                 steady_state_column = vcat(SSS[var_idx], SS_and_pars[calib_idx])
+                if bgp_model
+                    steady_state_column = hcat(steady_state_column, growth_column)
+                end
                 if !use_workspaces; 𝓂.workspaces = orig_ws; end
                 return KeyedArray(hcat(steady_state_column, dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         else
@@ -2009,14 +2142,25 @@ And data, 4×6 Matrix{Float64}:
             # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.constants.post_complete_parameters.parameters)),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
             # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.constants.post_complete_parameters.parameters)), ("Var. and par.", "∂x/∂y"))
             if !use_workspaces; 𝓂.workspaces = orig_ws; end
-            return KeyedArray(hcat(SS[[var_idx...,calib_idx...]],dSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+            steady_state_column = SS[[var_idx...,calib_idx...]]
+            if bgp_model
+                steady_state_column = hcat(steady_state_column, growth_column)
+            end
+            return KeyedArray(hcat(steady_state_column, dSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
             # end
         end
     else
         # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.constants.post_model_macro.exo_present,var))...,𝓂.calibration_equations_parameters...]))
         # return NamedArray(collect(NSSS), [sort(union(𝓂.constants.post_model_macro.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
-        return KeyedArray(SS[[var_idx...,calib_idx...]];  Variables_and_calibrated_parameters = axis1)
+        steady_state_column = SS[[var_idx...,calib_idx...]]
+        if bgp_model
+            steady_state_column = hcat(steady_state_column, growth_column)
+            return KeyedArray(steady_state_column;
+                              Variables_and_calibrated_parameters = axis1,
+                              Steady_state_and_∂steady_state∂parameter = [:Steady_state, :Growth_rate])
+        end
+        return KeyedArray(steady_state_column;  Variables_and_calibrated_parameters = axis1)
     end
     # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.constants.post_model_macro.exo_present,var)))),
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
@@ -3455,6 +3599,7 @@ And data, 4×4 Matrix{Float64}:
     varrs = var_means
     covar_dcmp = zeros(0, 0)
     dcovariance = zeros(0, 0)
+    sol = zeros(0, 0)
     state_μ = Float64[]
     autocorr = zeros(0, 0)
     autocorr_tmp = zeros(0, 0)
@@ -3503,6 +3648,9 @@ And data, 4×4 Matrix{Float64}:
         end
         
         axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+        if is_bgp_model(𝓂)
+            axis1 = bgp_difference_labels(𝓂, axis1)
+        end
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -3523,10 +3671,24 @@ And data, 4×4 Matrix{Float64}:
             else
                 _cov_result, cov_pb = rrule(calculate_covariance, 𝓂.parameter_values, 𝓂, opts = opts)
                 covar_dcmp = _cov_result[1]
+                sol = _cov_result[2]
                 if !_cov_result[5]
                     @warn "Could not find covariance matrix. Results may contain NaN for unit-root variables."
                 end
                 n_cov_tuple = 5
+            end
+
+            raw_covar_dcmp = covar_dcmp
+            if algorithm == :first_order
+                covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
+            end
+
+            covariance_pullback_seed = ΔΣ -> begin
+                if algorithm == :first_order && is_bgp_model(𝓂)
+                    Δraw, Δsol = bgp_difference_covariance_pullback(ΔΣ, raw_covar_dcmp, sol, 𝓂)
+                    return ntuple(k -> k == 1 ? Δraw : k == 2 ? Δsol : NoTangent(), n_cov_tuple)
+                end
+                return ntuple(k -> k == 1 ? ΔΣ : NoTangent(), n_cov_tuple)
             end
 
             # Compute variance Jacobian via VJP (shared by variance & std_dev)
@@ -3537,7 +3699,7 @@ And data, 4×4 Matrix{Float64}:
                 for j in 1:nv_cov
                     if covar_dcmp[j,j] > eps(Float64)
                         ∂Σ = zeros(nv_cov, nv_cov); ∂Σ[j,j] = 1.0
-                        seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                        seed = covariance_pullback_seed(∂Σ)
                         ∂p = cov_pb(seed)[2]
                         if !(∂p isa AbstractZero); dvariance_full[j,:] .= ∂p; end
                     end
@@ -3546,6 +3708,9 @@ And data, 4×4 Matrix{Float64}:
         end
 
         if variance
+            axis1 = is_bgp_model(𝓂) ?
+                    bgp_difference_labels(𝓂, 𝓂.constants.post_model_macro.var[var_idx]) :
+                    axis1
             axis2 = vcat(:Variance, 𝓂.constants.post_complete_parameters.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
@@ -3560,6 +3725,9 @@ And data, 4×4 Matrix{Float64}:
             varrs =  KeyedArray(hcat(vari[var_idx],dvariance[var_idx,:]);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
 
             if standard_deviation
+                axis1 = is_bgp_model(𝓂) ?
+                        bgp_difference_labels(𝓂, 𝓂.constants.post_model_macro.var[var_idx]) :
+                        axis1
                 axis2 = vcat(:Standard_deviation, 𝓂.constants.post_complete_parameters.parameters[param_idx])
             
                 if any(x -> contains(string(x), "◖"), axis2)
@@ -3600,7 +3768,7 @@ And data, 4×4 Matrix{Float64}:
                 r = mod1(j, nv_cov2)
                 c = div(j - 1, nv_cov2) + 1
                 ∂Σ = zeros(nv_cov2, nv_cov2); ∂Σ[r,c] = 1.0
-                seed = ntuple(k -> k == 1 ? ∂Σ : NoTangent(), n_cov_tuple)
+                seed = covariance_pullback_seed(∂Σ)
                 ∂p = cov_pb(seed)[2]
                 if !(∂p isa AbstractZero); dcovariance[j,:] .= ∂p; end
             end
@@ -3667,6 +3835,9 @@ And data, 4×4 Matrix{Float64}:
         end
 
         axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+        if is_bgp_model(𝓂)
+            axis1 = bgp_difference_labels(𝓂, axis1)
+        end
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -3697,7 +3868,10 @@ And data, 4×4 Matrix{Float64}:
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp, sol, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if algorithm == :first_order
+                    covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
+                end
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
@@ -3727,7 +3901,10 @@ And data, 4×4 Matrix{Float64}:
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp, sol, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if algorithm == :first_order
+                    covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
+                end
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
@@ -3753,7 +3930,10 @@ And data, 4×4 Matrix{Float64}:
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp, sol, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if algorithm == :first_order
+                    covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
+                end
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
@@ -3777,7 +3957,10 @@ And data, 4×4 Matrix{Float64}:
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                covar_dcmp, sol, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                if algorithm == :first_order
+                    covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
+                end
 
                 if mean && algorithm == :first_order
                     var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
@@ -3809,7 +3992,9 @@ And data, 4×4 Matrix{Float64}:
         ret[:variance] = varrs
     end
     if covariance
-        axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+        axis1 = is_bgp_model(𝓂) ?
+                bgp_difference_labels(𝓂, 𝓂.constants.post_model_macro.var[var_idx]) :
+                𝓂.constants.post_model_macro.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -3866,7 +4051,9 @@ And data, 4×4 Matrix{Float64}:
         end
     end
     if correlation
-        axis1 = 𝓂.constants.post_model_macro.var[var_idx]
+        axis1 = is_bgp_model(𝓂) ?
+                bgp_difference_labels(𝓂, 𝓂.constants.post_model_macro.var[var_idx]) :
+                𝓂.constants.post_model_macro.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -4199,6 +4386,10 @@ function get_statistics(𝓂::ℳ,
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(all_parameters, 𝓂, opts = opts)
 
         # @assert solved "Could not find covariance matrix."
+    end
+
+    if algorithm == :first_order
+        covar_dcmp = bgp_difference_covariance(covar_dcmp, sol, 𝓂)
     end
 
     SS = SS_and_pars[1:end - length(𝓂.equations.calibration)]

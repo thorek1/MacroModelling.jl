@@ -2880,7 +2880,7 @@ function rrule(::typeof(calculate_mean),
 
     # Mean solve
     A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
-    μˢ⁺₂ = A_mean \ ŝv₂
+    μˢ⁺₂ = solve_moment_linear_system(A_mean, ŝv₂, 𝓂)
 
     mean_of_variables = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
@@ -2911,7 +2911,7 @@ function rrule(::typeof(calculate_mean),
         ∂yv₂ = copy(∂μʸ)
 
         # ── Backprop through (I - ŝ_to_ŝ₂) \ ŝv₂ ──
-        λ = A_mean' \ ∂μˢ⁺₂
+        λ = solve_moment_linear_system(A_mean', ∂μˢ⁺₂, 𝓂)
         ∂ŝv₂ = copy(λ)
         ∂ŝ_to_ŝ₂ = λ * μˢ⁺₂'   # from -(I - A): sign is +
 
@@ -3018,7 +3018,7 @@ function rrule(::typeof(calculate_second_order_moments),
         return zero_10(), zero_pb
     end
 
-    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(S)) : Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
     ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
@@ -3074,12 +3074,13 @@ function rrule(::typeof(calculate_second_order_moments),
 
     # Mean solve
     A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
-    μˢ⁺₂ = A_mean \ ŝv₂
+    μˢ⁺₂ = solve_moment_linear_system(A_mean, ŝv₂, 𝓂)
 
     A_Δ = collect(ℒ.I(nˢ)) - s_to_s₁
     rhs_Δ = s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂_v + e_e_to_s₂ * vec_Iₑ) / 2
-    Δμˢ₂ = vec(A_Δ \ rhs_Δ)
+    Δμˢ₂ = vec(solve_moment_linear_system(A_Δ, rhs_Δ, 𝓂))
 
+    apply_bgp_difference_output!(ŝ_to_y₂, T_pm.var, T_pm.past_not_future_and_mixed, 𝓂; state_blocks = (1, 2))
     μʸ₂ = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
     slvd = solved && solved2
@@ -3127,7 +3128,7 @@ function rrule(::typeof(calculate_second_order_moments),
             ∂yv₂ = copy(∂μʸ₂)
 
             # μˢ⁺₂ = A_mean \ ŝv₂  →  λ = A_mean' \ ∂μˢ⁺₂
-            λ = A_mean' \ ∂μˢ⁺₂
+            λ = solve_moment_linear_system(A_mean', ∂μˢ⁺₂, 𝓂)
             ∂ŝv₂ = copy(λ)
             ∂ŝ_to_ŝ₂ = λ * μˢ⁺₂'  # from (I - ŝ_to_ŝ₂)
 
@@ -3255,7 +3256,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
 
     if !solved; return zero_15(), zero_pb; end
 
-    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(S)) : Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
     ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
@@ -3318,12 +3319,13 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
 
     # Mean solve
     A_mean = collect(ℒ.I(size(ŝ_to_ŝ₂, 1))) - ŝ_to_ŝ₂
-    μˢ⁺₂ = A_mean \ ŝv₂
+    μˢ⁺₂ = solve_moment_linear_system(A_mean, ŝv₂, 𝓂)
 
     A_Δ = collect(ℒ.I(nˢ)) - s_to_s₁
     rhs_Δ = s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂_v + e_e_to_s₂ * vec_Iₑ) / 2
-    Δμˢ₂ = vec(A_Δ \ rhs_Δ)
+    Δμˢ₂ = vec(solve_moment_linear_system(A_Δ, rhs_Δ, 𝓂))
 
+    apply_bgp_difference_output!(ŝ_to_y₂, T_pm.var, T_pm.past_not_future_and_mixed, 𝓂; state_blocks = (1, 2))
     μʸ₂ = SS_and_pars[1:nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
     # ── Step 6: Pruned covariance ──
@@ -3357,6 +3359,10 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     end
 
     if !info; return zero_15(), zero_pb; end
+
+    if info && is_bgp_model(𝓂)
+        Σᶻ₂ = ifelse.(isfinite.(Σᶻ₂), Σᶻ₂, zero(S))
+    end
 
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
     autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
@@ -3460,7 +3466,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
             ∂μˢ⁺₂ = ŝ_to_y₂' * ∂μʸ₂
             ∂yv₂ = copy(∂μʸ₂)
 
-            λ = A_mean' \ ∂μˢ⁺₂
+            λ = solve_moment_linear_system(A_mean', ∂μˢ⁺₂, 𝓂)
             ∂ŝv₂ = copy(λ)
             ∂ŝ_to_ŝ₂_acc .+= λ * μˢ⁺₂'
 
@@ -3480,7 +3486,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
 
         # ──── Backprop through Δμˢ₂ ────
         if !(∂Δμˢ₂_in isa AbstractZero)
-            λ_Δ = A_Δ' \ ∂Δμˢ₂_in
+            λ_Δ = solve_moment_linear_system(A_Δ', ∂Δμˢ₂_in, 𝓂)
             ∂𝐒₁_acc[iˢ, 1:nˢ] .+= λ_Δ * Δμˢ₂'
             ∂S2f[iˢ, kron_s_s]  .+= λ_Δ * vec(Σᶻ₁)' / 2
             ∂Σᶻ₁_acc .+= reshape(s_s_to_s₂' * λ_Δ / 2, nˢ, nˢ)
@@ -3650,7 +3656,7 @@ function rrule(::typeof(calculate_third_order_moments),
 
         iˢ = dependencies_in_var_idx
 
-        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx,
                 dependencies_in_states_idx .+ T_pm.nPast_not_future_and_mixed,
@@ -3752,8 +3758,9 @@ function rrule(::typeof(calculate_third_order_moments),
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+        apply_bgp_difference_output!(ŝ_to_y₃, variance_observable, dependencies, 𝓂; state_blocks = (1, 2, 4))
 
-        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+        μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                     (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                     s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                     s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -3762,7 +3769,7 @@ function rrule(::typeof(calculate_third_order_moments),
                                     e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                     s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                     e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                    ), nˢ, nˢ)
+                                    ), 𝓂), nˢ, nˢ)
 
         Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
                 spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -3805,6 +3812,10 @@ function rrule(::typeof(calculate_third_order_moments),
         end
 
         solved_lyapunov = solved_lyapunov && info
+
+        if is_bgp_model(𝓂)
+            Σᶻ₃ = ifelse.(isfinite.(Σᶻ₃), Σᶻ₃, zero(T))
+        end
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -4285,7 +4296,7 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂x_μ = vec(∂μˢ₃δμˢ₁)
             I_m_s₁² = -s₁²
             @inbounds for i in 1:n^2; I_m_s₁²[i,i] += one(T); end
-            ∂b_μ = I_m_s₁²' \ ∂x_μ
+            ∂b_μ = solve_moment_linear_system(I_m_s₁²', ∂x_μ, 𝓂)
             # ∂(kron(s₁,s₁)) = ∂b * vec(μ)'
             ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
             fill_kron_adjoint!(∂s₁_l, ∂s₁_l, ∂s₁²_from_μ, s₁, s₁)
@@ -4505,7 +4516,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
 
         iˢ = dependencies_in_var_idx
 
-        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx,
                 dependencies_in_states_idx .+ T_pm.nPast_not_future_and_mixed,
@@ -4609,8 +4620,9 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+        apply_bgp_difference_output!(ŝ_to_y₃, variance_observable, dependencies, 𝓂; state_blocks = (1, 2, 4))
 
-        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+        μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                     (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                     s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                     s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -4619,7 +4631,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
                                     e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                     s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                     e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                    ), nˢ, nˢ)
+                                    ), 𝓂), nˢ, nˢ)
 
         Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
                 spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -4661,6 +4673,10 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
         end
 
         solved_lyapunov = solved_lyapunov && info
+
+        if is_bgp_model(𝓂)
+            Σᶻ₃ = ifelse.(isfinite.(Σᶻ₃), Σᶻ₃, zero(T))
+        end
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -5422,7 +5438,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
             ∂x_μ = vec(∂μˢ₃δμˢ₁)
             I_m_s₁² = -s₁²
             @inbounds for i in 1:n^2; I_m_s₁²[i,i] += one(T); end
-            ∂b_μ = I_m_s₁²' \ ∂x_μ
+            ∂b_μ = solve_moment_linear_system(I_m_s₁²', ∂x_μ, 𝓂)
             ∂s₁²_from_μ = ∂b_μ * vec(d.μˢ₃δμˢ₁)'
             tmpL, tmpR = kron_vjp_helper(∂s₁²_from_μ, s₁, s₁);  ∂s₁_l .+= tmpL .+ tmpR
 

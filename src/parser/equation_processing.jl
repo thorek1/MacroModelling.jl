@@ -879,6 +879,36 @@ end
 
 
 """
+    has_nonstationary_persistence(pmm, parameters, values)
+
+Identify dynamic models whose calibrated autoregressive persistence is on or
+outside the unit circle. The model equations are parsed before parameter
+values are available, so this check complements the structural BGP detection
+performed by `process_model_equations`.
+"""
+function has_nonstationary_persistence(pmm::post_model_macro,
+                                       parameters::AbstractVector,
+                                       values::AbstractVector{<:Real})::Bool
+    has_dynamic_timing = pmm.nPast_not_future_and_mixed > 0 ||
+                         pmm.nFuture_not_past_and_mixed > 0 ||
+                         pmm.nMixed > 0
+    has_dynamic_timing || return false
+
+    for (index, parameter) in enumerate(parameters)
+        index > length(values) && break
+        value = values[index]
+        isfinite(value) || continue
+        parameter_name = string(parameter)
+        is_persistence_parameter =
+            startswith(parameter_name, "ρ") ||
+            startswith(lowercase(parameter_name), "rho")
+        is_persistence_parameter && abs(value) >= 1 && return true
+    end
+    return false
+end
+
+
+"""
     process_parameter_definitions(parameter_block::Expr, pmm::post_model_macro) -> NamedTuple
 
 Parse a `@parameters`-style parameter definition block and return the data
