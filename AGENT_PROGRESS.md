@@ -6,4 +6,7 @@ trends, expectations, IRFs, moments, derivatives, and equation rebuilds.
 
 Higher-order moment calculations now reconstruct hidden growth-factor
 variables in internal solver order before combining them with perturbation
-moments. The remaining work is final validation, diff review, commit, and push.
+moments. The implementation was committed and pushed to the feature branch.
+`tasks/bgp_math.md` contains the mathematical explanation of the
+stationarization, growth restrictions, expectations, IRFs, covariances, and
+differences from the former additive approach.
