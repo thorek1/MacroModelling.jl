@@ -13,6 +13,19 @@ using AxisKeys: axiskeys
                 g = 0.02
             end
         end
+
+        @testset "mixed additive and multiplicative trends are rejected" begin
+            @test_throws ArgumentError begin
+                @model MixedAdditiveBGPRejected begin
+                    x[0] = x[-1] + g + ex[x]
+                    y[0] = y[-1] * μ
+                end
+                @parameters MixedAdditiveBGPRejected begin
+                    g = 0.02
+                    μ = 1.02
+                end
+            end
+        end
     end
 
     @testset "multiplicative trend public APIs" begin
@@ -143,6 +156,68 @@ using AxisKeys: axiskeys
         @test StationaryRegression.equations.stationarization === nothing
         @test all(isfinite,
                   collect(get_SS(StationaryRegression, derivatives = false)))
-        @test all(isfinite, collect(get_solution(StationaryRegression)))
+        @test all(isfinite,         collect(get_solution(StationaryRegression)))
+    end
+
+    @testset "parameter-dependent growth is updated without rebuilding" begin
+        @model ParameterDependentGrowth begin
+            x[0] = x[-1] * g[0]
+            y[0] = x[0]^α
+            g[0] = μ + σg * eg[x]
+        end
+        @parameters ParameterDependentGrowth begin
+            α = 0.5
+            μ = 1.02
+            σg = 0.01
+        end
+
+        metadata = ParameterDependentGrowth.equations.stationarization
+        metadata_id = objectid(metadata)
+        initial_ss = get_SS(ParameterDependentGrowth, derivatives = false)
+
+        solve!(ParameterDependentGrowth;
+               parameters = Dict(:α => 0.7, :μ => 1.02, :σg => 0.01),
+               silent = true)
+        updated_ss = get_SS(ParameterDependentGrowth, derivatives = false)
+
+        @test objectid(ParameterDependentGrowth.equations.stationarization) == metadata_id
+        @test isapprox(updated_ss(:y, :Growth_rate), 0.7 * log(1.02); atol = 1e-10)
+        @test initial_ss(:y, :Growth_rate) != updated_ss(:y, :Growth_rate)
+    end
+
+    @testset "stationary and BGP representations switch lazily" begin
+        @model LazyBGPMode begin
+            x[0] = ρ * x[-1]
+            y[0] = x[0]
+        end
+        @parameters LazyBGPMode begin
+            ρ = 0.8
+        end
+
+        @test LazyBGPMode.equations.stationarization === nothing
+        solve!(LazyBGPMode; parameters = [1.1], silent = true)
+        @test LazyBGPMode.equations.stationarization !== nothing
+        @test Symbol("xᴳ") ∈ LazyBGPMode.constants.post_model_macro.var
+
+        solve!(LazyBGPMode; parameters = [0.9], silent = true)
+        @test LazyBGPMode.equations.stationarization === nothing
+        @test Symbol("xᴳ") ∉ LazyBGPMode.constants.post_model_macro.var
+    end
+
+    @testset "missing parameters initialize BGP dispatch" begin
+        @model MissingParameterBGP begin
+            x[0] = x[-1] * g[0]
+            g[0] = (1 - ρ) * μ + ρ * g[-1] + σg * eg[x]
+        end
+        @parameters MissingParameterBGP begin
+            ρ = 0.2
+            σg = 0.01
+        end
+
+        @test MissingParameterBGP.equations.bgp_detection === nothing
+        solve!(MissingParameterBGP;
+               parameters = Dict(:μ => 1.02),
+               silent = true)
+        @test MissingParameterBGP.equations.stationarization !== nothing
     end
 end

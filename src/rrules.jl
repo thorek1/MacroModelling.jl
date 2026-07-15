@@ -1903,7 +1903,8 @@ function rrule(::typeof(get_loglikelihood),
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
-    solve!(𝓂, opts = opts, steady_state_function = steady_state_function, algorithm = algorithm)
+    solve!(𝓂, parameters = parameter_values, opts = opts,
+           steady_state_function = steady_state_function, algorithm = algorithm)
 
     bounds_violated = check_bounds(parameter_values, 𝓂)
 
@@ -1912,7 +1913,11 @@ function rrule(::typeof(get_loglikelihood),
         return llh, _ -> (NoTangent(), NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent())
     end
 
-    obs_indices = convert(Vector{Int}, indexin(observables, 𝓂.constants.post_complete_parameters.SS_and_pars_names))
+    SS_and_pars_names = 𝓂.equations.stationarization === nothing ?
+                        𝓂.constants.post_complete_parameters.SS_and_pars_names :
+                        Base.filter(name -> !endswith(string(name), "ᴳ"),
+                                    𝓂.constants.post_complete_parameters.SS_and_pars_names)
+    obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
     # ── step 1: get_relevant_steady_state_and_state_update ──
     ss_rrule = rrule(get_relevant_steady_state_and_state_update,
@@ -19039,7 +19044,8 @@ function rrule(::typeof(get_loglikelihood),
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
-    solve!(𝓂, opts = opts, steady_state_function = steady_state_function, algorithm = algorithm)
+    solve!(𝓂, parameters = parameter_values, opts = opts,
+           steady_state_function = steady_state_function, algorithm = algorithm)
 
     if check_bounds(parameter_values, 𝓂)
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
@@ -19096,7 +19102,10 @@ function rrule(::typeof(get_loglikelihood),
         data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
     end
 
-    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    SS_and_pars_names = 𝓂.equations.stationarization === nothing ?
+                        𝓂.constants.post_complete_parameters.SS_and_pars_names :
+                        Base.filter(name -> !endswith(string(name), "ᴳ"),
+                                    𝓂.constants.post_complete_parameters.SS_and_pars_names)
     obs_indices       = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
     dt                = missing_data_to_nan(collect(data(observables)))
     # Match the public filter-free wrapper: trim fully unobserved boundaries

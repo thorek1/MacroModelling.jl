@@ -103,6 +103,21 @@
 # =============================================================================
 
 
+const BGP_STATIONARY_MODE = UInt8(0)
+const BGP_ACTIVE_MODE = UInt8(1)
+const BGP_UNSUPPORTED_MODE = UInt8(2)
+
+mutable struct bgp_detection_metadata
+    candidate_drivers::Vector{Symbol}
+    active_drivers::Vector{Symbol}
+    candidate_kinds::Vector{UInt8}
+    trigger_parameters::Vector{Symbol}
+    trigger_indices::Vector{Int}
+    trigger_values::Vector{Float64}
+    parameter_indices::Dict{Symbol, Int}
+    mode::UInt8
+end
+
 mutable struct equations
     original::Vector{Expr}
     dynamic::Vector{Expr}
@@ -116,6 +131,8 @@ mutable struct equations
     # Balanced growth path: user-supplied steady-state level anchors `x[ss] = expr`,
     # pinning a trending variable's level (growth stays pinned by its dynamic law).
     ss_anchors::Dict{Symbol, Any}
+    # Structural BGP profile used for trigger-only mode checks on parameter updates.
+    bgp_detection::Union{Nothing, bgp_detection_metadata}
     # Symbolic stationarization metadata and reconstruction maps.
     stationarization::Any
 end

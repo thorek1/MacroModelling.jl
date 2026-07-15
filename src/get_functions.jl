@@ -4763,6 +4763,7 @@ function get_loglikelihood(𝓂::ℳ,
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
     solve!(𝓂, 
+           parameters = parameter_values,
            opts = opts,
            steady_state_function = steady_state_function,
            # timer = timer, 
@@ -4776,7 +4777,10 @@ function get_loglikelihood(𝓂::ℳ,
         return on_failure_loglikelihood
     end
 
-    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    SS_and_pars_names = 𝓂.equations.stationarization === nothing ?
+                        𝓂.constants.post_complete_parameters.SS_and_pars_names :
+                        Base.filter(name -> !endswith(string(name), "ᴳ"),
+                                    𝓂.constants.post_complete_parameters.SS_and_pars_names)
 
     obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
@@ -5003,6 +5007,7 @@ function get_loglikelihood(𝓂::ℳ,
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 
     solve!(𝓂,
+           parameters = parameter_values,
            opts = opts,
            steady_state_function = steady_state_function,
            algorithm = algorithm)
@@ -5048,7 +5053,10 @@ function get_loglikelihood(𝓂::ℳ,
         end
     end
 
-    SS_and_pars_names = 𝓂.constants.post_complete_parameters.SS_and_pars_names
+    SS_and_pars_names = 𝓂.equations.stationarization === nothing ?
+                        𝓂.constants.post_complete_parameters.SS_and_pars_names :
+                        Base.filter(name -> !endswith(string(name), "ᴳ"),
+                                    𝓂.constants.post_complete_parameters.SS_and_pars_names)
     obs_indices = convert(Vector{Int}, indexin(observables, SS_and_pars_names))
 
     constants_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts, estimation = true)
