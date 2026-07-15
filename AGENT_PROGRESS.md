@@ -9,4 +9,6 @@ variables in internal solver order before combining them with perturbation
 moments. The implementation was committed and pushed to the feature branch.
 `tasks/bgp_math.md` contains the mathematical explanation of the
 stationarization, growth restrictions, expectations, IRFs, covariances, and
-differences from the former additive approach.
+differences from the former additive approach. The comparison with IRIS,
+NBToolbox, Dynare, and RISE is documented in
+`tasks/bgp_implementation_comparison.md`.
