@@ -56,68 +56,58 @@ Additional information can guide the automatic solver toward convergence and val
 
 ## Balanced Growth Path (Models in Levels)
 
-Semistructural and policy models (IRIS / QPM style) are often written directly in **levels**, with non-stationary I(1) variables that share a common balanced growth path (BGP), rather than being hand-stationarized into gaps and growth rates. `MacroModelling.jl` supports such models for first-order analysis: the balanced growth path is **detected automatically**, so fully stationary models are unaffected and require no changes.
+Level models with multiplicative trends are stationarized before the steady
+state and perturbation equations are generated. For a variable with trend
+function `Hᵢ(Aₜ)`, the solver uses
 
-When a model contains a trending (unit-root) variable, the steady state is computed by giving every variable both a **level** and an additive per-period **growth** `xᴳ`, and evaluating each steady-state equation at two time origins. This pins the growth rates and any cointegration relationships automatically, while the absolute level of each independent stochastic trend is a free initial condition that is anchored to a particular solution (`0`). For a linear model the dynamics and impulse responses are invariant to this anchor — only the growth rates (slopes) are determined by the model.
+```math
+\widehat{x}^i_t = x^i_t / H^i(A_t), \qquad
+\Delta H^i_t = H^i(A_t) / H^i(A_{t-1}).
+```
 
-As a minimal example, consider a random walk with drift `g` and its first difference `dx`:
+Trend drivers and their growth restrictions are inferred from the model
+equations. Current trend-driver levels are normalized to one, leads use future
+gross growth factors, and lags use their reciprocals. The resulting equations
+are stationary and are passed to the ordinary NSSS and perturbation solvers.
+This is the equation-level construction described by Canova and
+Sæterhagen Paulsen (Norges Bank Working Paper 18/2021), rather than a
+post-processing correction to a level solution.
+
+For example, a stationary growth factor `a` can drive a level variable `x`:
 
 ```@repl ss_bgp
 using MacroModelling
 
-@model RWdrift begin
-    x[0]  = x[-1] + g + e[x]
-    dx[0] = x[0] - x[-1]
+@model GrowthModel begin
+    a[0] = (1 - ρ) * γ + ρ * a[-1] + σ * e[x]
+    x[0] = a[0] * x[-1]
 end
 
-@parameters RWdrift begin
-    g = 0.02
+@parameters GrowthModel begin
+    γ = 1.02
+    ρ = 0.5
+    σ = 0.01
 end
 
-get_steady_state(RWdrift, derivatives = false)
+get_SS(GrowthModel, derivatives = false)
 ```
 
-The stationary first difference `dx` equals the drift `g`, while the trending level `x` is anchored to `0`. The solved growth rates also drive the level paths: with `levels = true`, impulse responses and simulations of trending variables follow `x_t = anchor + xᴳ · t`, so the level accumulates the deterministic drift while deviations (`levels = false`) do not:
+`Growth_rate` reports logarithmic gross growth, `log(ΔH)`. Thus the growth
+rate of `x` in this example is `log(γ)` on the deterministic path. With
+`levels = false`, IRFs are responses of the stationary normalized variables.
+With `levels = true`, the simulated growth-factor path is accumulated to
+reconstruct the original level path, including stochastic growth shocks.
 
-```@repl ss_bgp
-get_irf(RWdrift, shocks = :none, periods = 4, levels = true)
-```
+Pure additive random walks such as `x[0] = x[-1] + g` are not assigned an
+artificial multiplicative trend. They raise a diagnostic and must be rewritten
+with a positive gross growth factor. Unsupported operators, ambiguous trend
+drivers, inconsistent restrictions, and rank-deficient growth systems likewise
+raise an error rather than silently falling back to additive behavior.
 
-By default the absolute level of each independent trend is anchored to `0`. To pin a trend to a specific level instead — for example to match a reference steady state or to express a constant trend — add a **steady-state level anchor** `x[ss] = expr` as an equation in the `@model` block (analogous to an IRIS `!!` steady-state override). It constrains the level only; the growth remains determined by the variable's dynamic law:
-
-```@repl ss_bgp
-@model RWanchored begin
-    x[0]  = x[-1] + g + e[x]
-    dx[0] = x[0] - x[-1]
-    x[ss] = xbar
-end
-
-@parameters RWanchored begin
-    g    = 0.02
-    xbar = 5.0
-end
-
-get_steady_state(RWanchored, derivatives = false)
-```
-
-The anchor expression is typically a parameter or constant. Anchors should target the model's independent (fundamental) trends; for a linear model the dynamics are unaffected by the choice of anchor.
-
-Notes and current scope:
-
-- Growth is **additive**. BGP models support first-, second-, and third-order
-  solution and moment calculations, including models with forward-looking
-  expectations.
-- Cointegrated systems are handled automatically: growth-rate identities such as `xᴳ = aᴳ - bᴳ` follow from the level relationships without any additional equations.
-- BGP steady-state output has `Steady_state` and `Growth_rate` columns before
-  parameter derivatives. Growth rates are the solved per-period additive
-  changes; growth-rate derivatives are not included.
-- Dynamic models with calibrated persistence parameters on or outside the unit
-  circle are also recognized after `@parameters`, including models with
-  forward-looking expectations.
-- Moment outputs use the stationary first-difference basis for trending
-  variables. Such variables are labeled `Delta_x` (for `x`), so covariance,
-  variance, standard-deviation, and correlation outputs are finite while
-  stationary variables retain their usual labels.
+Covariances are computed directly for the stationary transformed variables, so
+they remain finite without post-hoc first-differencing or `Delta_` relabeling.
+The generated stationary equations and the original equations remain available
+through the inspection APIs.
 
 ## Custom Steady State Functions
 

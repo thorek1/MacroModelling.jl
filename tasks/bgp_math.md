@@ -1,102 +1,49 @@
-# Balanced-Growth-Path Implementation
+# Symbolic Stationarization for Balanced Growth
 
-For a level model, a balanced-growth path is represented as
-
-```math
-x_t = \bar{x} + g_x t.
-```
-
-Therefore,
+The level representation follows Canova and Sæterhagen Paulsen,
+Norges Bank Working Paper 18/2021. For each variable,
 
 ```math
-x[0] = \bar{x}, \qquad
-x[-1] = \bar{x} - g_x, \qquad
-x[1] = \bar{x} + g_x.
+\widehat X_t^i = X_t^i / H^i(A_t), \qquad
+G_t^i = H^i(A_t) / H^i(A_{t-1}).
 ```
 
-The steady-state equations are evaluated at two time origins. This produces
-equations for both the level `\bar{x}` and the growth rate `g_x`.
-
-For example, the equation
+The parser seeds each timed variable with a symbolic log-growth term and
+propagates growth through the expression tree:
 
 ```math
-x_t = x_{t-1} + g
+\begin{aligned}
+g(xy) &= g(x) + g(y),\\
+g(x/y) &= g(x) - g(y),\\
+g(x^p) &= p\,g(x).
+\end{aligned}
 ```
 
-implies
+Additive terms must have equal growth. These restrictions form a linear
+system in variable and trend-driver growth rates. Automatically selected
+drivers receive an independent normalization, and the solved coefficients
+define each variable's trend function.
+
+The dynamic equations are then rewritten before perturbation:
 
 ```math
-\bar{x} = (\bar{x} - g_x) + g
+X_t^i \mapsto \widehat X_t^i,\qquad
+X_{t+1}^i \mapsto \widehat X_{t+1}^i G_{t+1}^i,\qquad
+X_{t-1}^i \mapsto \widehat X_{t-1}^i/G_t^i.
 ```
 
-and therefore `g_x = g`.
+Trend-driver laws are represented directly as gross-growth equations, which
+avoids evaluating reciprocal growth factors at a zero solver probe. `SS`
+reports `log(G)` in the `Growth_rate` column. `levels = false` returns the
+stationary transformed response; `levels = true` accumulates the simulated
+gross-growth path to reconstruct the original level.
 
-`SS` exposes these results as separate `Steady_state` and `Growth_rate`
-columns.
+This differs from the former additive implementation, which solved a
+nonstationary level system and applied first-difference transformations only
+to outputs and moments. Covariances now come directly from the stationary
+perturbation system and therefore remain finite without relabeling variables
+as `Delta_x`.
 
-## Expectations models
-
-For `RBCexpect`, the parser cannot identify the trend from the collapsed
-steady-state equations alone. After `@parameters`, dynamic models are also
-checked for calibrated persistence parameters `rho` with `abs(rho) >= 1`.
-Such models are treated as BGP-aware and receive a growth-rate column.
-
-For the equation
-
-```math
-g_t = (1-\rho_g)\bar{g} + \rho_g g_{t-1},
-```
-
-an additive trend `g_t = \bar{g}_g + \gamma_g t` requires
-
-```math
-\gamma_g = \rho_g \gamma_g.
-```
-
-With `rho_g = 1.01`, the only additive-growth solution is
-`\gamma_g = 0`. Strictly speaking, `1.01` is explosive rather than an exact
-unit root.
-
-## IRFs
-
-The BGP is
-
-```math
-B_t = \bar{x} + g_x t.
-```
-
-With `levels = true`, the IRF includes the deterministic drift `g_x t`.
-With `levels = false`, the result is the deviation from the BGP:
-
-```math
-\operatorname{IRF}_t = x_t - B_t.
-```
-
-For `RBCexpect`, the additive growth rate is zero, so its BGP coincides with
-the fixed steady-state level.
-
-## Finite BGP moments
-
-The covariance of a trending level is not finite. For a trending variable,
-the implementation instead uses its stationary first difference:
-
-```math
-\Delta x_t = x_t - x_{t-1}.
-```
-
-If the first-order solution is
-
-```math
-y_t = S s_{t-1} + E\varepsilon_t,
-```
-
-the BGP-difference transformation subtracts the unit-root state contribution
-from the corresponding rows of `S`. The finite covariance is then computed as
-
-```math
-\Sigma_y^\Delta =
-D\Sigma_sD^\prime + EE^\prime,
-```
-
-where `D` is the transformed solution matrix. Trending variables are labelled
-`Delta_x` in moment outputs.
+Pure additive random walks are intentionally rejected. They cannot be
+represented by a positive multiplicative trend without changing the model's
+economic meaning; the user must supply a multiplicative growth-factor law.

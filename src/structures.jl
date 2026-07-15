@@ -116,6 +116,8 @@ mutable struct equations
     # Balanced growth path: user-supplied steady-state level anchors `x[ss] = expr`,
     # pinning a trending variable's level (growth stays pinned by its dynamic law).
     ss_anchors::Dict{Symbol, Any}
+    # Symbolic stationarization metadata and reconstruction maps.
+    stationarization::Any
 end
 
 """

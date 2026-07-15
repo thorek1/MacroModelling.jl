@@ -16,6 +16,42 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
+function stationarization_matrix_rank(matrix::AbstractMatrix{T}) where T <: Real
+    rows, columns = size(matrix)
+    min(rows, columns) == 0 && return 0
+
+    work = Matrix(matrix)
+    scale = max(maximum(abs, work; init = zero(T)), one(T))
+    tolerance = 10 * eps(T) * max(rows, columns) * scale
+    rank_value = 0
+
+    for column in 1:columns
+        pivot_row = rank_value + 1
+        pivot_value = zero(T)
+        for row in pivot_row:rows
+            value = abs(work[row, column])
+            if value > pivot_value
+                pivot_value = value
+                pivot_row = row
+            end
+        end
+        pivot_value <= tolerance && continue
+
+        rank_value += 1
+        if pivot_row != rank_value
+            work[[rank_value, pivot_row], :] = work[[pivot_row, rank_value], :]
+        end
+
+        pivot = work[rank_value, column]
+        for row in rank_value + 1:rows
+            factor = work[row, column] / pivot
+            work[row, column:columns] .-= factor .* work[rank_value, column:columns]
+        end
+    end
+
+    rank_value
+end
+
 @unstable function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
     if sol.is_number == true
         return sol
@@ -1166,7 +1202,10 @@ end
         for i in vcat(growth_idx, setdiff(level_idx, forced))   # keep growths first, anchor redundant levels
             c = get(colpos, unknown_names[i], 0)
             c == 0 && continue
-            r = ℒ.rank(view(Jdense, :, vcat(kept, c)))
+            candidate_columns = vcat(kept, c)
+            r = isempty(candidate_columns) || size(Jdense, 1) == 0 || size(Jdense, 2) == 0 ?
+                currank :
+                stationarization_matrix_rank(Jdense[:, candidate_columns])
             if r > currank
                 push!(kept, c)
                 currank = r
@@ -1242,7 +1281,7 @@ end
     end
 
     output_var_names = unique(Symbol.(replace.(string.(sort(union(
-        𝓂.constants.post_model_macro.var,
+        filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
         𝓂.constants.post_model_macro.exo_past,
         𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
@@ -1265,7 +1304,7 @@ end
 
     output_names_full = vcat(
         Symbol.(replace.(string.(sort(union(
-            𝓂.constants.post_model_macro.var,
+            filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
             𝓂.constants.post_model_macro.exo_past,
             𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
         calib_param_names

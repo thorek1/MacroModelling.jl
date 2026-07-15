@@ -483,7 +483,20 @@ function rrule(::typeof(get_NSSS_and_parameters),
     custom_ss_expand_matrix = ms.custom_ss_expand_matrix
 
     ∂ = parameter_values
-    C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
+    if 𝓂.equations.stationarization === nothing
+        C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
+    else
+        sol_names = ms.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        C_names = ms.vars_in_ss_equations[ms.SS_and_pars_no_exo_idx]
+        C = [
+            begin
+                sol_index = findfirst(==(name), sol_names)
+                sol_index === nothing ? SS_and_pars[index] : sol_values[sol_index]
+            end
+            for (index, name) in zip(ms.SS_and_pars_no_exo_idx, C_names)
+        ]
+    end
 
     if eltype(𝓂.caches.NSSS_∂equations_∂parameters) != eltype(parameter_values)
         if 𝓂.caches.NSSS_∂equations_∂parameters isa SparseMatrixCSC
@@ -601,6 +614,18 @@ function rrule(::typeof(get_NSSS_and_parameters),
     end
 
     jvp_no_exo = custom_ss_expand_matrix * JVP
+    if 𝓂.equations.stationarization === nothing
+        jvp_output = jvp_no_exo
+    else
+        full_names = vcat(𝓂.constants.post_model_macro.var,
+                          𝓂.equations.calibration_parameters)
+        output_names = vcat(
+            filter(name -> !endswith(string(name), "ᴳ"), ms.nsss_sol_names),
+            𝓂.equations.calibration_parameters,
+        )
+        output_rows = Int.(indexin(output_names, full_names))
+        jvp_output = jvp_no_exo[output_rows, :]
+    end
 
     # end # timeit_debug
     # end # timeit_debug
@@ -611,7 +636,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
         if ∂SS isa Union{NoTangent, AbstractZero}
             return NoTangent(), NoTangent(), zeros(S, size(jvp_no_exo, 2)), NoTangent()
         end
-        return NoTangent(), NoTangent(), jvp_no_exo' * ∂SS, NoTangent()
+        return NoTangent(), NoTangent(), jvp_output' * ∂SS, NoTangent()
     end
 
 
@@ -2594,6 +2619,7 @@ function rrule(::typeof(calculate_covariance),
     # ── Non-differentiable setup ──
     constants_obj = initialise_constants!(𝓂)
     idx_constants = constants_obj.post_complete_parameters
+    ms = idx_constants
     T = constants_obj.post_model_macro
     nPast = T.nPast_not_future_and_mixed
     past_idx = T.past_not_future_and_mixed_idx
@@ -2712,6 +2738,16 @@ function rrule(::typeof(calculate_covariance),
         jac_grad = jac_pb(∂∇₁_total)
         ∂parameters_from_jac = jac_grad[2]
         ∂SS_from_jac = jac_grad[3]
+        if 𝓂.equations.stationarization !== nothing
+            full_names = vcat(𝓂.constants.post_model_macro.var,
+                              𝓂.equations.calibration_parameters)
+            output_names = vcat(
+                filter(name -> !endswith(string(name), "ᴳ"), ms.nsss_sol_names),
+                𝓂.equations.calibration_parameters,
+            )
+            output_rows = Int.(indexin(output_names, full_names))
+            ∂SS_from_jac = ∂SS_from_jac[output_rows]
+        end
         ∂SS_total .+= ∂SS_from_jac
 
         # Backprop through NSSS

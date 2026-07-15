@@ -68,9 +68,20 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
-                              ndims(relevant_SS) == 1 ? relevant_SS(s) : relevant_SS(s, :Steady_state)
-                              for s in full_NSSS]
+    if 𝓂.equations.stationarization === nothing
+        reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+                                  ndims(relevant_SS) == 1 ? relevant_SS(s) : relevant_SS(s, :Steady_state)
+                                  for s in full_NSSS]
+    else
+        sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        reference_steady_state = [
+            endswith(string(name), "ᴳ") ?
+            sol_values[findfirst(==(name), sol_names)] :
+            relevant_SS(name, :Steady_state)
+            for name in 𝓂.constants.post_model_macro.var
+        ]
+    end
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -81,9 +92,20 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
-            ndims(relevant_NSSS) == 1 ? relevant_NSSS(s) : relevant_NSSS(s, :Steady_state)
-            for s in full_NSSS]
+    if 𝓂.equations.stationarization === nothing
+        NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+                ndims(relevant_NSSS) == 1 ? relevant_NSSS(s) : relevant_NSSS(s, :Steady_state)
+                for s in full_NSSS]
+    else
+        sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        NSSS = [
+            endswith(string(name), "ᴳ") ?
+            sol_values[findfirst(==(name), sol_names)] :
+            relevant_NSSS(name, :Steady_state)
+            for name in 𝓂.constants.post_model_macro.var
+        ]
+    end
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -111,8 +133,9 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
                     x, parsed)
 end
 
-function convert_to_ss_equation(eq::Expr)::Expr
-    postwalk(x -> 
+function convert_to_ss_equation(eq)::Expr
+    eq isa Symbol && return Expr(:call, :(-), eq, 0)
+    result = postwalk(x ->
         x isa Expr ? 
             x.head == :(=) ? 
                 Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
@@ -130,6 +153,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
             unblock(x) : 
         x,
     eq)
+    result isa Symbol ? Expr(:call, :(-), result, 0) : result
 end
 
 

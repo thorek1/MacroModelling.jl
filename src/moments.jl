@@ -137,6 +137,24 @@ function solve_moment_linear_system(A, b, 𝓂::ℳ)
     return is_bgp_model(𝓂) ? ℒ.pinv(Matrix(A)) * b : A \ b
 end
 
+function internal_steady_state_and_parameters(SS_and_pars::Vector{R}, 𝓂::ℳ) where R <: Real
+    𝓂.equations.stationarization === nothing && return SS_and_pars
+
+    T = 𝓂.constants.post_model_macro
+    public_names = filter(name -> !endswith(string(name), "ᴳ"), T.var)
+    public_values = SS_and_pars[1:length(public_names)]
+    public_by_name = Dict(public_names .=> public_values)
+    sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+    sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+    variable_values = R[
+        endswith(string(name), "ᴳ") ?
+        R(sol_values[findfirst(==(name), sol_names)]) :
+        public_by_name[name]
+        for name in T.var
+    ]
+    vcat(variable_values, SS_and_pars[(length(public_names) + 1):end])
+end
+
 
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
@@ -231,10 +249,11 @@ function calculate_mean(parameters::Vector{R},
     
     nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     SS_and_pars = nsss_result[1]::Vector{R}
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
     solution_error = nsss_result[2][1]
     
     if algorithm == :first_order
-        mean_of_variables = SS_and_pars[1:T.nVars]
+        mean_of_variables = internal_SS_and_pars[1:T.nVars]
 
         solved = solution_error < opts.tol.nsss.acceptance_tol
     else
@@ -313,7 +332,7 @@ function calculate_mean(parameters::Vector{R},
                 ## First-order moments, ie mean of variables
                 mean_of_pruned_states   = solve_moment_linear_system(ℒ.I(size(pruned_states_to_pruned_states, 1)) - pruned_states_to_pruned_states,
                                                                       pruned_states_vol_and_shock_effect, 𝓂)
-                mean_of_variables   = SS_and_pars[1:T.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+                mean_of_variables   = internal_SS_and_pars[1:T.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
             end
         end
     end
@@ -328,6 +347,7 @@ function calculate_second_order_moments(parameters::Vector{R},
                                         opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R,Int}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
 
     if solved
         # Initialize constants at entry point
@@ -423,7 +443,7 @@ function calculate_second_order_moments(parameters::Vector{R},
             Δμˢ₂ = vec(solve_moment_linear_system(ℒ.I(size(s_to_s₁, 1)) - s_to_s₁,
                                                    s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2,
                                                    𝓂))
-            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μʸ₂  = internal_SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             slvd = solved && solved2
         else
@@ -460,6 +480,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                                         opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractMatrix{R}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
 
     if solved
         ensure_moments_constants!(𝓂.constants)
@@ -550,7 +571,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             Δμˢ₂ = vec(solve_moment_linear_system(ℒ.I(size(s_to_s₁, 1)) - s_to_s₁,
                                                    s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2,
                                                    𝓂))
-            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μʸ₂  = internal_SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             # Covariance
             Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)

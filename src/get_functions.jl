@@ -1068,7 +1068,11 @@ The same can be achieved with the other input formats:
     initial_state = adjust_initial_state(initial_state, algorithm, 𝓂, SSS_delta, reference_steady_state)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
-
+    if 𝓂.equations.stationarization !== nothing
+        var_idx = filter(index ->
+            !endswith(string(𝓂.constants.post_model_macro.var[index]), "ᴳ"),
+            var_idx)
+    end
     Y = zeros(size(𝓂.caches.first_order_solution_matrix,1),periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
@@ -1602,6 +1606,30 @@ And data, 4×40×1 Array{Float64, 3}:
 # inherit the base variable's growth (resolved at the call site by stripping the
 # auxiliary suffix). Returns only nonzero growths; empty for stationary models.
 function bgp_growth_by_name(𝓂::ℳ)::Dict{Symbol, Float64}
+    metadata = 𝓂.equations.stationarization
+    if metadata !== nothing
+        names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        driver_rates = Dict{Symbol, Float64}()
+        for driver in metadata.trend_drivers
+            growth_name = stationary_growth_symbol(driver)
+            index = findfirst(==(growth_name), names)
+            index === nothing && continue
+            gross_rate = sol[index]
+            gross_rate > 0 && isfinite(gross_rate) ||
+                throw(ArgumentError("Non-positive or non-finite gross growth factor for trend driver $(driver): $(gross_rate)."))
+            driver_rates[driver] = log(gross_rate)
+        end
+
+        growths = Dict{Symbol, Float64}()
+        for (name, exponents) in metadata.growth_exponents
+            rate = sum(exponent * get(driver_rates, driver, 0.0)
+                       for (exponent, driver) in zip(exponents, metadata.trend_drivers))
+            abs(rate) > 1e-12 && (growths[name] = rate)
+        end
+        return growths
+    end
+
     growths = Dict{Symbol, Float64}()
     names = 𝓂.constants.post_complete_parameters.nsss_sol_names
     sol   = 𝓂.workspaces.nsss_solver.sol_vec_buffer
@@ -1616,15 +1644,7 @@ function bgp_growth_by_name(𝓂::ℳ)::Dict{Symbol, Float64}
 end
 
 function is_bgp_model(𝓂::ℳ)::Bool
-    has_growth_unknowns = any(
-        endswith(string(name), "ᴳ")
-        for name in 𝓂.constants.post_model_macro.vars_in_ss_equations
-    )
-    has_growth_unknowns || has_nonstationary_persistence(
-        𝓂.constants.post_model_macro,
-        𝓂.constants.post_complete_parameters.parameters,
-        𝓂.parameter_values,
-    )
+    𝓂.equations.stationarization !== nothing
 end
 
 function bgp_growth_rate(𝓂::ℳ, name::Symbol)::Float64
@@ -1638,6 +1658,7 @@ function bgp_growth_column(𝓂::ℳ, names)::Vector{Float64}
 end
 
 function bgp_difference_labels(𝓂::ℳ, names)
+    𝓂.equations.stationarization !== nothing && return names
     rates = bgp_growth_by_name(𝓂)
     return [
         get(rates, Symbol(replace(string(name), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 0.0) == 0.0 ?
@@ -1647,6 +1668,7 @@ function bgp_difference_labels(𝓂::ℳ, names)
 end
 
 function bgp_difference_covariance(covar::AbstractMatrix{R}, sol::AbstractMatrix{R}, 𝓂::ℳ)::Matrix{R} where R <: Real
+    𝓂.equations.stationarization !== nothing && return Matrix(covar)
     !is_bgp_model(𝓂) && return Matrix(covar)
 
     T = 𝓂.constants.post_model_macro
@@ -1679,6 +1701,8 @@ function bgp_difference_covariance_pullback(cotangent::AbstractMatrix{R},
                                             covar::AbstractMatrix{R},
                                             sol::AbstractMatrix{R},
                                             𝓂::ℳ)::Tuple{Matrix{R}, Matrix{R}} where R <: Real
+    𝓂.equations.stationarization !== nothing &&
+        return Matrix(cotangent), zeros(R, size(sol))
     !is_bgp_model(𝓂) && return Matrix(cotangent), zeros(R, size(sol))
 
     T = 𝓂.constants.post_model_macro
@@ -1721,6 +1745,7 @@ function apply_bgp_difference_output!(states_to_variables::AbstractMatrix{R},
                                       state_names,
                                       𝓂::ℳ;
                                       state_blocks::Tuple = (1,)) where R <: Real
+    𝓂.equations.stationarization !== nothing && return states_to_variables
     !is_bgp_model(𝓂) && return states_to_variables
 
     rates = bgp_growth_by_name(𝓂)
@@ -1818,13 +1843,22 @@ end
     
     level = levels ? reference_steady_state + SSS_delta : SSS_delta
 
+    requested_idx = nothing
+    response_variables = variables
+    if 𝓂.equations.stationarization !== nothing
+        requested_idx = parse_variables_input_to_index(variables, 𝓂.constants)
+        requested_idx = sort(filter(index ->
+            !endswith(string(𝓂.constants.post_model_macro.var[index]), "ᴳ"),
+            collect(requested_idx)))
+        response_variables = levels ? :all : 𝓂.constants.post_model_macro.var[requested_idx]
+    end
     responses = compute_irf_responses(𝓂,
                                         state_update,
                                         initial_state,
                                         level;
                                         periods = periods,
                                         shocks = shocks,
-                                        variables = variables,
+                                        variables = response_variables,
                                         shock_size = shock_size,
                                         negative_shock = negative_shock,
                                         generalised_irf = generalised_irf,
@@ -1833,23 +1867,38 @@ end
                                         enforce_obc = occasionally_binding_constraints,
                                         algorithm = algorithm)
 
-    # Balanced growth path: levels of trending variables follow x_t = anchor + xᴳ·t.
-    # The first-order solution works in deviations from the constant anchored steady
-    # state, so add the deterministic drift xᴳ·t (period index t) to the level paths.
-    # Only the slope xᴳ is meaningful — the anchor is an arbitrary particular solution.
-    if levels
-        growths = bgp_growth_by_name(𝓂)
-        if !isempty(growths)
-            P = size(responses, 2)
-            for (vi, nm) in enumerate(axiskeys(responses, 1))
-                base = Symbol(replace(string(nm), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-                g = get(growths, base, 0.0)
-                g == 0.0 && continue
-                for t in 1:P
-                    @views responses[vi, t, :] .+= g * t
+    if levels && 𝓂.equations.stationarization !== nothing
+        metadata = 𝓂.equations.stationarization
+        all_names = Symbol.(axiskeys(responses, 1))
+        requested_idx = isnothing(requested_idx) ?
+                        sort(collect(parse_variables_input_to_index(variables, 𝓂.constants))) :
+                        requested_idx
+        growth_indices = Dict(
+            driver => findfirst(==(stationary_growth_symbol(driver)), all_names)
+            for driver in metadata.trend_drivers
+        )
+        values = Array(responses)
+        for shock_index in axes(values, 3)
+            cumulative = ones(Float64, length(metadata.trend_drivers))
+            for period in axes(values, 2)
+                for (driver_index, driver) in enumerate(metadata.trend_drivers)
+                    growth_index = growth_indices[driver]
+                    growth_index === nothing && continue
+                    cumulative[driver_index] *= values[growth_index, period, shock_index]
+                end
+                for (row, name) in enumerate(all_names)
+                    exponents = get(metadata.growth_exponents, name, nothing)
+                    exponents === nothing && continue
+                    factor = prod(cumulative[index]^exponents[index]
+                                  for index in eachindex(cumulative))
+                    values[row, period, shock_index] *= factor
                 end
             end
         end
+        responses = KeyedArray(values[requested_idx, :, :];
+                               Variables = all_names[requested_idx],
+                               Periods = axiskeys(responses, 2),
+                               Shocks = axiskeys(responses, 3))
     end
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
@@ -2059,6 +2108,8 @@ And data, 4×6 Matrix{Float64}:
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
     var_idx = ms.ss_var_idx_in_var_and_calib
+    public_var_idx = findall(name -> !endswith(string(name), "ᴳ"),
+                             𝓂.constants.post_model_macro.var)
 
     calib_idx = return_variables_only ? Int[] : ms.calib_idx_in_var_and_calib
 
@@ -2074,10 +2125,12 @@ And data, 4×6 Matrix{Float64}:
     ensure_name_display_constants!(𝓂)
     var_axis = 𝓂.constants.post_complete_parameters.var_axis
     calib_axis = 𝓂.constants.post_complete_parameters.calib_axis
-    axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
+    public_var_axis = var_axis[public_var_idx]
+    public_var_names = 𝓂.constants.post_model_macro.var[public_var_idx]
+    axis1 = return_variables_only ? public_var_axis : vcat(public_var_axis, calib_axis)
     ss_names = return_variables_only ?
-               𝓂.constants.post_model_macro.var[var_idx] :
-               vcat(𝓂.constants.post_model_macro.var[var_idx], 𝓂.equations.calibration_parameters)
+               public_var_names :
+               vcat(public_var_names, 𝓂.equations.calibration_parameters)
     bgp_model = is_bgp_model(𝓂)
     growth_column = bgp_model ? bgp_growth_column(𝓂, ss_names) : Float64[]
 
@@ -2386,9 +2439,22 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
         end
 
         n_vars = length(𝓂.constants.post_model_macro.var)
-        nsss = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
+        if 𝓂.equations.stationarization === nothing
+            nsss = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)[1][1:n_vars]
+            return KeyedArray([nsss solution_matrix]';
+                              Steady_state__States__Shocks = axis1,
+                              Variables = axis2)
+        end
 
-        return KeyedArray([nsss solution_matrix]';
+        sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        public_idx = findall(name -> !endswith(string(name), "ᴳ"),
+                             𝓂.constants.post_model_macro.var)
+        nsss = [sol_values[findfirst(==(name), sol_names)]
+                for name in 𝓂.constants.post_model_macro.var]
+        axis2 = axis2[public_idx]
+
+        return KeyedArray([nsss[public_idx] solution_matrix[public_idx, :]]';
                             Steady_state__States__Shocks = axis1,
                             Variables = axis2)
     end
@@ -3529,6 +3595,19 @@ And data, 4×4 Matrix{Float64}:
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
+    if 𝓂.equations.stationarization !== nothing
+        var_idx = filter(index ->
+            !endswith(string(𝓂.constants.post_model_macro.var[index]), "ᴳ"),
+            var_idx)
+    end
+    model_var_names = 𝓂.constants.post_model_macro.var
+    public_model_idx = findall(name -> !endswith(string(name), "ᴳ"), model_var_names)
+    ss_var_idx = 𝓂.equations.stationarization === nothing ?
+                 var_idx :
+                 Int.(indexin(model_var_names[var_idx], model_var_names[public_model_idx]))
+    nsss_variable_count = 𝓂.equations.stationarization === nothing ?
+                          𝓂.constants.post_model_macro.nVars :
+                          length(public_model_idx)
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
     length_par = 0
@@ -3593,8 +3672,8 @@ And data, 4×4 Matrix{Float64}:
 
     # Initialize variables used across derivative/non-derivative branches
     # to satisfy JET's definite-assignment analysis
-    SS = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
-    var_means = KeyedArray(collect(NSSS)[var_idx]; Variables = 𝓂.constants.post_model_macro.var[var_idx])
+    SS = KeyedArray(collect(NSSS)[ss_var_idx]; Variables = model_var_names[var_idx])
+    var_means = KeyedArray(collect(NSSS)[ss_var_idx]; Variables = model_var_names[var_idx])
     st_dev = var_means
     varrs = var_means
     covar_dcmp = zeros(0, 0)
@@ -3639,9 +3718,9 @@ And data, 4×4 Matrix{Float64}:
             dNSSS = dNSSS[:, param_idx]
             
             if length(𝓂.equations.calibration_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.equations.calibration_parameters)))
+                var_idx_ext = vcat(ss_var_idx, nsss_variable_count .+ (1:length(𝓂.equations.calibration_parameters)))
             else
-                var_idx_ext = var_idx
+                var_idx_ext = ss_var_idx
             end
 
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
@@ -3822,13 +3901,13 @@ And data, 4×4 Matrix{Float64}:
             end
 
             if length(𝓂.equations.calibration_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.constants.post_model_macro.nVars .+ (1:length(𝓂.equations.calibration_parameters)))
+                var_idx_ext = vcat(ss_var_idx, nsss_variable_count .+ (1:length(𝓂.equations.calibration_parameters)))
             else
-                var_idx_ext = var_idx
+                var_idx_ext = ss_var_idx
             end
 
             if mean && algorithm == :first_order
-                var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
             end
 
             SS =  KeyedArray(collect(NSSS)[var_idx_ext];  Variables = axis1)
@@ -3844,7 +3923,7 @@ And data, 4×4 Matrix{Float64}:
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+        var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
 
         if mean && !(variance || standard_deviation || covariance)
             state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
@@ -3874,7 +3953,7 @@ And data, 4×4 Matrix{Float64}:
                 end
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
                 end
             end
 
@@ -3907,7 +3986,7 @@ And data, 4×4 Matrix{Float64}:
                 end
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
                 end
             end
 
@@ -3936,7 +4015,7 @@ And data, 4×4 Matrix{Float64}:
                 end
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
                 end
 
                 if !solved
@@ -3963,7 +4042,7 @@ And data, 4×4 Matrix{Float64}:
                 end
 
                 if mean && algorithm == :first_order
-                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.constants.post_model_macro.var[var_idx])
+                    var_means = KeyedArray(collect(NSSS)[ss_var_idx];  Variables = model_var_names[var_idx])
                 end
 
                 if !solved
