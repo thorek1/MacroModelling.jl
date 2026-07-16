@@ -38,3 +38,15 @@ stationary IRFs, finite covariances, and hidden growth-variable handling.
 the normalized BGP NSSS problem, internal growth unknowns, free trend-level
 anchoring, block solving and continuation, package comparisons, advantages,
 limitations, and failure conditions.
+
+`test/bgp_steady_state_automation.md` explains that BGP stationarization
+precedes the automatic NSSS solve, identifies the reused versus adapted
+machinery, documents structural trend detection and trigger caching, and
+clarifies why this restricted automation does not contradict the Canova
+et al. argument about general unit-root identification.
+
+The unused parameter-name heuristic for `ρ`/`rho` persistence was removed.
+`scripts/inspect_bgp_internals.jl` is a top-level, cell-by-cell internal call
+trace for the BGP path. It deliberately avoids helper functions and leaves
+each parser, stationarization, NSSS, residual, Jacobian, and first-order
+solution intermediate in the REPL namespace.
