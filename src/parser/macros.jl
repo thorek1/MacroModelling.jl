@@ -143,6 +143,7 @@ macro model(𝓂, ex...)
                 Tuple{Int,Int,Float64}[], # obc_constraint_info
                 false, # functions_written
             ),
+            nothing,      # direct_bgp_cache
             SolveCounters(),
             RevisionEntry[],
         );

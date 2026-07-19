@@ -177,6 +177,7 @@ include("moments.jl")
 include("./algorithms/fast_lapack_wrappers.jl")
 include("./perturbation/derivatives.jl")
 include("./perturbation/solution.jl")
+include("./perturbation/direct_bgp.jl")
 include("./steady_state/stochastic_steady_state.jl")
 include("impulse_response_function.jl")
 
@@ -1413,7 +1414,8 @@ function solve_steady_state!(𝓂::ℳ,
     
     found_solution = true
     
-    if !(𝓂.functions.NSSS_custom isa Function)
+    if !(𝓂.functions.NSSS_custom isa Function) &&
+       𝓂.equations.stationarization === nothing
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
         if solution_error > opts.tol.nsss.acceptance_tol
@@ -1671,7 +1673,9 @@ function solve!(𝓂::ℳ;
 
             @assert solution_error < opts.tol.nsss.acceptance_tol "Could not find non-stochastic steady state."
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+            ∇₁ = calculate_bgp_jacobian(𝓂,
+                                        𝓂.parameter_values,
+                                        SS_and_pars)
 
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 constants,
@@ -2669,8 +2673,8 @@ function update_ss_counter!(counters::SolveCounters, solved::Bool; estimation::B
     return nothing
 end
 
-function get_NSSS_and_parameters(𝓂::ℳ, 
-                                    parameter_values::Vector{S}; 
+function get_NSSS_and_parameters(𝓂::ℳ,
+                                    parameter_values::Vector{S};
                                     opts::CalculationOptions = merge_calculation_options(),
                                     cold_start::Bool = false,
                                     estimation::Bool = false,
@@ -2679,6 +2683,20 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     # @timeit_debug timer "Calculate NSSS" begin
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+
+    if S === Float64 &&
+       𝓂.equations.stationarization !== nothing &&
+       !(𝓂.functions.NSSS_custom isa Function)
+        return direct_bgp_nsss_and_parameters(
+            𝓂,
+            parameter_values;
+            opts = opts,
+            cold_start = cold_start,
+            estimation = estimation,
+            caching = caching,
+        )::Tuple{Vector{S}, Tuple{S, Int}}
+    end
+
     ms = 𝓂.constants.post_complete_parameters
     
     # Cache hit: return cached NSSS if valid for current parameters

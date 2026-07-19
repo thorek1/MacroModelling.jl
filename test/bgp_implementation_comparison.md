@@ -26,7 +26,7 @@ then uses the ordinary steady-state and perturbation solvers.
 
 | Framework | What the user supplies | What is automated | How the BGP is solved |
 | --- | --- | --- | --- |
-| `MacroModelling.jl` | Equations in a compatible multiplicative level form and parameter values | Trend-carrier detection, growth restrictions, growth equations, equation rewrite, stationary NSSS, perturbation | Solve normalized levels and gross growth factors in the generated stationary system |
+| `MacroModelling.jl` | Equations in a compatible multiplicative level form and parameter values | Trend-carrier detection, growth restrictions, growth equations, equation rewrite, direct raw BGP NSSS, perturbation | Solve normalized levels and gross growth factors in a cached two-point raw system, then reuse stationary perturbation |
 | NBToolbox | Nonstationary equations plus an explicit `unitrootvars` block | Symbolic growth restrictions, identification of nonstationary variables, `G` functions, stationarization | Generate a stationary model, then solve its BGP and stationary system |
 | IRIS | Nonstationary model, growth status, trend equations/metadata, and numerical starting values as needed | Numerical growth-augmented steady state and nonlinear model solution | Solve levels together with steady-state changes or growth rates using `steady(..., Growth=true)` |
 | Dynare | `trend_var`/`log_trend_var`, growth factors, and `deflator`/`log_deflator` declarations | Equation detrending after the user supplies trend metadata | Detrend internally, then solve the resulting stationary model |
@@ -180,7 +180,7 @@ The transformation is performed before the NSSS Jacobian, perturbation
 derivatives, expectations system, and moment equations are generated. This
 is the central difference from an output-only correction.
 
-### 4. Solve the stationary NSSS
+### 4. Solve the direct BGP NSSS
 
 The generated NSSS unknown vector contains:
 
@@ -189,8 +189,9 @@ The generated NSSS unknown vector contains:
 \text{calibration parameters}).
 ```
 
-The solver finds a fixed point of the normalized equations and the
-deterministic growth-factor equations. For example, with
+The default direct route evaluates the original equations at two consecutive
+points and solves a fixed point of the normalized levels and gross growth
+factors. For example, with
 
 ```julia
 a[0] = (1 - ρ) * γ + ρ * a[-1] + σ * e[x]
@@ -207,6 +208,8 @@ G^x_{\mathrm{ss}}=a_{\mathrm{ss}}=\gamma.
 The public steady-state result reports the normalized value \(1\) for \(x\)
 and reports \(\log(\gamma)\) in its `Growth_rate` column. It does not try to
 return the infinite sequence \(x_0\gamma^t\) as a conventional steady state.
+The generated stationary equations are retained for all downstream
+derivative and perturbation calculations.
 
 ### 5. Solve perturbations and reconstruct levels
 
@@ -369,7 +372,7 @@ well-defined class:
 3. assembles and solves the balanced-growth restriction system;
 4. creates gross-growth equations;
 5. rewrites current, lead, and lag references;
-6. builds the stationary NSSS and perturbation system;
+6. builds the direct raw BGP NSSS system and the stationary perturbation system;
 7. reports public normalized steady states and logarithmic growth;
 8. reconstructs level IRFs from simulated growth-factor paths.
 

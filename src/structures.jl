@@ -111,6 +111,9 @@ mutable struct bgp_detection_metadata
     candidate_drivers::Vector{Symbol}
     active_drivers::Vector{Symbol}
     candidate_kinds::Vector{UInt8}
+    candidate_factors::Vector{Union{Nothing, Real, Symbol, Expr}}
+    candidate_has_timed_variables::BitVector
+    additive_candidates::Vector{Symbol}
     trigger_parameters::Vector{Symbol}
     trigger_indices::Vector{Int}
     trigger_values::Vector{Float64}
@@ -1618,6 +1621,7 @@ mutable struct ℳ
     constants::constants                      # Model structure (never changes after init)
     workspaces::workspaces                    # Temporary buffers (reused, no state)
     functions::model_functions                # Compiled model functions
+    direct_bgp_cache::Any                      # Cached direct raw-equation BGP NSSS representation
 
     counters::SolveCounters                   # Solve counters (steady state and perturbation)
 

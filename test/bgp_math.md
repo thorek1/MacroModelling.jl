@@ -198,9 +198,10 @@ with a current normalized level.
 ## 5. Steady states and IRFs
 
 The stationary equations, including the generated growth-factor equations,
-are passed to the ordinary NSSS and perturbation solvers. Growth-factor
-variables are kept internally because they are needed by the dynamics, but
-are removed from public variable axes.
+are passed to the ordinary perturbation and moment solvers. The default NSSS
+call instead uses a cached raw-equation BGP shadow with the same growth
+identities. Growth-factor variables are kept internally because they are
+needed by the dynamics, but are removed from public variable axes.
 
 For `levels = false`, an IRF is the response of the normalized variable
 \(\widehat X_t^i\). It is therefore a response relative to the stationary
@@ -250,10 +251,26 @@ The hidden growth-factor entries are reconstructed in the internal variable
 ordering before the nonlinear mean and covariance formulas are evaluated.
 They are filtered only when results are returned through the public API.
 
+### Native perturbation path at higher order
+
+The direct BGP method changes the NSSS input, not the perturbation derivative
+engine. After the raw two-point solve, the complete internal BGP vector is
+reconstructed, including hidden growth-factor variables. The ordinary
+stationary Jacobian, Hessian, and third-order derivative functions then
+evaluate the already stationarized equations on that vector.
+
+This keeps the QME, Sylvester, stochastic-steady-state, moment, filtering,
+and estimation machinery unchanged. It also gives exactly the same tensors
+as an ordinary stationary model evaluated on the same full internal vector;
+the direct-vs-stationary equality is tested for forward expectations and
+three independent trend drivers. Public steady-state outputs continue to
+omit hidden growth variables, so only the internal/public mapping and its
+analytical pullback are BGP-specific.
+
 ## 7. Difference from the former additive implementation
 
-The former approach kept the original non-stationary level equations and
-added additive unknowns such as
+The former two-point approach kept the original non-stationary level
+equations and added additive unknowns such as
 
 ```math
 x_t = x_{t-1} + x^G.
@@ -262,17 +279,18 @@ x_t = x_{t-1} + x^G.
 It then tried to repair IRFs and covariances after solving. That approach:
 
 1. did not make the equations stationary before differentiation;
-2. represented growth as an additive level change rather than a positive
-   gross factor;
+2. evaluated a lag as \(x^*-\Delta x\), which is only a first-order/additive
+   approximation to the exact multiplicative lag \(x^*/G_x\);
 3. could produce infinite level covariances for unit-root variables;
 4. could not reconstruct paths with stochastic multiplicative growth;
 5. handled forward-looking terms without the paper's explicit lead growth
    factor.
 
-The current approach transforms the equations before steady-state solution,
-derivatives, perturbation, moments, and expectations are computed. Original
-equations are retained for inspection, while all numerical work uses the
-stationary representation.
+The current implementation uses exact gross factors in the raw two-point NSSS
+cache and the symbolic stationary representation for derivatives,
+perturbation, moments, and expectations. Original equations are retained for
+rebuilding the cache, while the default NSSS path solves both normalized
+levels and gross factors directly.
 
 ## 8. Implementation representation
 
@@ -310,6 +328,9 @@ bgp_detection_metadata(
     candidate_drivers,
     active_drivers,
     candidate_kinds,
+    candidate_factors,
+    candidate_has_timed_variables,
+    additive_candidates,
     trigger_parameters,
     trigger_indices,
     trigger_values,
@@ -354,6 +375,11 @@ x[0] = x[-1] + u[0]
 
 and rejects them because an additive increment does not define a positive
 gross factor \(G_t^x\).
+
+The structural profile also retains the parsed candidate factors and the
+additive candidates. Trigger-changing parameter updates can therefore
+reclassify the cached factors directly; they do not rescan the raw equations.
+Only a mode or active-driver change rebuilds the stationarized representation.
 
 For a numeric multiplicative factor \(f\), the current dispatch rule treats
 the candidate as active when
@@ -616,6 +642,31 @@ The covariance is finite because the perturbation system is written in
 stationary coordinates. The internal moment routines reconstruct the hidden
 growth-factor entries in solver order when required by higher-order formulas;
 public result axes continue to omit those entries.
+
+### Direct BGP perturbation
+
+The direct method changes only the NSSS representation. After the raw
+two-point solve, the complete internal BGP vector is available:
+
+```math
+u^*=(\widehat X^*,G^*,p_c).
+```
+
+The ordinary derivative functions are evaluated on this vector exactly as for
+a stationary model. Hidden growth variables are included in the internal
+vector even though they are omitted from public steady-state axes. Since the
+stationary equations already contain the lead and lag growth factors, their
+ordinary symbolic derivatives generate terms such as
+
+```math
+d(\widehat X_{t+1}G_{t+1})
+=G^*d\widehat X_{t+1}+\widehat X^*dG_{t+1}.
+```
+
+The existing QME, Sylvester, stochastic-steady-state, moment, filtering, and
+estimation routines are therefore reused. BGP-specific code only reconstructs
+the hidden growth entries before derivative evaluation and maps internal
+cotangents back to public steady-state outputs.
 
 ## 15. End-to-end mathematical summary
 

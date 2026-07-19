@@ -172,7 +172,7 @@ function calculate_covariance(parameters::Vector{R},
         return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.nsss.acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) 
+    ∇₁ = calculate_bgp_jacobian(𝓂, parameters, SS_and_pars)
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
@@ -259,7 +259,7 @@ function calculate_mean(parameters::Vector{R},
     else
         ensure_moments_constants!(constants)
         so = constants.second_order
-        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
+        ∇₁ = calculate_bgp_jacobian(𝓂, parameters, SS_and_pars)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             constants,
@@ -274,7 +274,7 @@ function calculate_mean(parameters::Vector{R},
         if !solved 
             mean_of_variables = fill(R(NaN), T.nVars)
         else
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
+            ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                         opts = opts, parameter_values = parameters)
@@ -371,7 +371,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                 opts = opts, parameter_values = parameters)
@@ -501,7 +501,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         e⁴ = so.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)# * 𝓂.constants.second_order.𝐔∇₂
+        ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars)# * 𝓂.constants.second_order.𝐔∇₂
 
         𝐒₂_raw, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                 opts = opts, parameter_values = parameters)
@@ -845,7 +845,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars)
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                                                 𝓂.constants,
@@ -1314,7 +1314,7 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars)
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
                                                 𝓂.constants,
@@ -1675,7 +1675,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
                                                 𝓂.constants,
@@ -2046,7 +2046,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     so = 𝓂.constants.second_order
     to = 𝓂.constants.third_order
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)# * 𝓂.constants.third_order.𝐔∇₃
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars)# * 𝓂.constants.third_order.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw, 
                                                 𝓂.constants,

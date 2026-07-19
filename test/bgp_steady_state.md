@@ -130,8 +130,46 @@ H_{i,t}=\prod_{j=1}^{m}H_{A_j,t}^{b_{ij}(\theta)},
 G_{i,t}=\prod_{j=1}^{m}G_{A_j,t}^{b_{ij}(\theta)}.
 ```
 
-The raw model is transformed before the steady-state equations, derivative
-functions, perturbation solution, and moment calculations are generated.
+The raw model is transformed into a symbolic stationary representation before
+derivative functions, perturbation solutions, and moment calculations are
+generated. The default NSSS path separately builds a cached raw-equation BGP
+residual system at two consecutive BGP points. It assigns a gross factor to
+each timed endogenous variable, so every lead and lag is evaluated at its
+correct BGP level. The resulting full internal solution is then supplied to
+the ordinary stationary perturbation infrastructure.
+
+The raw shadow is the gross-growth version of the former two-point
+construction. If \(s=0\) denotes the first point and \(s=1\) the next point,
+it substitutes
+
+```math
+x_{i,t+k}\mapsto \widehat{x}_i^*G_i^{k+s}.
+```
+
+Thus a lag becomes \(\widehat{x}_i^*/G_i\), while a lead becomes
+\(\widehat{x}_i^*G_i\). Independent trend-driver levels are normalized to one.
+The shifted copy of a driver law is omitted because it is redundant after
+that normalization; all other equations are kept at both points so their
+shifted copies identify implied gross factors.
+
+For example, with
+
+```julia
+a[0] = a[-1] * ga[0]
+y[0] = a[0] * n[0]^α
+```
+
+the generated residuals imply
+
+```math
+1=\frac{g_a}{G_a},
+\qquad
+G_y=G_aG_n^\alpha.
+```
+
+Hence \(G_a=g_a\), and output growth follows from the production relation.
+Factors for zero-valued variables are neutralized at one because their level
+equations do not identify a meaningful multiplicative factor.
 The timing rules are:
 
 ```math
@@ -247,7 +285,7 @@ variable axis, but they must remain in the internal solution because:
 
 ## 5. How the implemented NSSS solver handles a BGP
 
-### 5.1 Build the stationary model first
+### 5.1 Build the BGP representations
 
 At model setup, the stationarization pass:
 
@@ -261,23 +299,31 @@ At model setup, the stationarization pass:
 8. sends the generated equations through the ordinary model-processing
    pipeline.
 
-The resulting processed model has the same downstream NSSS architecture as a
-stationary model, but with additional hidden growth variables and growth
-factors in its equations.
+The resulting processed stationary model has the same downstream perturbation
+and moment architecture as a stationary model, but with additional hidden
+growth variables and growth factors in its equations. For the default BGP
+steady-state solve, a separate cached shadow is constructed from
+`equations.original`. It applies the same BGP timing identities directly to
+the raw equations, turns each driver law into a growth-factor equation plus a
+level anchor, and then sends that transformed block through the ordinary NSSS
+solver. This shadow is rebuilt only when the raw equations or active driver
+set changes.
 
 ### 5.2 Construct the NSSS dependency structure
 
-`write_steady_state_solver_function!` identifies unknowns from the processed
-steady-state equations and calibration equations. In a BGP, this set includes
-the hidden `ᴳ` variables.
+`write_steady_state_solver_function!` identifies unknowns from the direct
+raw-equation shadow and calibration equations. The processed stationary model
+also contains the hidden `ᴳ` variables used later by perturbation.
 
 The solver builds an incidence matrix describing which equations contain
 which unknowns. A block-triangular ordering is then used to partition the
 problem into solvable blocks. Numerical blocks are solved with the existing
 block-solver machinery, bounds, guesses, and solver parameter sets.
 
-This means the BGP does not use a wholly separate nonlinear solver. It uses
-the existing NSSS solver after the equations have been made stationary.
+This means the BGP does not use a wholly separate nonlinear solver. The
+direct route makes the raw equations stationary only for NSSS residual
+evaluation and then uses the existing NSSS solver. Perturbation subsequently
+uses the processed stationary equations and the ordinary derivative solver.
 
 ### 5.3 Anchor free trend levels
 

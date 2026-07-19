@@ -1600,11 +1600,12 @@ And data, 4×40×1 Array{Float64, 3}:
   (:z)    0.01          0.002             2.74878e-29     5.49756e-30
 ```
 """
-# Balanced growth path: map each variable to its solved additive per-period growth
-# `xᴳ` (the deterministic BGP drift), read from the last non-stochastic steady-state
-# solution. Keys are base variable names; trending lead/lag auxiliaries (`xᴸ⁽…⁾`)
-# inherit the base variable's growth (resolved at the call site by stripping the
-# auxiliary suffix). Returns only nonzero growths; empty for stationary models.
+# Balanced growth path: map each variable to its solved log gross growth rate
+# `log(xᴳ)` (the deterministic BGP drift), read from the last non-stochastic
+# steady-state solution. Keys are base variable names; trending lead/lag
+# auxiliaries (`xᴸ⁽…⁾`) inherit the base variable's growth (resolved at the call
+# site by stripping the auxiliary suffix). Returns only nonzero growths; empty
+# for stationary models.
 function bgp_growth_by_name(𝓂::ℳ)::Dict{Symbol, Float64}
     metadata = 𝓂.equations.stationarization
     if metadata !== nothing
@@ -2596,7 +2597,7 @@ function get_solution(𝓂::ℳ,
         return get_solution_fail(algorithm, SS_and_pars[1:nVar], nVar, S)
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
+    ∇₁ = calculate_bgp_jacobian(𝓂, parameters, SS_and_pars)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
@@ -2614,7 +2615,7 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm in [:second_order, :pruned_second_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+        ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -2625,7 +2626,7 @@ function get_solution(𝓂::ℳ,
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return SS_and_pars[1:nVar], AbstractMatrix{S}[𝐒₁, 𝐒₂], true
     elseif algorithm in [:third_order, :pruned_third_order]
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+        ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                     initial_guess = 𝓂.caches.second_order_solution,
@@ -2633,7 +2634,7 @@ function get_solution(𝓂::ℳ,
     
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+        ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars)
                 
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
                                 𝐒₁, 𝐒₂,
@@ -2771,7 +2772,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
+    ∇₁ = calculate_bgp_jacobian(𝓂, 𝓂.parameter_values, SS_and_pars)# |> Matrix
 
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
@@ -3124,7 +3125,7 @@ And data, 13×2 Matrix{Float64}:
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
-    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
+    ∇₁ = calculate_bgp_jacobian(𝓂, 𝓂.parameter_values, SS_and_pars)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,
@@ -5473,7 +5474,7 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
 
     state = collect(sss) - all_SS
 
@@ -5497,7 +5498,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
 
     state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS]
 
@@ -5521,7 +5522,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
 
     state = collect(sss) - all_SS
 
@@ -5545,7 +5546,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
 
     state = [zeros(S, 𝓂.constants.post_model_macro.nVars), collect(sss)::Vector{S} - all_SS, zeros(S, 𝓂.constants.post_model_macro.nVars)]
 
@@ -5571,7 +5572,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return 𝓂.constants, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.nsss.acceptance_tol
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces) # , timer = timer)# |> Matrix
+    ∇₁ = calculate_bgp_jacobian(𝓂, parameter_values, SS_and_pars) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants_obj,

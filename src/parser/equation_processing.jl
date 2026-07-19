@@ -12,7 +12,9 @@
 # struct's calibration fields, and `post_complete_parameters`.
 
 """
-    process_model_equations(model_block::Expr, max_obc_horizon::Int, precompile::Bool)
+    process_model_equations(model_block::Expr, max_obc_horizon::Int, precompile::Bool;
+                             allow_single_variable_equations = false,
+                             allow_duplicate_equations = false)
 
 Parse a `@model`-style equation block and return `(T, equations_struct)` where
 `T::post_model_macro` is the parsed model structure and `equations_struct::equations`
@@ -24,7 +26,8 @@ struct are left empty and must be populated by
 function process_model_equations(model_block_in::Expr,
                                  max_obc_horizon::Int,
                                  precompile::Bool;
-                                 allow_single_variable_equations::Bool = false)
+                                 allow_single_variable_equations::Bool = false,
+                                 allow_duplicate_equations::Bool = false)
     original_equations = []
     calibration_equations = []
     calibration_equations_parameters = []
@@ -820,7 +823,8 @@ function process_model_equations(model_block_in::Expr,
         end
     end
     
-    @assert length(duplicate_equations) == 0 "The following equations appear more than once (and should only appear once): \n" * join(["$(original_equations[eq_idxs[1]])" for eq_idxs in duplicate_equations], "\n")
+    allow_duplicate_equations ||
+        @assert length(duplicate_equations) == 0 "The following equations appear more than once (and should only appear once): \n" * join(["$(original_equations[eq_idxs[1]])" for eq_idxs in duplicate_equations], "\n")
 
     ℂ = Constants(T)
     𝓦 = Workspaces()

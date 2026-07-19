@@ -1404,10 +1404,10 @@ end
     builder = NSSSSolverBuilder()
     numerical_block_count = 0
 
-    # Emit analytical steps for unmatched (indeterminate) variables. Balanced growth
-    # path: a free trend level carrying a user anchor `x[ss] = expr` is set to that
-    # expression (typically a parameter/constant); otherwise it defaults to the user
-    # guess or 0 (an arbitrary particular solution of the cointegrated system).
+    # Emit analytical steps for unmatched (indeterminate) variables. A gross-growth
+    # BGP uses unit growth as the neutral default for an unidentified growth factor
+    # and unit level as the normalization for an unidentified independent driver;
+    # ordinary free levels retain the historical zero default.
     if n_unmatched > 0
         ss_anchors = 𝓂.equations.ss_anchors
         for vn in unmatched_var_names
@@ -1428,8 +1428,13 @@ end
                     description = "BGP anchor: $var_sym = $anchor_expr",
                 )
             else
+                bgp_profile = 𝓂.equations.bgp_detection
+                gross_growth_default = endswith(string(var_sym), "ᴳ")
+                driver_level_default = bgp_profile !== nothing &&
+                                       var_sym ∈ bgp_profile.active_drivers
                 default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
-                    Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
+                    Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) :
+                    (gross_growth_default || driver_level_default ? 1.0 : 0.0)
 
                 eval_func! = let cv = default_val
                     (out, _sol_vec, _params_vec) -> begin

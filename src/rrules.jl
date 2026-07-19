@@ -348,6 +348,99 @@ function rrule(::typeof(calculate_jacobian),
     return jacobian, calculate_jacobian_pullback
 end
 
+function bgp_public_steady_state_cotangent(𝓂::ℳ,
+                                            internal_cotangent,
+                                            SS_and_pars)
+    source_indices = bgp_internal_source_indices(𝓂)
+    public_cotangent = zero(SS_and_pars)
+    for (internal_index, public_index) in enumerate(source_indices)
+        public_index == 0 && continue
+        public_cotangent[public_index] += internal_cotangent[internal_index]
+    end
+    public_cotangent
+end
+
+function rrule(::typeof(calculate_bgp_jacobian),
+               𝓂::ℳ,
+               parameters,
+               SS_and_pars;
+               caching::Bool = true)
+    internal_SS_and_pars = bgp_internal_steady_state_and_parameters(SS_and_pars, 𝓂)
+    jacobian, jacobian_pullback = rrule(
+        calculate_jacobian,
+        parameters,
+        internal_SS_and_pars,
+        𝓂.caches,
+        𝓂.functions.jacobian,
+        𝓂.workspaces,
+    )
+
+    function bgp_jacobian_pullback(∂jacobian)
+        grads = jacobian_pullback(∂jacobian)
+        if 𝓂.equations.stationarization === nothing
+            return NoTangent(), grads[2], grads[3]
+        end
+        return NoTangent(), grads[2],
+               bgp_public_steady_state_cotangent(𝓂, grads[3], SS_and_pars)
+    end
+
+    jacobian, bgp_jacobian_pullback
+end
+
+function rrule(::typeof(calculate_bgp_hessian),
+               𝓂::ℳ,
+               parameters,
+               SS_and_pars;
+               caching::Bool = true)
+    internal_SS_and_pars = bgp_internal_steady_state_and_parameters(SS_and_pars, 𝓂)
+    hessian, hessian_pullback = rrule(
+        calculate_hessian,
+        parameters,
+        internal_SS_and_pars,
+        𝓂.caches,
+        𝓂.functions.hessian,
+        𝓂.workspaces,
+    )
+
+    function bgp_hessian_pullback(∂hessian)
+        grads = hessian_pullback(∂hessian)
+        if 𝓂.equations.stationarization === nothing
+            return NoTangent(), grads[2], grads[3]
+        end
+        return NoTangent(), grads[2],
+               bgp_public_steady_state_cotangent(𝓂, grads[3], SS_and_pars)
+    end
+
+    hessian, bgp_hessian_pullback
+end
+
+function rrule(::typeof(calculate_bgp_third_order_derivatives),
+               𝓂::ℳ,
+               parameters,
+               SS_and_pars;
+               caching::Bool = true)
+    internal_SS_and_pars = bgp_internal_steady_state_and_parameters(SS_and_pars, 𝓂)
+    third_order_derivatives, third_order_pullback = rrule(
+        calculate_third_order_derivatives,
+        parameters,
+        internal_SS_and_pars,
+        𝓂.caches,
+        𝓂.functions.third_order_derivatives,
+        𝓂.workspaces,
+    )
+
+    function bgp_third_order_pullback(∂third_order_derivatives)
+        grads = third_order_pullback(∂third_order_derivatives)
+        if 𝓂.equations.stationarization === nothing
+            return NoTangent(), grads[2], grads[3]
+        end
+        return NoTangent(), grads[2],
+               bgp_public_steady_state_cotangent(𝓂, grads[3], SS_and_pars)
+    end
+
+    third_order_derivatives, bgp_third_order_pullback
+end
+
 
 function rrule(::typeof(calculate_hessian), 
                 parameters, 
@@ -681,12 +774,10 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
         return y, pullback
     end
 
-    ∇₁, jac_pb = rrule(calculate_jacobian,
+    ∇₁, jac_pb = rrule(calculate_bgp_jacobian,
+                        𝓂,
                         parameter_values,
-                        SS_and_pars,
-                        𝓂.caches,
-                        𝓂.functions.jacobian,
-                        𝓂.workspaces)
+                        SS_and_pars)
 
     first_out, first_pb = rrule(calculate_first_order_solution,
                                 ∇₁,
@@ -791,10 +882,10 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
 
     ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     ms = constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
 
     ∇₁, jacobian_pullback =
-        rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+        rrule(calculate_bgp_jacobian, 𝓂, parameters, SS_and_pars)
 
     (𝐒₁_raw, qme_sol, solved), first_order_pullback =
         rrule(calculate_first_order_solution, ∇₁, constants, 𝓂.workspaces, 𝓂.caches;
@@ -821,7 +912,7 @@ function rrule(::typeof(prepare_stochastic_steady_state_base_terms),
     end
 
     ∇₂, hessian_pullback =
-        rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+        rrule(calculate_bgp_hessian, 𝓂, parameters, SS_and_pars)
 
     (𝐒₂_raw, solved2), second_order_pullback =
         rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁_raw, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
@@ -1240,7 +1331,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}  # was: dense_to_sparse
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+        rrule(calculate_bgp_third_order_derivatives, 𝓂, parameters, SS_and_pars)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1448,7 +1539,7 @@ function rrule(::typeof(calculate_stochastic_steady_state),
     𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{Float64, Int}  # was: dense_to_sparse
 
     ∇₃, third_derivatives_pullback =
-        rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+        rrule(calculate_bgp_third_order_derivatives, 𝓂, parameters, SS_and_pars)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -1601,7 +1692,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
     state = collect(sss) - all_SS
 
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
@@ -1675,7 +1766,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
     state = [zeros(S, nVars), collect(sss) - all_SS]
 
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂], state, converged)
@@ -1749,7 +1840,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
     state = collect(sss) - all_SS
 
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
@@ -1827,7 +1918,7 @@ function rrule(::typeof(get_relevant_steady_state_and_state_update),
 
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(internal_steady_state_and_parameters(SS_and_pars, 𝓂), ms)
     state = [zeros(S, nVars), collect(sss) - all_SS, zeros(S, nVars)]
 
     y = (𝓂.constants, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged)
@@ -2643,7 +2734,7 @@ function rrule(::typeof(calculate_covariance),
     end
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+    ∇₁, jac_pb = rrule(calculate_bgp_jacobian, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2743,16 +2834,6 @@ function rrule(::typeof(calculate_covariance),
         jac_grad = jac_pb(∂∇₁_total)
         ∂parameters_from_jac = jac_grad[2]
         ∂SS_from_jac = jac_grad[3]
-        if 𝓂.equations.stationarization !== nothing
-            full_names = vcat(𝓂.constants.post_model_macro.var,
-                              𝓂.equations.calibration_parameters)
-            output_names = vcat(
-                filter(name -> !endswith(string(name), "ᴳ"), ms.nsss_sol_names),
-                𝓂.equations.calibration_parameters,
-            )
-            output_rows = Int.(indexin(output_names, full_names))
-            ∂SS_from_jac = ∂SS_from_jac[output_rows]
-        end
         ∂SS_total .+= ∂SS_from_jac
 
         # Backprop through NSSS
@@ -2847,7 +2928,7 @@ function rrule(::typeof(calculate_mean),
     vec_Iₑ = so.vec_Iₑ
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)
+    ∇₁, jac_pb = rrule(calculate_bgp_jacobian, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -2868,7 +2949,7 @@ function rrule(::typeof(calculate_mean),
     end
 
     # ── Step 4: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+    ∇₂, hess_pb = rrule(calculate_bgp_hessian, 𝓂, parameters, SS_and_pars)
 
     # ── Step 5: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
@@ -3062,7 +3143,7 @@ function rrule(::typeof(calculate_second_order_moments),
     Σᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(S)) : Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+    ∇₂, hess_pb = rrule(calculate_bgp_hessian, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
@@ -3300,7 +3381,7 @@ function rrule(::typeof(calculate_second_order_moments_with_covariance),
     Σᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(S)) : Σʸ₁[iˢ, iˢ]
 
     # ── Step 2: Hessian ──
-    ∇₂, hess_pb = rrule(calculate_hessian, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces)
+    ∇₂, hess_pb = rrule(calculate_bgp_hessian, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: Second-order solution ──
     so2_out, so2_pb = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches; opts = opts, parameter_values = parameters)
@@ -3637,7 +3718,7 @@ function rrule(::typeof(calculate_third_order_moments),
     𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}  # was: dense_to_sparse
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃, ∇₃_pb = rrule(calculate_bgp_third_order_derivatives, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
@@ -4496,7 +4577,7 @@ function rrule(::typeof(calculate_third_order_moments_with_autocorrelation),
     𝐒₂ = (sparse(𝐒₂_raw) * 𝐔₂)::SparseMatrixCSC{T, Int}  # was: dense_to_sparse
 
     # ── Step 2: Third-order derivatives ──
-    ∇₃, ∇₃_pb = rrule(calculate_third_order_derivatives, parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces)
+    ∇₃, ∇₃_pb = rrule(calculate_bgp_third_order_derivatives, 𝓂, parameters, SS_and_pars)
 
     # ── Step 3: Third-order solution (pass compressed 𝐒₂_raw) ──
     so3_out, so3_pb = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂_raw,
@@ -17973,12 +18054,10 @@ function rrule(::typeof(get_solution),
     end
 
     # ── Step 2: Jacobian ──
-    ∇₁, jac_pb = rrule(calculate_jacobian,
+    ∇₁, jac_pb = rrule(calculate_bgp_jacobian,
+                        𝓂,
                         parameters,
-                        SS_and_pars,
-                        𝓂.caches,
-                        𝓂.functions.jacobian,
-                        𝓂.workspaces)
+                        SS_and_pars)
 
     # ── Step 3: First-order solution ──
     first_out, first_pb = rrule(calculate_first_order_solution,
@@ -18003,12 +18082,10 @@ function rrule(::typeof(get_solution),
     # ── Branch by algorithm ──
     if algorithm in [:second_order, :pruned_second_order]
         # ── Step 4: Hessian ──
-        ∇₂, hess_pb = rrule(calculate_hessian,
+        ∇₂, hess_pb = rrule(calculate_bgp_hessian,
+                             𝓂,
                              parameters,
-                             SS_and_pars,
-                             𝓂.caches,
-                            𝓂.functions.hessian,
-                            𝓂.workspaces)
+                             SS_and_pars)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -18110,12 +18187,10 @@ function rrule(::typeof(get_solution),
 
     elseif algorithm in [:third_order, :pruned_third_order]
         # ── Step 4: Hessian ──
-        ∇₂, hess_pb = rrule(calculate_hessian,
+        ∇₂, hess_pb = rrule(calculate_bgp_hessian,
+                             𝓂,
                              parameters,
-                             SS_and_pars,
-                             𝓂.caches,
-                            𝓂.functions.hessian,
-                            𝓂.workspaces)
+                             SS_and_pars)
 
         # ── Step 5: Second-order solution ──
         second_out, second_pb = rrule(calculate_second_order_solution,
@@ -18133,12 +18208,10 @@ function rrule(::typeof(get_solution),
         update_perturbation_counter!(𝓂.counters, solved2, estimation = estimation, order = 2)
 
         # ── Step 6: Third-order derivatives ──
-        ∇₃, third_deriv_pb = rrule(calculate_third_order_derivatives,
+        ∇₃, third_deriv_pb = rrule(calculate_bgp_third_order_derivatives,
+                                    𝓂,
                                     parameters,
-                                    SS_and_pars,
-                                    𝓂.caches,
-                                    𝓂.functions.third_order_derivatives,
-                                    𝓂.workspaces)
+                                    SS_and_pars)
 
         # ── Step 7: Third-order solution ──
         # calculate_third_order_solution now receives compressed 𝐒₂ and compressed ∇₂

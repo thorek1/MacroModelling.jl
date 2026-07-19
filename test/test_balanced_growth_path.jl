@@ -2,6 +2,12 @@ using Test
 using MacroModelling
 using AxisKeys: axiskeys
 
+@testset "steady-state expression parser edge cases" begin
+    @test MacroModelling.additive_terms(:(1 - x[ss])) ==
+          Tuple{Float64, Any}[(1.0, 1), (-1.0, :(x[ss]))]
+    @test MacroModelling.simplify(:(1 / 3)) isa Real
+end
+
 @testset verbose = true "Symbolic balanced growth path stationarization" begin
     @testset "pure additive trends are rejected" begin
         @test_throws ArgumentError begin
@@ -118,7 +124,60 @@ using AxisKeys: axiskeys
             stationary_equation_strings)
         @test all(isfinite,
                   collect(get_SS(MultiplicativeExpectations, derivatives = false)))
-        @test all(isfinite, collect(get_solution(MultiplicativeExpectations)))
+        solution = get_solution(MultiplicativeExpectations)
+        @test all(isfinite, collect(solution))
+        for algorithm in (:pruned_second_order, :pruned_third_order)
+            higher_order_solution = get_solution(
+                MultiplicativeExpectations;
+                algorithm = algorithm,
+                silent = true,
+            )
+            @test all(isfinite, collect(higher_order_solution))
+        end
+
+        expectation_parameters = copy(MultiplicativeExpectations.parameter_values)
+        expectation_SS_and_pars = MacroModelling.get_NSSS_and_parameters(
+            MultiplicativeExpectations,
+            expectation_parameters,
+        )[1]
+        expectation_internal_SS_and_pars = MacroModelling.internal_steady_state_and_parameters(
+            expectation_SS_and_pars,
+            MultiplicativeExpectations,
+        )
+        expectation_stationary_hessian = MacroModelling.calculate_hessian(
+            expectation_parameters,
+            expectation_internal_SS_and_pars,
+            MultiplicativeExpectations.caches,
+            MultiplicativeExpectations.functions.hessian,
+            MultiplicativeExpectations.workspaces;
+            caching = false,
+        )
+        expectation_direct_hessian = MacroModelling.calculate_bgp_hessian(
+            MultiplicativeExpectations,
+            expectation_parameters,
+            expectation_SS_and_pars;
+            caching = false,
+        )
+        @test isapprox(Matrix(expectation_direct_hessian),
+                       Matrix(expectation_stationary_hessian); atol = 1e-10)
+
+        expectation_stationary_third = MacroModelling.calculate_third_order_derivatives(
+            expectation_parameters,
+            expectation_internal_SS_and_pars,
+            MultiplicativeExpectations.caches,
+            MultiplicativeExpectations.functions.third_order_derivatives,
+            MultiplicativeExpectations.workspaces;
+            caching = false,
+        )
+        expectation_direct_third = MacroModelling.calculate_bgp_third_order_derivatives(
+            MultiplicativeExpectations,
+            expectation_parameters,
+            expectation_SS_and_pars;
+            caching = false,
+        )
+        @test isapprox(Matrix(expectation_direct_third),
+                       Matrix(expectation_stationary_third); atol = 1e-10)
+
     end
 
     @testset "equation updates rebuild stationarization" begin
@@ -137,6 +196,104 @@ using AxisKeys: axiskeys
         ss = get_SS(RebuildBGP, derivatives = false)
         @test isapprox(ss(:g, :Steady_state), 1.03; atol = 1e-10)
         @test isapprox(ss(:x, :Growth_rate), log(1.03); atol = 1e-10)
+    end
+
+    @testset "multiple independent trend drivers" begin
+        @model MultipleTrendDriversRegression begin
+            a[0] = a[-1] * ga[0]
+            n[0] = n[-1] * gn[0]
+            ga[0] = 1.02 + σa * ea[x]
+            gn[0] = 1.01 + σn * en[x]
+            z[0] = 0.8 * z[-1] + σz * ez[x]
+            y[0] = a[0] * n[0]^α * (1 + z[0])
+            c[0] = y[0] * (1 - 0.2 * z[0])
+        end
+        @parameters MultipleTrendDriversRegression begin
+            α = 0.6
+            σa = 0.005
+            σn = 0.005
+            σz = 0.01
+        end
+
+        metadata = MultipleTrendDriversRegression.equations.stationarization
+        metadata_id = objectid(metadata)
+        profile = MultipleTrendDriversRegression.equations.bgp_detection
+        @test metadata !== nothing
+        @test profile.candidate_drivers == [:a, :n]
+        @test metadata.trend_drivers == [:a, :n]
+        @test Set(metadata.growth_variables) == Set([Symbol("aᴳ"), Symbol("nᴳ")])
+
+        ss = get_SS(MultipleTrendDriversRegression, derivatives = false)
+        @test isapprox(ss(:a, :Growth_rate), log(1.02); atol = 1e-10)
+        @test isapprox(ss(:n, :Growth_rate), log(1.01); atol = 1e-10)
+        @test isapprox(ss(:y, :Growth_rate),
+                       log(1.02) + 0.6 * log(1.01); atol = 1e-10)
+        @test isapprox(ss(:c, :Growth_rate), ss(:y, :Growth_rate); atol = 1e-10)
+        solution = get_solution(MultipleTrendDriversRegression)
+        @test all(isfinite, collect(solution))
+
+        for algorithm in (:pruned_second_order, :pruned_third_order)
+            higher_order_solution = get_solution(
+                MultipleTrendDriversRegression;
+                algorithm = algorithm,
+                silent = true,
+            )
+            @test all(isfinite, collect(higher_order_solution))
+        end
+
+        parameters = copy(MultipleTrendDriversRegression.parameter_values)
+        SS_and_pars, (solution_error, _) = MacroModelling.get_NSSS_and_parameters(
+            MultipleTrendDriversRegression,
+            parameters,
+            caching = false,
+        )
+        @test solution_error < 1e-8
+        @test any(endswith(string(name), "ᴳ")
+                  for name in MultipleTrendDriversRegression.constants.post_complete_parameters.nsss_sol_names)
+        internal_SS_and_pars = MacroModelling.internal_steady_state_and_parameters(
+            SS_and_pars,
+            MultipleTrendDriversRegression,
+        )
+        stationary_hessian = MacroModelling.calculate_hessian(
+            parameters,
+            internal_SS_and_pars,
+            MultipleTrendDriversRegression.caches,
+            MultipleTrendDriversRegression.functions.hessian,
+            MultipleTrendDriversRegression.workspaces;
+            caching = false,
+        )
+        direct_hessian = MacroModelling.calculate_bgp_hessian(
+            MultipleTrendDriversRegression,
+            parameters,
+            SS_and_pars;
+            caching = false,
+        )
+        @test isapprox(Matrix(direct_hessian), Matrix(stationary_hessian); atol = 1e-10)
+
+        stationary_third_order = MacroModelling.calculate_third_order_derivatives(
+            parameters,
+            internal_SS_and_pars,
+            MultipleTrendDriversRegression.caches,
+            MultipleTrendDriversRegression.functions.third_order_derivatives,
+            MultipleTrendDriversRegression.workspaces;
+            caching = false,
+        )
+        direct_third_order = MacroModelling.calculate_bgp_third_order_derivatives(
+            MultipleTrendDriversRegression,
+            parameters,
+            SS_and_pars;
+            caching = false,
+        )
+        @test isapprox(Matrix(direct_third_order), Matrix(stationary_third_order); atol = 1e-10)
+
+        solve!(MultipleTrendDriversRegression;
+               parameters = Dict(:α => 0.7, :σa => 0.005,
+                                 :σn => 0.005, :σz => 0.01),
+               silent = true)
+        updated_ss = get_SS(MultipleTrendDriversRegression, derivatives = false)
+        @test objectid(MultipleTrendDriversRegression.equations.stationarization) == metadata_id
+        @test isapprox(updated_ss(:y, :Growth_rate),
+                       log(1.02) + 0.7 * log(1.01); atol = 1e-10)
     end
 
     @testset "stationary models remain unchanged" begin

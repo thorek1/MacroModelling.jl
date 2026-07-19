@@ -116,7 +116,7 @@ end
 Max = max
 Min = min
 
-function simplify(ex::Expr)::Union{Expr,Symbol,Int}
+function simplify(ex::Expr)::Union{Expr,Symbol,Real}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
@@ -160,23 +160,22 @@ end
 # ── Balanced growth path (BGP) support ─────────────────────────────────────
 # Models written in levels (non-stationary I(1) variables sharing a balanced
 # growth path) are handled IRIS-style: every variable gets BOTH a level and a
-# per-period growth/change unknown `xᴳ`, and each steady-state equation is
-# evaluated at TWO time origins so that the 2N residuals pin the 2N (level,
-# growth) unknowns. Additive growth only (linear in `xᴳ`). Auto-detected, so
-# fully stationary models are untouched. See `augment_ss_system_for_growth`.
+# level-specific gross growth unknown `xᴳ`, and each steady-state equation is
+# evaluated at TWO time origins. Auto-detected, so fully stationary models are
+# untouched. See `augment_ss_system_for_growth`.
 
-# Growth symbol for a variable's additive per-period change along the BGP.
+# Growth symbol for a variable's gross factor along the BGP.
 growth_sym(name::Symbol)::Symbol = Symbol(string(name) * "ᴳ")
 
-# Time-origin shift used to pin growth. Any nonzero shift works for additive
-# growth (residuals are linear in the growth unknown); K = 1 is the cheapest.
+# Time-origin shift used to pin growth. K = 1 gives the smallest exact
+# multiplicative two-point system.
 const GROWTH_SHIFT_K = 1
 
 # IRIS-style two-time-point substitution: replace each timed reference of a
 # variable by its image at time-origin shift `s`:
 #   shock        -> 0
 #   x[ss]        -> x                      (level anchor, no trend)
-#   x[k]         -> x + (k+s)·xᴳ           (additive growth)
+#   x[k]         -> x·(xᴳ)^(k+s)           (gross growth)
 # Also turns `=` into a residual (`lhs - rhs`), mirroring `convert_to_ss_equation`.
 function growth_ss_subst(eq::Expr, shift::Int)::Union{Expr,Symbol,Int}
     postwalk(x ->
@@ -186,10 +185,18 @@ function growth_ss_subst(eq::Expr, shift::Int)::Union{Expr,Symbol,Int}
             x.head == :ref ?
                 occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2])) ? 0 :
                 x.args[2] isa Int ?
-                    (x.args[2] + shift == 0 ?
-                        x.args[1] :
-                        Expr(:call, :+, x.args[1],
-                             Expr(:call, :*, growth_sym(x.args[1]), x.args[2] + shift))) :
+                    begin
+                        exponent = x.args[2] + shift
+                        exponent == 0 && return x.args[1]
+                        level = x.args[1]
+                        growth = growth_sym(x.args[1])
+                        factor = exponent == 1 ? growth :
+                                 Expr(:call, :^, growth, exponent)
+                        exponent > 0 ?
+                        Expr(:call, :*, level, factor) :
+                        Expr(:call, :/, level,
+                             Expr(:call, :^, growth, -exponent))
+                    end :
                 x.args[1] :
             unblock(x) :
         x,
@@ -638,7 +645,9 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, silent::Bool = false)
+function write_symbolic_derivatives!(𝓂::ℳ;
+                                     perturbation_order::Int = 1,
+                                     silent::Bool = false)
     start_time = time()
 
     if !silent
@@ -1079,7 +1088,7 @@ function take_nth_order_derivatives(
 end
 
 
-function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
                                     nnz_parallel_threshold::Int = 1000000,
@@ -1134,6 +1143,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     nxs = maximum(dyn_var_idxs) + nc
 
     Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+    # Use a disjoint symbolic vector for steady-state evaluation. Mapping
+    # timed occurrences directly to 𝔙 creates overlapping substitutions such
+    # as 𝔙[4] => 𝔙[2] while 𝔙[2] is itself mapped elsewhere; the result can
+    # silently remove derivatives through current growth factors in
+    # forward-looking BGP equations.
+    Symbolics.@variables 𝔚[1:nv]
 
     parameter_dict = Dict{Symbol, Symbol}()
     back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
@@ -1147,9 +1162,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
         if i > nps
             if i > length(pars_ext)
-                push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+                push!(SS_mapping, 𝔓[i] => 𝔚[dyn_ss_idx[i-length(pars_ext)]])
             else
-                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps - nc])
+                push!(SS_mapping, 𝔓[i] => 𝔚[nxs + i - nps - nc])
             end
         end
     end
@@ -1158,7 +1173,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
         if i <= length(dyn_var_idxs)
-            push!(SS_mapping, 𝔙[i] => 𝔙[dyn_var_idxs[i]])
+            push!(SS_mapping, 𝔙[i] => 𝔚[dyn_var_idxs[i]])
         else
             push!(SS_mapping, 𝔙[i] => 0)
         end
@@ -1188,6 +1203,17 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
 
     derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
+
+    function substitute_current_steady_state!(derivative_pairs)
+        steady_state_values = Dict(𝔚[i] => 𝔙[i] for i in eachindex(𝔚))
+        for derivative_pair in derivative_pairs
+            derivative_pair[1].nzval .= Symbolics.substitute(derivative_pair[1].nzval, steady_state_values)
+            derivative_pair[2].nzval .= Symbolics.substitute(derivative_pair[2].nzval, steady_state_values)
+        end
+        nothing
+    end
+
+    substitute_current_steady_state!(derivatives)
 
     function prepare_sensitivity_buffer(derivative_sensitivities)
         transposed = derivative_sensitivities isa SparseMatrixCSC ? sparse(transpose(derivative_sensitivities)) : permutedims(derivative_sensitivities)
@@ -1365,6 +1391,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     if max_perturbation_order >= 2
     # second order
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = true)
+        substitute_current_steady_state!(derivatives)
 
         if 𝓂.constants.second_order.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             ∇₂_dyn = derivatives[2][1]
@@ -1444,6 +1471,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     if max_perturbation_order == 3
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
+        substitute_current_steady_state!(derivatives)
     # third order
         if 𝓂.constants.third_order.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])

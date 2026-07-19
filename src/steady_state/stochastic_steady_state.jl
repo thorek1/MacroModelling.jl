@@ -26,9 +26,12 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
 
     ensure_model_structure_constants!(C, 𝓂.equations.calibration_parameters)
     ms = C.post_complete_parameters
-    all_SS = expand_steady_state(SS_and_pars, ms)
+    all_SS = expand_steady_state(
+        internal_steady_state_and_parameters(SS_and_pars, 𝓂),
+        ms,
+    )
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces, caching = caching)
+    ∇₁ = calculate_bgp_jacobian(𝓂, parameters, SS_and_pars; caching = caching)
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                          C,
@@ -55,7 +58,7 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             C)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.hessian, 𝓂.workspaces, caching = caching)
+    ∇₂ = calculate_bgp_hessian(𝓂, parameters, SS_and_pars; caching = caching)
 
     𝐒₂_raw_untyped, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.constants, 𝓂.workspaces, 𝓂.caches;
                                                   initial_guess = 𝓂.caches.second_order_solution,
@@ -356,7 +359,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars; caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 
@@ -450,7 +453,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
     # Expand compressed 𝐒₂_raw to full
     𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
+    ∇₃ = calculate_bgp_third_order_derivatives(𝓂, parameters, SS_and_pars; caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
     𝐒₁_raw = [𝐒₁[:, 1:nPast] 𝐒₁[:, nPast+2:end]]
 

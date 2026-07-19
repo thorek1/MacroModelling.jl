@@ -2336,7 +2336,7 @@ end
 
     initial_state = zeros(T.nVars)
 
-    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂.caches, 𝓂.functions.jacobian, 𝓂.workspaces)# |> Matrix
+    ∇₁ = calculate_bgp_jacobian(𝓂, 𝓂.parameter_values, SS_and_pars)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         constants,

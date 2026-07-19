@@ -51,7 +51,7 @@ function additive_terms(expr, sign::Float64 = 1.0)
         end
         return out
     end
-    return [(sign, expr)]
+    return Tuple{Float64, Any}[(sign, expr)]
 end
 
 function exact_additive_unit_root(eq::Expr, name::Symbol)
@@ -764,27 +764,27 @@ function candidate_parameter_dependencies(equations::Vector{Expr},
     dependencies
 end
 
-function classify_bgp_candidates(equations::Vector{Expr},
-                                 drivers::Vector{Symbol},
+function classify_bgp_candidates(drivers::Vector{Symbol},
+                                 factors::Vector{Union{Nothing, Real, Symbol, Expr}},
                                  candidate_kinds::Vector{UInt8},
-                                 parameters::Vector{Symbol},
-                                 parameter_values::Vector{Float64})
-    values = Dict{Symbol, Float64}(parameters .=> parameter_values)
+                                 candidate_has_timed_variables::BitVector,
+                                 parameter_values::Vector{Float64},
+                                 parameter_indices::Dict{Symbol, Int})
     active_drivers = Symbol[]
 
     for (index, driver) in enumerate(drivers)
-        factor, kind = candidate_growth_factor(equations, driver)
-        kind == UInt8(0) && continue
+        factor = factors[index]
+        kind = candidate_kinds[index]
+        factor === nothing && continue
 
-        active = if kind == BGP_CANDIDATE_RATIO || !isempty(timed_variable_symbols(factor))
+        active = if kind == BGP_CANDIDATE_RATIO || candidate_has_timed_variables[index]
             true
         else
-            value = evaluate_growth_parameter(factor, values)
+            value = evaluate_growth_parameter(factor, parameter_values, parameter_indices)
             value === nothing || !isfinite(value) ? true : abs(value) >= 1
         end
 
         active && push!(active_drivers, driver)
-        candidate_kinds[index] == UInt8(0) && (candidate_kinds[index] = kind)
     end
 
     mode = isempty(active_drivers) ? BGP_STATIONARY_MODE : BGP_ACTIVE_MODE
@@ -796,13 +796,18 @@ function build_bgp_detection_metadata(raw_equations::Vector{Expr},
                                        parameter_values::Vector{Float64})
     _, drivers, additive = stationarization_candidates(raw_equations)
     candidate_kinds = fill(UInt8(0), length(drivers))
+    candidate_factors = Vector{Union{Nothing, Real, Symbol, Expr}}(undef, length(drivers))
+    candidate_has_timed_variables = falses(length(drivers))
     parameter_set = Set(parameters)
+    parameter_indices = Dict(parameter => index for (index, parameter) in enumerate(parameters))
     trigger_set = Set{Symbol}()
 
     for (index, driver) in enumerate(drivers)
         factor, kind = candidate_growth_factor(raw_equations, driver)
         candidate_kinds[index] = kind
+        candidate_factors[index] = factor
         factor === nothing && continue
+        candidate_has_timed_variables[index] = !isempty(timed_variable_symbols(factor))
         union!(trigger_set,
                candidate_parameter_dependencies(raw_equations, factor, parameter_set))
     end
@@ -816,11 +821,12 @@ function build_bgp_detection_metadata(raw_equations::Vector{Expr},
     trigger_values = parameter_values[trigger_indices]
 
     mode, active_drivers = classify_bgp_candidates(
-        raw_equations,
         drivers,
+        candidate_factors,
         candidate_kinds,
-        parameters,
+        candidate_has_timed_variables,
         parameter_values,
+        parameter_indices,
     )
     !isempty(additive) && (mode = BGP_UNSUPPORTED_MODE)
 
@@ -828,10 +834,13 @@ function build_bgp_detection_metadata(raw_equations::Vector{Expr},
         drivers,
         active_drivers,
         candidate_kinds,
+        candidate_factors,
+        candidate_has_timed_variables,
+        additive,
         trigger_parameters,
         trigger_indices,
         copy(trigger_values),
-        Dict(parameter => index for (index, parameter) in enumerate(parameters)),
+        parameter_indices,
         mode,
     )
 end
@@ -851,20 +860,18 @@ function refresh_bgp_detection!(𝓂::ℳ)
 
     old_mode = profile.mode
     old_active_drivers = profile.active_drivers
-    candidate_kinds = copy(profile.candidate_kinds)
     mode, active_drivers = classify_bgp_candidates(
-        𝓂.equations.original,
         profile.candidate_drivers,
-        candidate_kinds,
-        𝓂.constants.post_complete_parameters.parameters,
+        profile.candidate_factors,
+        profile.candidate_kinds,
+        profile.candidate_has_timed_variables,
         values,
+        profile.parameter_indices,
     )
-    _, _, additive = stationarization_candidates(𝓂.equations.original)
-    new_mode = !isempty(additive) ?
+    new_mode = !isempty(profile.additive_candidates) ?
                 BGP_UNSUPPORTED_MODE : mode
     new_mode == BGP_UNSUPPORTED_MODE &&
         throw(ArgumentError("The updated parameter values imply an unsupported balanced-growth path."))
-    profile.candidate_kinds .= candidate_kinds
     profile.active_drivers = active_drivers
     profile.trigger_values .= values[profile.trigger_indices]
     profile.mode = new_mode
