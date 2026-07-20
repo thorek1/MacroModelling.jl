@@ -111,3 +111,10 @@ third-order solutions, finite moments, and native BGP/stationary tensor
 equality. The SW07/Caldara fixture checks pass 5/5 for each model, and the raw
 direct NSSS prototype and native perturbation probe pass with residuals below
 `1e-15`.
+
+Added `test/bgp_nsss_rbc_walkthrough.md`, which documents the complete direct
+BGP NSSS construction with a four-equation trend-growth RBC example. It lists
+the exact transformed residuals, the full level/growth unknown vector, the
+temporary raw-model setup, the ordinary NSSS block/continuation path, and the
+public/internal output mapping. The displayed numerical solution reproduces
+the residual system with maximum absolute residual below `2e-15`.
