@@ -118,3 +118,7 @@ the exact transformed residuals, the full level/growth unknown vector, the
 temporary raw-model setup, the ordinary NSSS block/continuation path, and the
 public/internal output mapping. The displayed numerical solution reproduces
 the residual system with maximum absolute residual below `2e-15`.
+The walkthrough also distinguishes arbitrary trend-level normalization from
+growth-factor identification and documents compatibility with stationary
+log-space shock/growth-factor processes versus unsupported additive log-level
+unit roots.

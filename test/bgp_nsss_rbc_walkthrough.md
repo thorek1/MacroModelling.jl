@@ -102,10 +102,116 @@ driver is anchored to one. Here that anchor is
 a^*=1.
 ```
 
-The shifted copy of the driver equation is omitted. Once (a^*=1) is
-imposed, the two copies of the technology law contain the same information:
-the first copy identifies (G_a), and the second is its multiplication by
-the already imposed one-step growth identity.
+### 2.1 What is arbitrary, and what is not?
+
+The anchor \(a^*=1\) is a normalization of the level's units. It is not a
+normalization of technology growth. The growth factor remains an unknown and
+is determined by the technology law:
+
+```math
+a^*=g_A\frac{a^*}{G_a}
+\quad\Longrightarrow\quad
+G_a=g_A
+```
+
+when \(a^*>0\). Choosing \(a^*=2\), or supplying a user steady-state anchor
+with another positive value, would change the reference level of technology
+and the compatible levels of the other variables. It would not change the
+growth factors or the stationary dynamics. The normalization simply chooses
+one representative from the family of level-scaled BGPs.
+
+The shifted technology equation is not transformed differently from the
+other equations. It is transformed and then deliberately omitted because it
+is exactly redundant. The two residuals would be
+
+```math
+R_{a,0}=a-g_Aa/G_a
+      =\frac{a}{G_a}(G_a-g_A),
+```
+
+and
+
+```math
+R_{a,1}=aG_a-g_Aa
+      =a(G_a-g_A)
+      =G_aR_{a,0}.
+```
+
+Thus the shift-1 copy adds no independent restriction. The shift-0 copy
+identifies \(G_a\), while \(a^*=1\) fixes the otherwise arbitrary level. In
+the implementation, the shifted copy of every recognized driver-growth law
+is skipped for exactly this reason. Shifted copies of the other equations
+are retained because they identify the implied growth factors of variables
+that do not have their own direct growth law.
+
+For several independent technology, population, or other trend drivers,
+one level anchor is added for each independent driver. The anchors remove
+level-unit indeterminacies; they do not force the drivers' gross growth
+factors to one.
+
+### 2.2 Log-space variables and shocks
+
+The direct BGP transformation itself is written for positive level variables
+with multiplicative growth. This is fully compatible with additive equations
+for *stationary log variables*. For example, let ℓg be the log of a gross
+technology growth factor:
+
+```julia
+ellg[0] = (1 - rho) * log(gbar) + rho * ellg[-1] + sigma * e[x]
+g[0] = exp(ellg[0])
+a[0] = a[-1] * g[0]
+```
+
+Here `ellg` is stationary when |rho| < 1, and `g` is also stationary and
+positive. The BGP driver is still the level equation for `a`. The generated
+growth equation is
+
+```julia
+aᴳ[0] = g[0]
+```
+
+and the deterministic NSSS sets `ellg` to `log(gbar)`, `g` to `gbar`, and
+therefore `aᴳ` to `gbar`. The additive shock in the log growth process is
+not an additive BGP trend; it is a stationary shock to the multiplicative
+growth factor.
+
+This distinction gives three cases:
+
+| Representation | Current handling |
+| --- | --- |
+| Stationary AR process for a log shock or log growth factor | Compatible; `log`/`exp` remain inside the stationary model |
+| Nonstationary level law \(a_t=g_ta_{t-1}\), where \(\log g_t\) is stationary | Compatible; this is the intended multiplicative BGP form |
+| Additive log-level unit root \(\ell a_t=\ell a_{t-1}+\mu+\varepsilon_t\) | Not automatically supported; it is classified as an additive unit root |
+
+The last case is mathematically related to multiplicative growth because
+
+```math
+\ell a_t=\ell a_{t-1}+\log G_t
+\quad\Longleftrightarrow\quad
+a_t=G_ta_{t-1}.
+```
+
+However, the current automatic detector does not infer that equivalence from
+an additive equation written for `ell a`. It expects the level-side form
+
+```julia
+gA[0] = exp(mu + sigma * e[x])
+a[0] = a[-1] * gA[0]
+```
+
+or a stationary process for `log(gA)` followed by the multiplicative level
+law. A direct additive log-level equation such as
+
+```julia
+ella[0] = ella[-1] + mu + sigma * e[x]
+```
+
+is therefore rejected rather than silently treated as a gross-growth law.
+Likewise, `log` of a genuinely trending level is not treated as stationary
+by the symbolic restriction code; logarithms of stationary quantities are
+fine. If a model is written entirely in log deviations around a fixed
+steady state, those variables are stationary and follow the ordinary NSSS
+path rather than the BGP path.
 
 ## 3. The transformed RBC equations
 
