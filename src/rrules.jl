@@ -1850,21 +1850,33 @@ function rrule(::typeof(get_loglikelihood),
                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                 initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
+                measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                verbose::Bool = DEFAULT_VERBOSE) where {S <: Real, V <: Real, U <: AbstractFloat}
+                verbose::Bool = DEFAULT_VERBOSE,
+                kwargs...) where {S <: Real, V <: Real, U <: AbstractFloat}
+
+    estimation = true
+
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+
+    # The particle filter is a stochastic, non-differentiable estimator and the
+    # Kalman likelihood with measurement error does not yet ship an analytical
+    # reverse-mode rule. Fail loudly rather than return an incorrect gradient.
+    if filter == :particle
+        error("The particle filter (`filter = :particle`) is not differentiable and cannot be used with reverse-mode automatic differentiation (Zygote/Mooncake). Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
+    end
+    if measurement_error_std isa AbstractArray ? any(x -> x != 0, measurement_error_std) : measurement_error_std != 0
+        error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error_std`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
+    end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
-
-    estimation = true
-
-    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
 

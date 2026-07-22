@@ -8,6 +8,20 @@ const DEFAULT_SHOCK_DECOMPOSITION_SELECTOR = algorithm -> algorithm ∉ (:second
 const DEFAULT_SMOOTH_SELECTOR = filter -> filter == :kalman
 const DEFAULT_WARMUP_ITERATIONS = 0
 const DEFAULT_PRESAMPLE_PERIODS = 0
+const DEFAULT_MEASUREMENT_ERROR_STD = 0.0
+
+# Particle filter defaults (see `src/filter/particle.jl`)
+const DEFAULT_N_PARTICLES = 1000
+const DEFAULT_PARTICLE_FILTER_ALGORITHM = :bootstrap
+const DEFAULT_RESAMPLING = :systematic
+const DEFAULT_RESAMPLING_THRESHOLD = 0.5
+const DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR = 1.0
+# Tempered particle filter (Herbst & Schorfheide, 2019) controls
+const DEFAULT_TEMPERING_TARGET_RATIO = 2.0
+const DEFAULT_TEMPERING_MH_STEPS = 1
+const DEFAULT_TEMPERING_MAX_STAGES = 100
+const DEFAULT_TEMPERING_MH_SCALE = 0.3
+
 const DEFAULT_DATA_IN_LEVELS = true
 const DEFAULT_LEVELS = true
 const DEFAULT_CONDITIONS_IN_LEVELS = true

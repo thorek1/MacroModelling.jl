@@ -4297,6 +4297,29 @@ function get_statistics(𝓂::ℳ,
     return ret
 end
 
+# Validate `measurement_error_std` supplied to the filter-based `get_loglikelihood`
+# path and return the per-observable measurement-error variances (in the observable
+# / data-row order), or `nothing` when no measurement error is active (all zero).
+# A scalar is broadcast to all observables; a per-observable vector is used as is.
+# Time-varying (matrix) measurement error is not yet supported on this path.
+function build_filter_measurement_error_variances(measurement_error_std, n_obs::Int)
+    if measurement_error_std isa AbstractMatrix
+        error("Time-varying (matrix) `measurement_error_std` is not yet supported on the filter-based `get_loglikelihood` path (`filter = :kalman` / `:particle`); provide a scalar or a per-observable vector.")
+    end
+
+    stds = measurement_error_std isa AbstractVector ? collect(float.(measurement_error_std)) : fill(float(measurement_error_std), n_obs)
+
+    @assert length(stds) == n_obs || length(stds) == 1 "`measurement_error_std` vector must have one entry per observable (got $(length(stds)), expected $n_obs) or a single entry that is broadcast to all observables."
+
+    if length(stds) == 1 && n_obs > 1
+        stds = fill(stds[1], n_obs)
+    end
+
+    @assert all(s -> isfinite(s) && s >= 0, stds) "`measurement_error_std` entries must be finite and non-negative."
+
+    return any(s -> s > 0, stds) ? stds .^ 2 : nothing
+end
+
 """
 $(SIGNATURES)
 Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
@@ -4318,6 +4341,13 @@ If occasionally binding constraints are present in the model, they are not taken
 - `initial_covariance` [Default: `:theoretical`, Type: `Union{Symbol,AbstractMatrix{<:Real}}`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix of appropriate size (number of observables and states).
 - $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
+- `measurement_error_std` [Default: `0.0`, Type: `Union{Real,AbstractVector{<:Real}}`]: standard deviation of Gaussian measurement error on the observables. A scalar is broadcast to all observables; a vector supplies one entry per observable. The default `0.0` disables measurement error (the previous behaviour). Measurement error is supported by the Kalman filter (`filter = :kalman`) and is required by the particle filter (`filter = :particle`); it is not available for the inversion filter.
+- `n_particles` [Default: `1000`, Type: `Int`]: number of particles used when `filter = :particle`.
+- `particle_filter_algorithm` [Default: `:bootstrap`, Type: `Symbol`]: particle filter variant when `filter = :particle`. One of `:bootstrap` (sequential-importance-resampling, as in Dynare), `:auxiliary` (Pitt–Shephard auxiliary particle filter), or `:tempered` (Herbst–Schorfheide tempered particle filter).
+- `resampling` [Default: `:systematic`, Type: `Symbol`]: resampling scheme for the particle filter. One of `:systematic`, `:stratified`, `:multinomial`, `:residual`.
+- `resampling_threshold` [Default: `0.5`, Type: `Real`]: the particle filter resamples whenever the effective sample size falls below `resampling_threshold * n_particles`.
+- `initial_state_prior_scaling_factor` [Default: `1.0`, Type: `Real`]: scales the covariance of the initial particle cloud around the initial state.
+- `rng` [Default: `Random.default_rng()`, Type: `AbstractRNG`]: random number generator used by the particle filter (pass a seeded RNG for reproducibility).
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -4325,7 +4355,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `<:AbstractFloat` loglikelihood 
+- `<:AbstractFloat` loglikelihood
 
 # Examples
 ```jldoctest
@@ -4362,13 +4392,24 @@ function get_loglikelihood(𝓂::ℳ,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                             on_failure_loglikelihood::U = -Inf,
-                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
-                            tol::Tolerances = Tolerances(), 
-                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂), 
-                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                            measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_filter_algorithm::Symbol = DEFAULT_PARTICLE_FILTER_ALGORITHM,
+                            resampling::Symbol = DEFAULT_RESAMPLING,
+                            resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
+                            initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
+                            rng::Random.AbstractRNG = Random.default_rng(),
+                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
@@ -4385,6 +4426,17 @@ function get_loglikelihood(𝓂::ℳ,
                              presample_periods = presample_periods,
                              initial_covariance = initial_covariance,
                              filter_algorithm = filter_algorithm,
+                             measurement_error_std = measurement_error_std,
+                             n_particles = n_particles,
+                             particle_filter_algorithm = particle_filter_algorithm,
+                             resampling = resampling,
+                             resampling_threshold = resampling_threshold,
+                             initial_state_prior_scaling_factor = initial_state_prior_scaling_factor,
+                             rng = rng,
+                             tempering_target_ratio = tempering_target_ratio,
+                             tempering_mh_steps = tempering_mh_steps,
+                             tempering_max_stages = tempering_max_stages,
+                             tempering_mh_scale = tempering_mh_scale,
                              tol = tol,
                              quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                              lyapunov_algorithm = lyapunov_algorithm,
@@ -4406,6 +4458,17 @@ function get_loglikelihood(𝓂::ℳ,
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
+                            measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_filter_algorithm::Symbol = DEFAULT_PARTICLE_FILTER_ALGORITHM,
+                            resampling::Symbol = DEFAULT_RESAMPLING,
+                            resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
+                            initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
+                            rng::Random.AbstractRNG = Random.default_rng(),
+                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -4540,9 +4603,89 @@ function get_loglikelihood(𝓂::ℳ,
         return zero(S)
     end
 
+    # Diagonal Gaussian measurement-error variances (per observable, in data-row
+    # order), or `nothing` when no measurement error is active. Supported by the
+    # Kalman and particle filters; the inversion filter recovers shocks exactly
+    # and does not admit measurement error.
+    measurement_error_variances = build_filter_measurement_error_variances(measurement_error_std, size(data_in_deviations, 1))
+
+    if filter == :inversion && measurement_error_variances !== nothing
+        error("`measurement_error_std` is not supported by the inversion filter (`filter = :inversion`). Use `filter = :kalman` (linear) or `filter = :particle`.")
+    end
+    if filter == :particle
+        if measurement_error_variances === nothing
+            error("The particle filter (`filter = :particle`) requires measurement error; set `measurement_error_std` to a positive value (scalar or per-observable vector).")
+        end
+        # The particle filter evaluates in Float64 and is not differentiable; a
+        # forward-mode `Dual` parameter type would silently yield a zero gradient.
+        if !(S <: AbstractFloat)
+            error("The particle filter (`filter = :particle`) is not differentiable and cannot be used with automatic differentiation. Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
+        end
+    end
+
     # @timeit_debug timer "Filter" begin
 
-    llh = if has_missing
+    llh = if filter == :particle
+        run_particle_filter(Val(algorithm),
+                            Val(particle_filter_algorithm),
+                            obs_indices,
+                            𝐒,
+                            data_in_deviations,
+                            constants_obj,
+                            state,
+                            𝓂,
+                            measurement_error_variances,
+                            obs_idx_per_t,
+                            has_missing;
+                            n_particles = n_particles,
+                            resampling = resampling,
+                            resampling_threshold = resampling_threshold,
+                            initial_state_prior_scaling_factor = initial_state_prior_scaling_factor,
+                            rng = rng,
+                            presample_periods = presample_periods,
+                            initial_covariance = initial_covariance,
+                            on_failure_loglikelihood = on_failure_loglikelihood,
+                            tempering_target_ratio = tempering_target_ratio,
+                            tempering_mh_steps = tempering_mh_steps,
+                            tempering_max_stages = tempering_max_stages,
+                            tempering_mh_scale = tempering_mh_scale,
+                            opts = opts)
+    elseif filter == :kalman
+        if has_missing
+            calculate_loglikelihood_with_missing(Val(:kalman),
+                                        Val(algorithm),
+                                        obs_indices,
+                                        𝐒,
+                                        data_in_deviations,
+                                        constants_obj,
+                                        state,
+                                        𝓂.workspaces,
+                                        obs_idx_per_t,
+                                        warmup_iterations = warmup_iterations,
+                                        presample_periods = presample_periods,
+                                        initial_covariance = initial_covariance,
+                                        filter_algorithm = filter_algorithm,
+                                        measurement_error_variances = measurement_error_variances,
+                                        opts = opts,
+                                        on_failure_loglikelihood = on_failure_loglikelihood)
+        else
+            calculate_loglikelihood(Val(:kalman),
+                                    Val(algorithm),
+                                    obs_indices,
+                                    𝐒,
+                                    data_in_deviations,
+                                    constants_obj,
+                                    state,
+                                    𝓂.workspaces,
+                                    warmup_iterations = warmup_iterations,
+                                    presample_periods = presample_periods,
+                                    initial_covariance = initial_covariance,
+                                    filter_algorithm = filter_algorithm,
+                                    measurement_error_variances = measurement_error_variances,
+                                    opts = opts,
+                                    on_failure_loglikelihood = on_failure_loglikelihood)
+        end
+    elseif has_missing
         calculate_loglikelihood_with_missing(Val(filter),
                                     Val(algorithm),
                                     obs_indices,

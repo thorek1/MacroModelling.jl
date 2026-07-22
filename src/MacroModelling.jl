@@ -59,6 +59,9 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 import AxisKeys
 
+import Random
+import Random: AbstractRNG
+
 import ChainRulesCore: rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 # import RecursiveFactorization as RF
 
@@ -188,6 +191,7 @@ include("./algorithms/quadratic_matrix_equation.jl")
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
+include("./filter/particle.jl")
 
 
 export @model, @parameters, solve!
@@ -393,7 +397,7 @@ function normalize_filtering_options(filter::Symbol,
                                       shock_decomposition::Bool,
                                       warmup_iterations::Int;
                                       maxlog::Int = DEFAULT_MAXLOG)
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+    @assert filter ∈ [:kalman, :inversion, :particle] "Currently only the Kalman filter (:kalman) for linear models, the inversion filter (:inversion) for linear and nonlinear models, and the particle filter (:particle) for linear and nonlinear models are supported."
 
     pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
 
@@ -402,8 +406,10 @@ function normalize_filtering_options(filter::Symbol,
         shock_decomposition = false
     end
 
-    if algorithm != :first_order && filter != :inversion
-        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion`." maxlog = maxlog
+    # Higher-order solutions are handled by the inversion filter by default, but
+    # the particle filter (`:particle`) is explicitly valid at every order too.
+    if algorithm != :first_order && filter ∉ (:inversion, :particle)
+        @info "Higher order solution algorithms only support the inversion and particle filters. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
     end
 
@@ -413,8 +419,8 @@ function normalize_filtering_options(filter::Symbol,
     end
 
     if warmup_iterations > 0
-        if filter == :kalman
-            @info "`warmup_iterations` is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+        if filter ∈ (:kalman, :particle)
+            @info "`warmup_iterations` is not a valid argument for the $(filter == :kalman ? "Kalman" : "particle") filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
             warmup_iterations = 0
         end
     end

@@ -254,3 +254,37 @@ plot_model_estimates(FS2000, data)
 ![Model estimates](../assets/estimates__FS2000__3.png)
 
 shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.
+
+## Nonlinear estimation with the particle filter
+
+For genuinely nonlinear models the structural shocks can be integrated out by Monte Carlo using the particle filter (`filter = :particle`). It works for every perturbation order (`:first_order` through `:pruned_third_order`), requires measurement error on the observables (`measurement_error_std`), and is selected via `particle_filter_algorithm`:
+
+- `:bootstrap` — the sequential-importance-resampling filter (as in Dynare),
+- `:auxiliary` — the Pitt–Shephard auxiliary particle filter,
+- `:tempered` — the Herbst–Schorfheide tempered particle filter, which yields a much lower-variance likelihood estimate for the same number of particles.
+
+The particle-filter likelihood is a stochastic estimator and is **not** differentiable (resampling is discontinuous), so it must be used with gradient-free samplers such as the slice sampler in `Pigeons.jl` or nested sampling. Pass a seeded `rng` for reproducibility.
+
+```julia
+using MacroModelling
+import Pigeons, Random
+
+Random.seed!(1)
+
+Turing.@model function FS2000_particle(data, m)
+    parameters ~ Turing.product_distribution(prior_distributions)
+    Turing.@addlogprob! get_loglikelihood(m, data, parameters;
+                                          algorithm = :pruned_second_order,
+                                          filter = :particle,
+                                          particle_filter_algorithm = :tempered,
+                                          n_particles = 5000,
+                                          measurement_error_std = 1e-3,
+                                          rng = Random.Xoshiro(1),
+                                          on_failure_loglikelihood = -1e12)
+end
+
+pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_particle(data, FS2000)),
+                     n_rounds = 8)
+```
+
+Because the likelihood is noisy, set `on_failure_loglikelihood` to a finite value (as above) so the sampler tolerates occasional failed evaluations, and prefer a larger `n_particles` (and the `:tempered` variant) to reduce the estimate's variance.

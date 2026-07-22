@@ -16,6 +16,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
+                                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real}} = nothing,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
@@ -60,8 +61,8 @@ function calculate_loglikelihood(::Val{:kalman},
     # initial_state at the get_loglikelihood level.
     u₀ = state[1][observables_and_states]
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, u₀, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, u₀, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood, measurement_error_variances = measurement_error_variances)
+    # timer = timer,
 end
 
 
@@ -80,6 +81,7 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
+                                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real}} = nothing,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
@@ -110,7 +112,8 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                           obs_idx_per_t, kalman_ws, u₀,
                                           presample_periods = presample_periods,
                                           verbose = opts.verbose,
-                                          on_failure_loglikelihood = on_failure_loglikelihood)
+                                          on_failure_loglikelihood = on_failure_loglikelihood,
+                                          measurement_error_variances = measurement_error_variances)
 end
 
 # Specialization for :theoretical
@@ -150,6 +153,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 u₀::AbstractVector{V};
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real}} = nothing,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false) where {S <: Real, R <: Real, V <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -206,6 +210,15 @@ function run_kalman_iterations(A::Matrix{S},
 
         ℒ.mul!(Ctmp, C, Pwork)                                  # Ctmp = C * P
         ℒ.mul!(F, Ctmp, C')                                     # F = C * P * C'
+
+        # Add the diagonal measurement-error covariance H: F = C P C' + H.
+        # `measurement_error_variances` holds the per-observable variances in the
+        # innovation (data-row) order, which matches F's rows.
+        if measurement_error_variances !== nothing
+            @inbounds for i in 1:n_obs
+                F[i, i] += measurement_error_variances[i]
+            end
+        end
 
         if T === Float64
             ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
@@ -296,9 +309,10 @@ function run_kalman_iterations_missing(A::Matrix{S},
                                 data_in_deviations::Matrix{S},
                                 obs_idx_per_t::Vector{Vector{Int}},
                                 ws::kalman_workspace,
-                                u₀::AbstractVector{<:Real}; 
+                                u₀::AbstractVector{<:Real};
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real}} = nothing,
                                 verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
 
     n_obs   = size(C, 1)
@@ -359,6 +373,13 @@ function run_kalman_iterations_missing(A::Matrix{S},
 
         ℒ.mul!(Ctv, Cv, P)        # Ctv = C[idx,:] * P
         ℒ.mul!(Fv, Ctv, Cv')      # Fv = C[idx,:] * P * C[idx,:]'
+
+        # Add the diagonal measurement-error covariance for the observed rows.
+        if measurement_error_variances !== nothing
+            @inbounds for i in 1:m
+                Fv[i, i] += measurement_error_variances[idx[i]]
+            end
+        end
 
         ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
                                                                             ws.fast_lu_ws_f,
