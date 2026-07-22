@@ -206,6 +206,177 @@ end
 end
 
 
+# ── Allocation-free higher-order transitions ─────────────────────────────────
+# In-place transitions for the nonlinear orders, mirroring the closures built by
+# `parse_algorithm_to_state_update` but writing into a preallocated `out` with
+# preallocated `aug`/kron scratch and BLAS `mul!`/`kron!` (no per-call heap
+# allocation). The pruned orders reuse `pruned_state_update_{2nd,3rd}_order!`.
+# `𝐒[1]` here is the augmented first-order matrix (constant column inserted).
+
+# Gather aug = [state[past]; const; shock] into the preallocated `aug` (explicit
+# loops avoid the SubArray allocation of `state[past_idx]`).
+@inline function fill_aug!(aug, state, past_idx, shock, const_val)
+    n_past = length(past_idx)
+    @inbounds for i in 1:n_past
+        aug[i] = state[past_idx[i]]
+    end
+    @inbounds aug[n_past + 1] = const_val
+    @inbounds for e in eachindex(shock)
+        aug[n_past + 1 + e] = shock[e]
+    end
+    return aug
+end
+
+# out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug),  aug = [state[past]; 1; shock].
+function nonpruned_state_update_2nd_order!(out, state, past_idx, shock, aug, kk, 𝐒)
+    fill_aug!(aug, state, past_idx, shock, 1.0)
+    ℒ.kron!(kk, aug, aug)
+    ℒ.mul!(out, 𝐒[1], aug)
+    ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
+    return out
+end
+
+# out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug) + ⅙ 𝐒₃·(aug⊗aug⊗aug).
+function nonpruned_state_update_3rd_order!(out, state, past_idx, shock, aug, kk, kkk, 𝐒)
+    fill_aug!(aug, state, past_idx, shock, 1.0)
+    ℒ.kron!(kk, aug, aug)
+    ℒ.kron!(kkk, kk, aug)
+    ℒ.mul!(out, 𝐒[1], aug)
+    ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
+    ℒ.mul!(out, 𝐒[3], kkk, 1 / 6, 1.0)
+    return out
+end
+
+# Allocation-free pruned updates (explicit past-gather; components zero the
+# constant slot and, for the higher-order parts, the shock slots).
+function pf_pruned_2nd!(new_s1, new_s2, s1, s2, past_idx, shock, aug1, aug2, kk, 𝐒)
+    n_past = length(past_idx)
+    fill_aug!(aug1, s1, past_idx, shock, 1.0)
+    @inbounds for i in 1:n_past
+        aug2[i] = s2[past_idx[i]]
+    end
+    @inbounds aug2[n_past + 1] = 0.0
+    @inbounds for e in eachindex(shock)
+        aug2[n_past + 1 + e] = 0.0
+    end
+    ℒ.kron!(kk, aug1, aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
+    return nothing
+end
+
+function pf_pruned_3rd!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, shock,
+                        aug1, aug1̂, aug2, aug3, k11, k12̂, k111, 𝐒)
+    n_past = length(past_idx)
+    fill_aug!(aug1,  s1, past_idx, shock, 1.0)
+    fill_aug!(aug1̂, s1, past_idx, shock, 0.0)
+    @inbounds for i in 1:n_past
+        aug2[i] = s2[past_idx[i]]
+        aug3[i] = s3[past_idx[i]]
+    end
+    @inbounds aug2[n_past + 1] = 0.0
+    @inbounds aug3[n_past + 1] = 0.0
+    @inbounds for e in eachindex(shock)
+        aug2[n_past + 1 + e] = 0.0
+        aug3[n_past + 1 + e] = 0.0
+    end
+    ℒ.kron!(k11,  aug1, aug1)
+    ℒ.kron!(k12̂,  aug1̂, aug2)
+    ℒ.kron!(k111, k11,  aug1)
+    ℒ.mul!(new_s1, 𝐒[1], aug1)
+    ℒ.mul!(new_s2, 𝐒[1], aug2)
+    ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
+    ℒ.mul!(new_s3, 𝐒[1], aug3)
+    ℒ.mul!(new_s3, 𝐒[2], k12̂, 1.0, 1.0)
+    ℒ.mul!(new_s3, 𝐒[3], k111, 1 / 6, 1.0)
+    return nothing
+end
+
+# Preallocated kron/aug scratch for one particle, sized per algorithm.
+function build_higher_scratch(::Val{:second_order}, nPast::Int, nExo::Int)
+    naug = nPast + 1 + nExo
+    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug^2))
+end
+function build_higher_scratch(::Val{:third_order}, nPast::Int, nExo::Int)
+    naug = nPast + 1 + nExo
+    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug^2), kkk = Vector{Float64}(undef, naug^3))
+end
+function build_higher_scratch(::Val{:pruned_second_order}, nPast::Int, nExo::Int)
+    naug = nPast + 1 + nExo
+    (aug1 = Vector{Float64}(undef, naug), aug2 = Vector{Float64}(undef, naug),
+     kk = Vector{Float64}(undef, naug^2), zero_shock = zeros(Float64, nExo))
+end
+function build_higher_scratch(::Val{:pruned_third_order}, nPast::Int, nExo::Int)
+    naug = nPast + 1 + nExo
+    (aug1 = Vector{Float64}(undef, naug), aug1̂ = Vector{Float64}(undef, naug),
+     aug2 = Vector{Float64}(undef, naug), aug3 = Vector{Float64}(undef, naug),
+     k11 = Vector{Float64}(undef, naug^2), k12̂ = Vector{Float64}(undef, naug^2),
+     k111 = Vector{Float64}(undef, naug^3), zero_shock = zeros(Float64, nExo))
+end
+
+# In-place propagation dispatch: writes the next state into `out`.
+@inline higher_propagate!(::Val{:second_order}, out, state, shock, past_idx, 𝐒, scr) =
+    nonpruned_state_update_2nd_order!(out, state, past_idx, shock, scr.aug, scr.kk, 𝐒)
+@inline higher_propagate!(::Val{:third_order}, out, state, shock, past_idx, 𝐒, scr) =
+    nonpruned_state_update_3rd_order!(out, state, past_idx, shock, scr.aug, scr.kk, scr.kkk, 𝐒)
+@inline higher_propagate!(::Val{:pruned_second_order}, out, state, shock, past_idx, 𝐒, scr) =
+    pf_pruned_2nd!(out[1], out[2], state[1], state[2], past_idx, shock, scr.aug1, scr.aug2, scr.kk, 𝐒)
+@inline higher_propagate!(::Val{:pruned_third_order}, out, state, shock, past_idx, 𝐒, scr) =
+    pf_pruned_3rd!(out[1], out[2], out[3], state[1], state[2], state[3], past_idx, shock, scr.aug1, scr.aug1̂, scr.aug2, scr.aug3, scr.k11, scr.k12̂, scr.k111, 𝐒)
+
+# Deep-copy a particle (flat vector or vector-of-components) into a preallocated slot.
+@inline copy_particle!(dst::AbstractVector{Float64}, src::AbstractVector{Float64}) = copyto!(dst, src)
+@inline function copy_particle!(dst::AbstractVector{<:AbstractVector}, src::AbstractVector{<:AbstractVector})
+    @inbounds for c in eachindex(dst)
+        copyto!(dst[c], src[c])
+    end
+    return dst
+end
+
+# A zeroed particle with the same shape as `template` (for the second pool).
+zeros_like_particle(template::AbstractVector{Float64}) = zeros(Float64, length(template))
+zeros_like_particle(template::AbstractVector{<:AbstractVector}) = [zeros(Float64, length(c)) for c in template]
+
+# Concretely-typed initial particle cloud (avoids the type-unstable `Union` that
+# `initialise_particles` returns because its `pruning` branch is a runtime Bool).
+# Dispatching on `Val{algo}` fixes the element type per specialization so the hot
+# loop is allocation-free. The RNG draw order matches `initialise_particles`.
+function init_higher_particles(::Union{Val{:second_order},Val{:third_order}}, rng, state, L, n_particles, nVars)
+    mean0 = Vector{Float64}(state)
+    return Vector{Float64}[mean0 .+ L * randn(rng, nVars) for _ in 1:n_particles]
+end
+function init_higher_particles(::Val{:pruned_second_order}, rng, state, L, n_particles, nVars)
+    m1 = Vector{Float64}(state[1]); m2 = Vector{Float64}(state[2])
+    return Vector{Vector{Float64}}[[m1 .+ L * randn(rng, nVars), copy(m2)] for _ in 1:n_particles]
+end
+function init_higher_particles(::Val{:pruned_third_order}, rng, state, L, n_particles, nVars)
+    m1 = Vector{Float64}(state[1]); m2 = Vector{Float64}(state[2]); m3 = Vector{Float64}(state[3])
+    return Vector{Vector{Float64}}[[m1 .+ L * randn(rng, nVars), copy(m2), copy(m3)] for _ in 1:n_particles]
+end
+
+# Concrete pool type per algorithm, used to type-assert the initial cloud so the
+# large kwarg method body doesn't lose the element type (which would send the
+# function-barrier call through dynamic dispatch).
+particle_pool_type(::Union{Val{:second_order},Val{:third_order}}) = Vector{Vector{Float64}}
+particle_pool_type(::Union{Val{:pruned_second_order},Val{:pruned_third_order}}) = Vector{Vector{Vector{Float64}}}
+
+# Full model state a particle reports to the measurement, without allocation:
+# the state itself for non-pruned orders, the sum of components (into `full_buf`)
+# for pruned orders. Dispatches on the particle representation (type-stable).
+@inline measurement_full(p::AbstractVector{Float64}, full_buf) = p
+@inline function measurement_full(p::AbstractVector{<:AbstractVector}, full_buf)
+    fill!(full_buf, 0.0)
+    @inbounds for c in eachindex(p)
+        pc = p[c]
+        for i in eachindex(full_buf)
+            full_buf[i] += pc[i]
+        end
+    end
+    return full_buf
+end
+
+
 # ── Bootstrap (sequential importance resampling) particle filter ─────────────
 
 function run_particle_filter(::Val{algo},
@@ -242,14 +413,35 @@ function run_particle_filter(::Val{algo},
     me_var = Float64.(measurement_error_variances)
     @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
 
-    state_update, pruning = parse_algorithm_to_state_update(algo, 𝓂, false)
+    past_idx = T.past_not_future_and_mixed_idx
+    𝐒f = [Matrix{Float64}(S) for S in 𝐒]
+    scr = build_higher_scratch(Val(algo), T.nPast_not_future_and_mixed, nExo)
 
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
-    particles = initialise_particles(rng, state, pruning, L, n_particles, nVars)
+    particles  = init_higher_particles(Val(algo), rng, state, L, n_particles, nVars)::particle_pool_type(Val(algo))
+    particles2 = [zeros_like_particle(particles[1]) for _ in 1:n_particles]
 
+    return bootstrap_higher_loop(Val(algo), particles, particles2, 𝐒f, scr, past_idx,
+                                 nVars, nExo, nT, presample_periods, observables_index,
+                                 data_in_deviations, obs_idx_per_t, has_missing, me_var,
+                                 resampling, resampling_threshold, rng, on_failure_loglikelihood, log2pi)
+end
+
+# Function barrier: `particles`/`particles2` arrive with a concrete element type,
+# so the hot loop specialises and runs allocation-free (the enclosing kwarg method
+# body is too large for inference to keep the pool types).
+function bootstrap_higher_loop(::Val{algo}, particles, particles2, 𝐒f, scr, past_idx,
+                               nVars, nExo, nT, presample_periods, observables_index,
+                               data_in_deviations, obs_idx_per_t, has_missing, me_var,
+                               resampling, resampling_threshold, rng, on_failure_loglikelihood, log2pi) where {algo}
+    n_particles = length(particles)
+    shock = Vector{Float64}(undef, nExo)
+    full_buf = Vector{Float64}(undef, nVars)
     W = fill(1.0 / n_particles, n_particles)
     logdens = Vector{Float64}(undef, n_particles)
+    idx  = Vector{Int}(undef, n_particles)
+    bins = Vector{Float64}(undef, n_particles)
     loglik = 0.0
 
     for t in 1:nT
@@ -259,16 +451,20 @@ function run_particle_filter(::Val{algo},
         if isempty(rows)
             # No observation this period: propagate only, weights unchanged.
             @inbounds for p in 1:n_particles
-                particles[p] = state_update(particles[p], randn(rng, nExo))
+                Random.randn!(rng, shock)
+                higher_propagate!(Val(algo), particles2[p], particles[p], shock, past_idx, 𝐒f, scr)
             end
+            particles, particles2 = particles2, particles
             continue
         end
 
         @inbounds for p in 1:n_particles
-            particles[p] = state_update(particles[p], randn(rng, nExo))
-            full = particle_full_state(particles[p], pruning)
+            Random.randn!(rng, shock)
+            higher_propagate!(Val(algo), particles2[p], particles[p], shock, past_idx, 𝐒f, scr)
+            full = measurement_full(particles2[p], full_buf)
             logdens[p] = particle_log_measurement_density(full, data_col, observables_index, me_var, rows, log2pi)
         end
+        particles, particles2 = particles2, particles
 
         m = maximum(logdens)
         if !isfinite(m)
@@ -293,11 +489,11 @@ function run_particle_filter(::Val{algo},
         end
 
         if effective_sample_size(W) < resampling_threshold * n_particles
-            idxs = particle_resample_indices(rng, W, resampling)
-            # `state_update` never mutates its argument in place, so sharing the
-            # underlying arrays across duplicated ancestors is safe (each slot is
-            # reassigned, never mutated, on the next propagation).
-            particles = particles[idxs]
+            particle_resample_indices!(idx, bins, rng, W, resampling)
+            @inbounds for j in 1:n_particles
+                copy_particle!(particles2[j], particles[idx[j]])
+            end
+            particles, particles2 = particles2, particles
             fill!(W, 1.0 / n_particles)
         end
     end
@@ -371,7 +567,9 @@ function run_particle_filter(::Val{algo},
     me_var = Float64.(measurement_error_variances)
     @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
 
-    state_update, pruning = parse_algorithm_to_state_update(algo, 𝓂, false)
+    past_idx = T.past_not_future_and_mixed_idx
+    𝐒f = [Matrix{Float64}(S) for S in 𝐒]
+    scr = build_higher_scratch(Val(algo), T.nPast_not_future_and_mixed, nExo)
 
     # One-step-ahead predictive variance of each observable due to the structural
     # shocks (diagonal of Cₒ BBᵀ Cₒᵀ from the first-order shock loading), used to
@@ -384,12 +582,31 @@ function run_particle_filter(::Val{algo},
 
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
-    particles = initialise_particles(rng, state, pruning, L, n_particles, nVars)
+    particles  = init_higher_particles(Val(algo), rng, state, L, n_particles, nVars)::particle_pool_type(Val(algo))
+    particles2 = [zeros_like_particle(particles[1]) for _ in 1:n_particles]
+    mu_particle = zeros_like_particle(particles[1])
 
+    return auxiliary_higher_loop(Val(algo), particles, particles2, mu_particle, 𝐒f, scr, past_idx,
+                                 nVars, nExo, nT, presample_periods, observables_index,
+                                 data_in_deviations, obs_idx_per_t, has_missing, me_var, pred_var,
+                                 resampling, rng, on_failure_loglikelihood, log2pi)
+end
+
+# Function barrier for the auxiliary loop (see `bootstrap_higher_loop`).
+function auxiliary_higher_loop(::Val{algo}, particles, particles2, mu_particle, 𝐒f, scr, past_idx,
+                               nVars, nExo, nT, presample_periods, observables_index,
+                               data_in_deviations, obs_idx_per_t, has_missing, me_var, pred_var,
+                               resampling, rng, on_failure_loglikelihood, log2pi) where {algo}
+    n_particles = length(particles)
     zero_shock = zeros(Float64, nExo)
+    shock = Vector{Float64}(undef, nExo)
+    full_buf = Vector{Float64}(undef, nVars)
     W = fill(1.0 / n_particles, n_particles)
     logg̃ = Vector{Float64}(undef, n_particles)   # first-stage predictive log-density
     logw = Vector{Float64}(undef, n_particles)    # second-stage log-weight
+    λ    = Vector{Float64}(undef, n_particles)
+    idx  = Vector{Int}(undef, n_particles)
+    bins = Vector{Float64}(undef, n_particles)
     loglik = 0.0
 
     for t in 1:nT
@@ -399,7 +616,8 @@ function run_particle_filter(::Val{algo},
         # First stage: predictive density at the transition mean (zero shock),
         # spread by the shock-induced predictive variance `pred_var`.
         @inbounds for p in 1:n_particles
-            μ = particle_full_state(state_update(particles[p], zero_shock), pruning)
+            higher_propagate!(Val(algo), mu_particle, particles[p], zero_shock, past_idx, 𝐒f, scr)
+            μ = measurement_full(mu_particle, full_buf)
             logg̃[p] = particle_log_measurement_density(μ, data_col, observables_index, pred_var, rows, log2pi)
         end
 
@@ -417,21 +635,21 @@ function run_particle_filter(::Val{algo},
             sλ += exp(log(W[p]) + logg̃[p] - mλ)
         end
         logκ = mλ + log(sλ)
-        λ = Vector{Float64}(undef, n_particles)
         @inbounds for p in 1:n_particles
             λ[p] = exp(log(W[p]) + logg̃[p] - logκ)
         end
 
         # Resample ancestors ∝ λ, propagate with fresh shocks, second-stage weight
         # w = g(yₜ|xₜ) / g̃(ancestor).
-        idx = particle_resample_indices(rng, λ, resampling)
-        newparts = Vector{eltype(particles)}(undef, n_particles)
+        particle_resample_indices!(idx, bins, rng, λ, resampling)
         @inbounds for j in 1:n_particles
             a = idx[j]
-            newparts[j] = state_update(particles[a], randn(rng, nExo))
-            full = particle_full_state(newparts[j], pruning)
+            Random.randn!(rng, shock)
+            higher_propagate!(Val(algo), particles2[j], particles[a], shock, past_idx, 𝐒f, scr)
+            full = measurement_full(particles2[j], full_buf)
             logw[j] = particle_log_measurement_density(full, data_col, observables_index, me_var, rows, log2pi) - logg̃[a]
         end
+        particles, particles2 = particles2, particles
 
         mw = maximum(logw)
         if !isfinite(mw)
@@ -454,7 +672,6 @@ function run_particle_filter(::Val{algo},
         @inbounds for j in 1:n_particles
             W[j] = exp(logw[j] - logsw)
         end
-        particles = newparts
     end
 
     return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
@@ -549,13 +766,50 @@ function run_particle_filter(::Val{algo},
     n_mh = tempering_mh_steps
     max_stages = tempering_max_stages
 
-    state_update, pruning = parse_algorithm_to_state_update(algo, 𝓂, false)
+    past_idx = T.past_not_future_and_mixed_idx
+    𝐒f = [Matrix{Float64}(S) for S in 𝐒]
+    scr = build_higher_scratch(Val(algo), T.nPast_not_future_and_mixed, nExo)
 
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
-    prev_states = initialise_particles(rng, state, pruning, L, n_particles, nVars)
 
+    # Double-buffered particle pools (ancestors and states + resample scratch).
+    anc  = init_higher_particles(Val(algo), rng, state, L, n_particles, nVars)::particle_pool_type(Val(algo))
+    return tempered_higher_loop(Val(algo), anc, 𝐒f, scr, past_idx, nVars, nExo, nT,
+                                presample_periods, observables_index, data_in_deviations,
+                                obs_idx_per_t, has_missing, me_var, resampling, r_star, c,
+                                n_mh, max_stages, rng, on_failure_loglikelihood, log2pi)
+end
+
+# Function barrier for the tempered loop (see `bootstrap_higher_loop`).
+function tempered_higher_loop(::Val{algo}, anc0, 𝐒f, scr, past_idx, nVars, nExo, nT,
+                              presample_periods, observables_index, data_in_deviations,
+                              obs_idx_per_t, has_missing, me_var, resampling, r_star, c,
+                              n_mh, max_stages, rng, on_failure_loglikelihood, log2pi) where {algo}
+    # `anc0` is captured (read-only) by the pool comprehensions below; the pools
+    # that get swapped are separate locals, so nothing captured is ever reassigned
+    # (which would force Julia to `Core.Box` it and make the loop type-unstable).
+    anc0 = anc0::particle_pool_type(Val(algo))
+    n_particles = length(anc0)
+    anc  = [zeros_like_particle(anc0[1]) for _ in 1:n_particles]
+    st   = [zeros_like_particle(anc0[1]) for _ in 1:n_particles]
+    anc2 = [zeros_like_particle(anc0[1]) for _ in 1:n_particles]
+    st2  = [zeros_like_particle(anc0[1]) for _ in 1:n_particles]
+    @inbounds for p in 1:n_particles
+        copy_particle!(anc[p], anc0[p])
+    end
+    sh   = [Vector{Float64}(undef, nExo) for _ in 1:n_particles]
+    sh2  = [Vector{Float64}(undef, nExo) for _ in 1:n_particles]
+    dv   = Vector{Float64}(undef, n_particles)
+    dv2  = Vector{Float64}(undef, n_particles)
+
+    sprop    = zeros_like_particle(anc0[1])
+    eprop    = Vector{Float64}(undef, nExo)
+    full_buf = Vector{Float64}(undef, nVars)
     logw = Vector{Float64}(undef, n_particles)
+    Wn   = Vector{Float64}(undef, n_particles)
+    idx  = Vector{Int}(undef, n_particles)
+    bins = Vector{Float64}(undef, n_particles)
     loglik = 0.0
 
     for t in 1:nT
@@ -563,17 +817,15 @@ function run_particle_filter(::Val{algo},
         data_col = @view data_in_deviations[:, t]
         d_obs = length(rows)
 
-        # Bootstrap proposal: propagate every ancestor with a fresh shock.
-        ancestors = prev_states
-        shocks = [randn(rng, nExo) for _ in 1:n_particles]
-        states = Vector{eltype(prev_states)}(undef, n_particles)
-        dvec = Vector{Float64}(undef, n_particles)
+        # Bootstrap proposal: propagate every ancestor (`anc`) with a fresh shock.
         @inbounds for p in 1:n_particles
-            states[p] = state_update(ancestors[p], shocks[p])
-            dvec[p] = particle_quadratic_form(particle_full_state(states[p], pruning), data_col, observables_index, me_var, rows)
+            Random.randn!(rng, sh[p])
         end
-
-        if all(!isfinite, dvec)
+        @inbounds for p in 1:n_particles
+            higher_propagate!(Val(algo), st[p], anc[p], sh[p], past_idx, 𝐒f, scr)
+            dv[p] = particle_quadratic_form(measurement_full(st[p], full_buf), data_col, observables_index, me_var, rows)
+        end
+        if all(!isfinite, dv)
             return Float64(on_failure_loglikelihood)
         end
 
@@ -582,18 +834,17 @@ function run_particle_filter(::Val{algo},
         stage = 0
         while φ_old < 1.0 - 1e-12 && stage < max_stages
             stage += 1
-            φ_new = tempered_next_phi(φ_old, dvec, r_star, n_particles)
+            φ_new = tempered_next_phi(φ_old, dv, r_star, n_particles)
 
-            # Incremental (tempered) log-weights.
             if φ_old == 0.0
                 logZ = particle_measurement_logZ(me_var, rows, log2pi)
                 @inbounds for p in 1:n_particles
-                    logw[p] = logZ + 0.5 * d_obs * log(φ_new) - 0.5 * φ_new * dvec[p]
+                    logw[p] = logZ + 0.5 * d_obs * log(φ_new) - 0.5 * φ_new * dv[p]
                 end
             else
                 lr = 0.5 * d_obs * (log(φ_new) - log(φ_old))
                 @inbounds for p in 1:n_particles
-                    logw[p] = lr - 0.5 * (φ_new - φ_old) * dvec[p]
+                    logw[p] = lr - 0.5 * (φ_new - φ_old) * dv[p]
                 end
             end
 
@@ -610,31 +861,41 @@ function run_particle_filter(::Val{algo},
             end
             period_ll += m + log(s) - log(n_particles)
 
-            # Normalise and resample.
             logsw = m + log(s)
-            Wn = Vector{Float64}(undef, n_particles)
             @inbounds for p in 1:n_particles
                 Wn[p] = exp(logw[p] - logsw)
             end
-            idx = particle_resample_indices(rng, Wn, resampling)
-            ancestors = ancestors[idx]
-            shocks = shocks[idx]
-            states = states[idx]
-            dvec = dvec[idx]
+            particle_resample_indices!(idx, bins, rng, Wn, resampling)
+            @inbounds for j in 1:n_particles
+                a = idx[j]
+                copy_particle!(anc2[j], anc[a]); copyto!(sh2[j], sh[a]); copy_particle!(st2[j], st[a]); dv2[j] = dv[a]
+            end
+            anc, anc2 = anc2, anc
+            sh,  sh2  = sh2,  sh
+            st,  st2  = st2,  st
+            dv,  dv2  = dv2,  dv
 
             # Mutation: random-walk Metropolis on the shocks, targeting the
             # stage-φ posterior  π(ε) ∝ N(ε;0,I) · exp(-φ/2 · e(ε)ᵀH⁻¹e(ε)).
             @inbounds for p in 1:n_particles
+                shp = sh[p]
                 for _ in 1:n_mh
-                    εp = shocks[p]
-                    εprop = εp .+ c .* randn(rng, nExo)
-                    sprop = state_update(ancestors[p], εprop)
-                    dprop = particle_quadratic_form(particle_full_state(sprop, pruning), data_col, observables_index, me_var, rows)
-                    logα = -0.5 * ((sum(abs2, εprop) - sum(abs2, εp)) + φ_new * (dprop - dvec[p]))
+                    Random.randn!(rng, eprop)
+                    esq_old = 0.0
+                    esq_new = 0.0
+                    for e in 1:nExo
+                        ep = shp[e] + c * eprop[e]
+                        eprop[e] = ep
+                        esq_new += ep * ep
+                        esq_old += shp[e] * shp[e]
+                    end
+                    higher_propagate!(Val(algo), sprop, anc[p], eprop, past_idx, 𝐒f, scr)
+                    dprop = particle_quadratic_form(measurement_full(sprop, full_buf), data_col, observables_index, me_var, rows)
+                    logα = -0.5 * ((esq_new - esq_old) + φ_new * (dprop - dv[p]))
                     if log(rand(rng)) < logα
-                        shocks[p] = εprop
-                        states[p] = sprop
-                        dvec[p] = dprop
+                        copyto!(shp, eprop)
+                        copy_particle!(st[p], sprop)
+                        dv[p] = dprop
                     end
                 end
             end
@@ -645,7 +906,11 @@ function run_particle_filter(::Val{algo},
         if t > presample_periods
             loglik += period_ll
         end
-        prev_states = states
+        # Carry the filtered states forward as next period's ancestors (copy so the
+        # `anc`/`st` pool identities stay stable for inference).
+        @inbounds for p in 1:n_particles
+            copy_particle!(anc[p], st[p])
+        end
     end
 
     return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
