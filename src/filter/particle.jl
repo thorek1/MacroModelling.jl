@@ -651,4 +651,557 @@ function run_particle_filter(::Val{algo},
     return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
 end
 
+
+# ── Optimised first-order (linear) fast paths ────────────────────────────────
+# For the linear state space the transition is  xₜ = A·xₜ₋₁[past] + B·εₜ. These
+# `::Val{:first_order}` methods replace the type-unstable, per-call-allocating
+# `state_update` closure with a typed, BLAS-backed (`mul!`), fully preallocated
+# implementation. Particle pools are double-buffered so resampling and the
+# tempered Metropolis mutation run in place, with no heap allocation in the hot
+# loop. (Higher orders use the generic methods above.) Buffer-reuse for the
+# resampling index/cumulative arrays follows LowLevelParticleFilters.jl.
+
+# In-place resampling: ancestor indices are written into `idx`; `bins` is a
+# cumulative-weight scratch used by the multinomial/residual schemes.
+function systematic_resample_indices!(idx::Vector{Int}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
+    N = length(W)
+    u0 = rand(rng) / N
+    c = W[1]; i = 1
+    @inbounds for j in 1:N
+        u = u0 + (j - 1) / N
+        while u > c && i < N; i += 1; c += W[i]; end
+        idx[j] = i
+    end
+    return idx
+end
+
+function stratified_resample_indices!(idx::Vector{Int}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
+    N = length(W)
+    c = W[1]; i = 1
+    @inbounds for j in 1:N
+        u = (j - 1 + rand(rng)) / N
+        while u > c && i < N; i += 1; c += W[i]; end
+        idx[j] = i
+    end
+    return idx
+end
+
+function multinomial_resample_indices!(idx::Vector{Int}, bins::Vector{Float64}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
+    N = length(W)
+    cumsum!(bins, W); bins[N] = one(eltype(bins))
+    @inbounds for j in 1:N
+        idx[j] = searchsortedfirst(bins, rand(rng))
+    end
+    return idx
+end
+
+function residual_resample_indices!(idx::Vector{Int}, bins::Vector{Float64}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
+    N = length(W)
+    k = 0
+    @inbounds for i in 1:N
+        ni = floor(Int, N * W[i])
+        for _ in 1:ni; k += 1; idx[k] = i; end
+    end
+    R = N - k
+    if R > 0
+        s = 0.0
+        @inbounds for i in 1:N
+            bins[i] = N * W[i] - floor(N * W[i]); s += bins[i]
+        end
+        if s <= 0
+            cumsum!(bins, W)
+        else
+            @inbounds for i in 1:N; bins[i] /= s; end
+            cumsum!(bins, bins)
+        end
+        bins[N] = one(eltype(bins))
+        @inbounds for _ in 1:R
+            k += 1; idx[k] = searchsortedfirst(bins, rand(rng))
+        end
+    end
+    return idx
+end
+
+@inline function particle_resample_indices!(idx::Vector{Int}, bins::Vector{Float64}, rng::Random.AbstractRNG, W::AbstractVector{<:Real}, scheme::Symbol)
+    if scheme == :systematic
+        systematic_resample_indices!(idx, rng, W)
+    elseif scheme == :stratified
+        stratified_resample_indices!(idx, rng, W)
+    elseif scheme == :multinomial
+        multinomial_resample_indices!(idx, bins, rng, W)
+    elseif scheme == :residual
+        residual_resample_indices!(idx, bins, rng, W)
+    else
+        error("Unknown resampling scheme `:$scheme`. Choose from `:systematic`, `:stratified`, `:multinomial`, `:residual`.")
+    end
+    return idx
+end
+
+# Typed, preallocated first-order transition xₜ = A·xₜ₋₁[past] + B·εₜ.
+# Particles are stored as the columns of an nVars × N matrix so that the whole
+# swarm is propagated with two BLAS gemm calls (Xₜ = A·Xₜ₋₁ + B·Eₜ) instead of
+# N small gemv calls. `A` is the full nVars × nVars one-step transition (zero
+# outside the predetermined-state columns), `B` the nVars × nExo shock loading.
+struct LinearParticleTransition
+    A::Matrix{Float64}
+    B::Matrix{Float64}
+end
+
+function build_linear_particle_transition(𝐒::AbstractMatrix, T)
+    nVars = T.nVars
+    nPast = T.nPast_not_future_and_mixed
+    S₁ = Matrix{Float64}(𝐒)
+    A = zeros(Float64, nVars, nVars)
+    @views A[:, T.past_not_future_and_mixed_idx] .= S₁[:, 1:nPast]
+    B = Matrix{Float64}(@view S₁[:, nPast+1:end])
+    return LinearParticleTransition(A, B)
+end
+
+# X₂ = A·X + B·E for the whole swarm at once (two gemm). Columns are particles.
+@inline function propagate_batch!(X2::Matrix{Float64}, tr::LinearParticleTransition, X::Matrix{Float64}, E::Matrix{Float64})
+    ℒ.mul!(X2, tr.A, X)
+    ℒ.mul!(X2, tr.B, E, 1.0, 1.0)
+    return X2
+end
+
+# Base = A·Anc (shock-independent part of the transition, one gemm; reused across
+# Metropolis proposals which only vary the shock B·E term).
+@inline function base_batch!(Base::Matrix{Float64}, tr::LinearParticleTransition, Anc::Matrix{Float64})
+    ℒ.mul!(Base, tr.A, Anc)
+    return Base
+end
+
+# Quadratic form eᵀH⁻¹e over the observed rows for particle column `p`.
+@inline function linear_quadform_col(X::Matrix{Float64}, p::Int, data_col, observables_index, inv_me_var, rows)
+    q = 0.0
+    @inbounds for k in eachindex(rows)
+        r = rows[k]
+        f = X[observables_index[r], p]
+        isfinite(f) || return Inf
+        v = data_col[r] - f
+        q += v * v * inv_me_var[r]
+    end
+    return q
+end
+
+# Copy column `src` of `X` into column `dst` of `Y` (contiguous, allocation-free).
+@inline function copy_col!(Y::Matrix{Float64}, dst::Int, X::Matrix{Float64}, src::Int)
+    @inbounds for i in axes(X, 1)
+        Y[i, dst] = X[i, src]
+    end
+    return Y
+end
+
+# Draw the initial cloud into the columns of X (nVars × N): X = mean0 .+ L·Z.
+function init_linear_particles!(X::Matrix{Float64}, rng::Random.AbstractRNG,
+                                mean0::AbstractVector{Float64}, L::Matrix{Float64}, Z::Matrix{Float64})
+    Random.randn!(rng, Z)
+    ℒ.mul!(X, L, Z)
+    @inbounds for p in axes(X, 2), i in axes(X, 1)
+        X[i, p] += mean0[i]
+    end
+    return X
+end
+
+function run_particle_filter(::Val{:first_order},
+                             ::Val{:bootstrap},
+                             observables_index::Vector{Int},
+                             𝐒,
+                             data_in_deviations::AbstractMatrix,
+                             constants::constants,
+                             state,
+                             𝓂::ℳ,
+                             measurement_error_variances::AbstractVector{<:Real},
+                             obs_idx_per_t::Vector{Vector{Int}},
+                             has_missing::Bool;
+                             n_particles::Int = DEFAULT_N_PARTICLES,
+                             resampling::Symbol = DEFAULT_RESAMPLING,
+                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
+                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
+                             rng::Random.AbstractRNG = Random.default_rng(),
+                             presample_periods::Int = 0,
+                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                             on_failure_loglikelihood::Real = -Inf,
+                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             opts::CalculationOptions = merge_calculation_options())::Float64
+    T = constants.post_model_macro
+    nVars = T.nVars
+    nExo  = T.nExo
+    nT    = size(data_in_deviations, 2)
+    presample_periods = normalize_presample_periods(presample_periods, nT)
+    log2pi = log(2π)
+
+    me_var = Float64.(measurement_error_variances)
+    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    inv_me_var = 1.0 ./ me_var
+
+    tr = build_linear_particle_transition(𝐒, T)
+    Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
+    L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
+
+    X  = Matrix{Float64}(undef, nVars, n_particles)
+    X2 = Matrix{Float64}(undef, nVars, n_particles)
+    E  = Matrix{Float64}(undef, nExo, n_particles)
+    Z  = Matrix{Float64}(undef, nVars, n_particles)
+    W = fill(1.0 / n_particles, n_particles)
+    logdens = Vector{Float64}(undef, n_particles)
+    idx  = Vector{Int}(undef, n_particles)
+    bins = Vector{Float64}(undef, n_particles)
+
+    mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
+    init_linear_particles!(X, rng, mean0, L, Z)
+
+    loglik = 0.0
+    for t in 1:nT
+        rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
+        data_col = @view data_in_deviations[:, t]
+
+        Random.randn!(rng, E)
+        propagate_batch!(X2, tr, X, E)
+        X, X2 = X2, X
+
+        isempty(rows) && continue
+
+        logZ = particle_measurement_logZ(me_var, rows, log2pi)
+        @inbounds for p in 1:n_particles
+            logdens[p] = logZ - 0.5 * linear_quadform_col(X, p, data_col, observables_index, inv_me_var, rows)
+        end
+
+        m = maximum(logdens)
+        if !isfinite(m)
+            return Float64(on_failure_loglikelihood)
+        end
+        s = 0.0
+        @inbounds for p in 1:n_particles
+            s += W[p] * exp(logdens[p] - m)
+        end
+        if s <= 0 || !isfinite(s)
+            return Float64(on_failure_loglikelihood)
+        end
+
+        ll_t = m + log(s)
+        if t > presample_periods
+            loglik += ll_t
+        end
+
+        @inbounds for p in 1:n_particles
+            W[p] = W[p] * exp(logdens[p] - m) / s
+        end
+
+        if effective_sample_size(W) < resampling_threshold * n_particles
+            particle_resample_indices!(idx, bins, rng, W, resampling)
+            @inbounds for j in 1:n_particles
+                copy_col!(X2, j, X, idx[j])
+            end
+            X, X2 = X2, X
+            fill!(W, 1.0 / n_particles)
+        end
+    end
+
+    return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
+end
+
+
+function run_particle_filter(::Val{:first_order},
+                             ::Val{:auxiliary},
+                             observables_index::Vector{Int},
+                             𝐒,
+                             data_in_deviations::AbstractMatrix,
+                             constants::constants,
+                             state,
+                             𝓂::ℳ,
+                             measurement_error_variances::AbstractVector{<:Real},
+                             obs_idx_per_t::Vector{Vector{Int}},
+                             has_missing::Bool;
+                             n_particles::Int = DEFAULT_N_PARTICLES,
+                             resampling::Symbol = DEFAULT_RESAMPLING,
+                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
+                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
+                             rng::Random.AbstractRNG = Random.default_rng(),
+                             presample_periods::Int = 0,
+                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                             on_failure_loglikelihood::Real = -Inf,
+                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             opts::CalculationOptions = merge_calculation_options())::Float64
+    T = constants.post_model_macro
+    nVars = T.nVars
+    nExo  = T.nExo
+    nT    = size(data_in_deviations, 2)
+    presample_periods = normalize_presample_periods(presample_periods, nT)
+    log2pi = log(2π)
+
+    me_var = Float64.(measurement_error_variances)
+    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    inv_me_var = 1.0 ./ me_var
+
+    tr = build_linear_particle_transition(𝐒, T)
+
+    # Predictive variance of each observable (shock spread + measurement error).
+    pred_var = Vector{Float64}(undef, length(observables_index))
+    @inbounds for i in eachindex(observables_index)
+        pred_var[i] = sum(abs2, @view tr.B[observables_index[i], :]) + me_var[i]
+    end
+    inv_pred_var = 1.0 ./ pred_var
+
+    Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
+    L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
+
+    X    = Matrix{Float64}(undef, nVars, n_particles)
+    X2   = Matrix{Float64}(undef, nVars, n_particles)
+    AncX = Matrix{Float64}(undef, nVars, n_particles)
+    E    = Matrix{Float64}(undef, nExo,  n_particles)
+    W = fill(1.0 / n_particles, n_particles)
+    logg̃ = Vector{Float64}(undef, n_particles)
+    logw = Vector{Float64}(undef, n_particles)
+    lam  = Vector{Float64}(undef, n_particles)
+    idx  = Vector{Int}(undef, n_particles)
+    bins = Vector{Float64}(undef, n_particles)
+
+    mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
+    init_linear_particles!(X, rng, mean0, L, AncX)
+
+    loglik = 0.0
+    for t in 1:nT
+        rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
+        data_col = @view data_in_deviations[:, t]
+        logZ  = particle_measurement_logZ(me_var, rows, log2pi)
+        logZp = particle_measurement_logZ(pred_var, rows, log2pi)
+
+        # First stage: predictive density at the transition mean μ = A·X (one gemm).
+        base_batch!(X2, tr, X)
+        @inbounds for p in 1:n_particles
+            logg̃[p] = logZp - 0.5 * linear_quadform_col(X2, p, data_col, observables_index, inv_pred_var, rows)
+        end
+
+        mλ = -Inf
+        @inbounds for p in 1:n_particles
+            lλ = log(W[p]) + logg̃[p]
+            mλ = lλ > mλ ? lλ : mλ
+        end
+        if !isfinite(mλ)
+            return Float64(on_failure_loglikelihood)
+        end
+        sλ = 0.0
+        @inbounds for p in 1:n_particles
+            sλ += exp(log(W[p]) + logg̃[p] - mλ)
+        end
+        logκ = mλ + log(sλ)
+        @inbounds for p in 1:n_particles
+            lam[p] = exp(log(W[p]) + logg̃[p] - logκ)
+        end
+
+        # Resample ancestors ∝ λ, gather them, and propagate with fresh shocks.
+        particle_resample_indices!(idx, bins, rng, lam, resampling)
+        @inbounds for j in 1:n_particles
+            copy_col!(AncX, j, X, idx[j])
+        end
+        Random.randn!(rng, E)
+        propagate_batch!(X2, tr, AncX, E)
+        @inbounds for j in 1:n_particles
+            logw[j] = (logZ - 0.5 * linear_quadform_col(X2, j, data_col, observables_index, inv_me_var, rows)) - logg̃[idx[j]]
+        end
+        X, X2 = X2, X
+
+        mw = maximum(logw)
+        if !isfinite(mw)
+            return Float64(on_failure_loglikelihood)
+        end
+        sw = 0.0
+        @inbounds for j in 1:n_particles
+            sw += exp(logw[j] - mw)
+        end
+        if sw <= 0 || !isfinite(sw)
+            return Float64(on_failure_loglikelihood)
+        end
+
+        ll_t = logκ + (mw + log(sw) - log(n_particles))
+        if t > presample_periods
+            loglik += ll_t
+        end
+
+        logsw = mw + log(sw)
+        @inbounds for j in 1:n_particles
+            W[j] = exp(logw[j] - logsw)
+        end
+    end
+
+    return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
+end
+
+
+function run_particle_filter(::Val{:first_order},
+                             ::Val{:tempered},
+                             observables_index::Vector{Int},
+                             𝐒,
+                             data_in_deviations::AbstractMatrix,
+                             constants::constants,
+                             state,
+                             𝓂::ℳ,
+                             measurement_error_variances::AbstractVector{<:Real},
+                             obs_idx_per_t::Vector{Vector{Int}},
+                             has_missing::Bool;
+                             n_particles::Int = DEFAULT_N_PARTICLES,
+                             resampling::Symbol = DEFAULT_RESAMPLING,
+                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
+                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
+                             rng::Random.AbstractRNG = Random.default_rng(),
+                             presample_periods::Int = 0,
+                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                             on_failure_loglikelihood::Real = -Inf,
+                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             opts::CalculationOptions = merge_calculation_options())::Float64
+    T = constants.post_model_macro
+    nVars = T.nVars
+    nExo  = T.nExo
+    nT    = size(data_in_deviations, 2)
+    presample_periods = normalize_presample_periods(presample_periods, nT)
+    log2pi = log(2π)
+
+    me_var = Float64.(measurement_error_variances)
+    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    inv_me_var = 1.0 ./ me_var
+
+    r_star = Float64(tempering_target_ratio)
+    c = Float64(tempering_mh_scale)
+    n_mh = tempering_mh_steps
+    max_stages = tempering_max_stages
+
+    tr = build_linear_particle_transition(𝐒, T)
+    Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
+    L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
+
+    # Double-buffered particle pools (columns are particles).
+    Anc  = Matrix{Float64}(undef, nVars, n_particles)
+    Anc2 = Matrix{Float64}(undef, nVars, n_particles)
+    Sh   = Matrix{Float64}(undef, nExo,  n_particles)
+    Sh2  = Matrix{Float64}(undef, nExo,  n_particles)
+    St   = Matrix{Float64}(undef, nVars, n_particles)
+    St2  = Matrix{Float64}(undef, nVars, n_particles)
+    dv   = Vector{Float64}(undef, n_particles)
+    dv2  = Vector{Float64}(undef, n_particles)
+
+    Base  = Matrix{Float64}(undef, nVars, n_particles)
+    Sprop = Matrix{Float64}(undef, nVars, n_particles)
+    Eprop = Matrix{Float64}(undef, nExo,  n_particles)
+    logw  = Vector{Float64}(undef, n_particles)
+    Wn    = Vector{Float64}(undef, n_particles)
+    idx   = Vector{Int}(undef, n_particles)
+    bins  = Vector{Float64}(undef, n_particles)
+
+    mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
+    init_linear_particles!(St, rng, mean0, L, Anc2)
+
+    loglik = 0.0
+    for t in 1:nT
+        rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
+        data_col = @view data_in_deviations[:, t]
+        d_obs = length(rows)
+
+        # Ancestors = previous filtered states; propagate the whole swarm (2 gemm).
+        copyto!(Anc, St)
+        Random.randn!(rng, Sh)
+        propagate_batch!(St, tr, Anc, Sh)
+        @inbounds for p in 1:n_particles
+            dv[p] = linear_quadform_col(St, p, data_col, observables_index, inv_me_var, rows)
+        end
+        if all(!isfinite, dv)
+            return Float64(on_failure_loglikelihood)
+        end
+
+        logZ = particle_measurement_logZ(me_var, rows, log2pi)
+        period_ll = 0.0
+        φ_old = 0.0
+        stage = 0
+        while φ_old < 1.0 - 1e-12 && stage < max_stages
+            stage += 1
+            φ_new = tempered_next_phi(φ_old, dv, r_star, n_particles)
+
+            if φ_old == 0.0
+                @inbounds for p in 1:n_particles
+                    logw[p] = logZ + 0.5 * d_obs * log(φ_new) - 0.5 * φ_new * dv[p]
+                end
+            else
+                lr = 0.5 * d_obs * (log(φ_new) - log(φ_old))
+                @inbounds for p in 1:n_particles
+                    logw[p] = lr - 0.5 * (φ_new - φ_old) * dv[p]
+                end
+            end
+
+            m = maximum(logw)
+            if !isfinite(m)
+                return Float64(on_failure_loglikelihood)
+            end
+            s = 0.0
+            @inbounds for p in 1:n_particles
+                s += exp(logw[p] - m)
+            end
+            if s <= 0 || !isfinite(s)
+                return Float64(on_failure_loglikelihood)
+            end
+            period_ll += m + log(s) - log(n_particles)
+
+            logsw = m + log(s)
+            @inbounds for p in 1:n_particles
+                Wn[p] = exp(logw[p] - logsw)
+            end
+
+            particle_resample_indices!(idx, bins, rng, Wn, resampling)
+            @inbounds for j in 1:n_particles
+                a = idx[j]
+                copy_col!(Anc2, j, Anc, a); copy_col!(Sh2, j, Sh, a); copy_col!(St2, j, St, a); dv2[j] = dv[a]
+            end
+            Anc, Anc2 = Anc2, Anc
+            Sh,  Sh2  = Sh2,  Sh
+            St,  St2  = St2,  St
+            dv,  dv2  = dv2,  dv
+
+            # Metropolis mutation on the shocks. Base = A·Anc is shock-independent
+            # (one gemm); each proposal only recomputes the batched shock term
+            # B·Eprop before per-particle accept/reject.
+            base_batch!(Base, tr, Anc)
+            for _ in 1:n_mh
+                Random.randn!(rng, Eprop)
+                @inbounds for k in eachindex(Eprop)
+                    Eprop[k] = Sh[k] + c * Eprop[k]
+                end
+                ℒ.mul!(Sprop, tr.B, Eprop)
+                Sprop .+= Base
+                @inbounds for p in 1:n_particles
+                    dprop = linear_quadform_col(Sprop, p, data_col, observables_index, inv_me_var, rows)
+                    esq_old = 0.0
+                    esq_new = 0.0
+                    for e in 1:nExo
+                        so = Sh[e, p]; sn = Eprop[e, p]
+                        esq_old += so * so
+                        esq_new += sn * sn
+                    end
+                    logα = -0.5 * ((esq_new - esq_old) + φ_new * (dprop - dv[p]))
+                    if log(rand(rng)) < logα
+                        copy_col!(Sh, p, Eprop, p)
+                        copy_col!(St, p, Sprop, p)
+                        dv[p] = dprop
+                    end
+                end
+            end
+
+            φ_old = φ_new
+        end
+
+        if t > presample_periods
+            loglik += period_ll
+        end
+    end
+
+    return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
+end
+
 end # @stable
