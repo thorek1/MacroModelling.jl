@@ -681,6 +681,23 @@ function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::
 end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
+    # Build the structural BGP profile before the raw NSSS setup reaches
+    # incidence-matrix construction. Pure additive candidates remain in the
+    # raw representation and can be handled by the generic affine route; they
+    # are not rejected before the solver gets a chance to identify them.
+    if 𝓂.equations.stationarization === nothing
+        profile = 𝓂.equations.bgp_detection
+        if profile === nothing
+            profile = build_bgp_detection_metadata(
+                𝓂.equations.original,
+                𝓂.constants.post_complete_parameters.parameters,
+                𝓂.parameter_values,
+            )
+            𝓂.equations.bgp_detection = profile
+        end
+        profile.mode == BGP_UNSUPPORTED_MODE && (ss_symbolic_mode = :none)
+    end
+
     avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
     use_symbolics = !𝓂.constants.post_parameters_macro.precompile
 

@@ -1084,10 +1084,6 @@ function reprocess_model_equations!(𝓂::ℳ,
 
     𝓂.parameter_values = parsed_parameters.parameter_values
 
-    if isempty(parsed_parameters.missing_parameters)
-        stationarize_model!(𝓂; verbose = verbose, silent = silent)
-    end
-
     finalize_model_update!(𝓂; verbose = verbose, silent = silent)
 
     return nothing

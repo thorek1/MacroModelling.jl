@@ -1,41 +1,33 @@
-# Automatic BGP Preprocessing and Steady-State Solution
+# BGP Fallback and Steady-State Solution
 
-This document explains what remains automatic in the BGP implementation,
-which parts of the numerical machinery are reused, how trend candidates are
-detected, and how this relates to the warning in Canova and
+This document explains the 3N-first BGP dispatch, which parts of the
+numerical machinery are reused, and how the restricted trend representation
+relates to the warning in Canova and
 Sæterhagen Paulsen that unit roots cannot generally be identified
 automatically.
 
 ## 1. Short answer
 
-The original automatic steady-state solver is still used. Active BGP models
-first receive structural growth metadata and a symbolic stationary
-representation for perturbation and moments. The default NSSS call then uses
-a cached raw-equation BGP shadow: it evaluates the original equations at two
-consecutive BGP points, assigns a gross factor to each timed endogenous
-variable, adds driver-level anchors, and sends that residual system to the
-ordinary solver. The processed stationary model is then passed to the
-ordinary derivative and perturbation infrastructure.
+The original automatic steady-state solver is still used. For a recognized
+active BGP, the default NSSS call first activates the stationary metadata and
+tries the cached raw affine 3N system. If that route fails, the raw equations
+are restored and the ordinary NSSS solver is used as the fallback. Stationary
+models retain the ordinary fast path, while unrecognized affine candidates
+can reach the generic affine route after an ordinary failure. After a
+successful BGP solve, the model records `bgp_detection.prefer_bgp = true`.
 
 The pipeline is:
 
 ```text
-raw equations
+recognized active BGP -> stationary metadata + affine 3N NSSS attempt
+    |
+    | failure
+    v
+raw equations -> ordinary NSSS fallback
     |
     v
-structural trend-candidate detection
+processed stationary model
     |
-    v
-symbolic growth restrictions
-    |
-    v
-multiplicative stationarization
-    |
-    v
-processed stationary model + raw BGP NSSS shadow
-    |                              |
-    |                              v
-    |                    automatic gross two-point NSSS solve
     v
 derivatives and perturbation solution
     |
@@ -372,9 +364,19 @@ The parser recognizes certain exact additive unit-root forms, such as:
 x[0] = x[-1] + u[0]
 ```
 
-These are rejected as unsupported multiplicative BGPs rather than silently
-being converted into gross growth factors. Mixed additive and multiplicative
-trend structures are rejected consistently.
+These are treated as log-coordinate trends only when all non-driver uses are
+inside `exp(...)`. The fallback then uses
+
+```julia
+ellᴳ[0] = exp(u[0])
+ell[0] = 0
+```
+
+and maps `ell[timing]` to `ell[0] + timing * log(ellᴳ[0])`. Additive roots
+used as generic levels remain in the raw representation. They are solved by
+ordinary NSSS or the generic affine route rather than silently converted into
+symbolic multiplicative stationary variables. Only the downstream symbolic
+perturbation representation requires the log-coordinate restriction.
 
 ### Parameter-trigger caching
 
@@ -383,11 +385,11 @@ factor contains a timed endogenous variable, the parser recursively follows
 the equations defining that variable and collects their parameter
 dependencies.
 
-These dependencies become cached integer `trigger_indices`. During estimation,
-only those parameter entries are compared against cached values. If none
-changed, the representation is retained. If they changed, candidates are
-reclassified and the model is rebuilt only if the mode or active driver set
-changes.
+These dependencies are retained in the BGP profile after fallback. During
+estimation, parameter updates refresh the numeric growth coefficients without
+rebuilding the representation. The profile's `prefer_bgp` bit is the state
+that changes the dispatch order; parameter values do not silently turn an
+already successful BGP representation off.
 
 ## 9. Is the steady-state solve still automatic?
 
@@ -401,16 +403,18 @@ trend equations is automatically:
 4. passed to the existing automatic NSSS solver;
 5. solved jointly for normalized levels and growth factors.
 
-The internal `get_NSSS_and_parameters` entry point uses the direct raw
-two-point route automatically for active BGP models. There is no separate
-NSSS-method switch: the generated stationary equations are used for
-perturbation, while the cached raw-equation representation supplies the NSSS.
+The internal `get_NSSS_and_parameters` entry point uses the direct affine 3N
+route first for recognized active BGPs and keeps ordinary NSSS as the
+fallback. There is no separate user-facing method switch: the generated
+stationary equations are used for perturbation, while the cached
+raw-equation representation supplies the BGP NSSS. Once successful, the BGP
+route is preferred on subsequent calls.
 
 For ordinary stationary models, the existing fast path remains active and no
 BGP stationarization is performed.
 
-The automatic solver was therefore not removed. It was generalized by adding
-an automatic preprocessing and dispatch layer, a raw BGP residual shadow, and
+The automatic solver was therefore not removed. The solver now has a direct
+3N-first BGP route, an ordinary raw fallback, a raw BGP residual shadow, and
 BGP-specific handling in the NSSS setup and public result mapping.
 
 ## 10. Relation to Canova and Sæterhagen Paulsen
@@ -497,14 +501,15 @@ model evaluation, not a plausible-looking conventional fixed point.
 ## 12. Summary
 
 The implementation preserves the automatic steady-state solver, but adds a
-restricted automatic preprocessing layer:
+direct affine BGP layer with a safe fallback:
 
 ```text
-recognize supported multiplicative trend laws
-    -> derive symbolic growth restrictions
-    -> generate a stationary BGP system
-    -> solve normalized levels and growth factors automatically
-    -> reuse the stationary numerical machinery
+recognized active trend law
+    -> derive symbolic stationary metadata
+    -> solve raw affine levels and growth factors automatically
+    -> if it fails, restore the raw model and use ordinary NSSS
+pure additive or unrecognized candidate
+    -> use raw ordinary NSSS, with generic affine fallback available
 ```
 
 The automatic part begins after a structural trend representation has been

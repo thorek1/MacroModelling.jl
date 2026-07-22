@@ -388,16 +388,18 @@ The user must still:
 - inspect failures when the model has multiple possible trend
   classifications.
 
-The implementation intentionally rejects pure additive random walks such as
+The raw affine NSSS layer can solve pure additive random walks such as
 
 ```julia
 x[0] = x[-1] + g
 ```
 
-and does not silently reinterpret an explosive additive level process as a
-positive growth factor. For example, the original additive/explosive
-`RBCexpect` process must be rewritten so that the variable entering the level
-law is a compatible multiplicative gross-growth factor.
+without silently reinterpreting them as multiplicative. The symbolic
+stationary perturbation representation still requires a positive level
+interpretation; for that downstream path an additive law must be a log
+coordinate used inside `exp(...)`, in which case its increment maps to
+`exp(g)`. Otherwise it remains in the raw representation and uses ordinary
+NSSS or the generic affine fallback.
 
 The method also does not prove BGP existence or uniqueness for arbitrary
 nonlinear models. It derives necessary growth consistency conditions under

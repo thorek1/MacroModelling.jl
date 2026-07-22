@@ -59,6 +59,10 @@
 # using ForwardDiff
 
 # =============================================================================
+
+is_bgp_growth_name(name::Symbol) = endswith(string(name), "ᴳ")
+is_bgp_affine_intercept_name(name::Symbol) = endswith(string(name), "ᴬ")
+is_bgp_affine_name(name::Symbol) = is_bgp_growth_name(name) || is_bgp_affine_intercept_name(name)
 # STRUCTURES OVERVIEW
 # =============================================================================
 #
@@ -114,11 +118,14 @@ mutable struct bgp_detection_metadata
     candidate_factors::Vector{Union{Nothing, Real, Symbol, Expr}}
     candidate_has_timed_variables::BitVector
     additive_candidates::Vector{Symbol}
+    additive_log_candidates::Vector{Symbol}
     trigger_parameters::Vector{Symbol}
     trigger_indices::Vector{Int}
     trigger_values::Vector{Float64}
     parameter_indices::Dict{Symbol, Int}
     mode::UInt8
+    # Set only after the BGP fallback has successfully solved the model.
+    prefer_bgp::Bool
 end
 
 mutable struct equations

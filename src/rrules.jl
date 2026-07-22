@@ -528,6 +528,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # @timeit_debug timer "Calculate NSSS - forward" begin
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
     ms = 𝓂.constants.post_complete_parameters
+    used_main_nsss_dispatch = false
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.functions.NSSS_custom isa Function
@@ -555,21 +556,30 @@ function rrule(::typeof(get_NSSS_and_parameters),
         X = ms.custom_ss_expand_matrix
         SS_and_pars = X * SS_and_pars_tmp
     else
-        fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
-        preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
-        SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
+        used_main_nsss_dispatch = true
+        SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(
+            𝓂,
+            parameter_values;
+            opts = opts,
+            cold_start = cold_start,
+            estimation = estimation,
+            caching = false,
+        )
+        # The NSSS dispatch may activate the BGP representation before its
+        # ordinary raw fallback.
+        ms = 𝓂.constants.post_complete_parameters
     end
 
     # end # timeit_debug
 
     if solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error)
         # Update failed counter
-        update_ss_counter!(𝓂.counters, false, estimation = estimation)
+        used_main_nsss_dispatch || update_ss_counter!(𝓂.counters, false, estimation = estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # Update success counter
-    update_ss_counter!(𝓂.counters, true, estimation = estimation)
+    used_main_nsss_dispatch || update_ss_counter!(𝓂.counters, true, estimation = estimation)
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 

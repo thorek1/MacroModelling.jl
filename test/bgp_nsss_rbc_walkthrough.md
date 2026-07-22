@@ -7,7 +7,7 @@ capital accumulation, production, and a forward Euler equation.
 
 The important distinction is:
 
-- the raw two-point construction below is used only to obtain the BGP NSSS;
+- the raw three-date affine construction below is used only to obtain the BGP NSSS;
 - the symbolic stationarized model is retained for perturbation, moments, and
   expectations after the NSSS has been found.
 
@@ -54,10 +54,52 @@ The stars are omitted in the code-generated expressions: the symbols `a`,
 `k`, `y`, and `c` denote the normalized NSSS levels, while `aᴳ`, `kᴳ`,
 `yᴳ`, and `cᴳ` denote the hidden gross-growth unknowns.
 
-## 2. The two-point substitution
+## 2. The three-date affine substitution
 
-The direct BGP NSSS construction evaluates every original equation at two
-time origins, (s=0) and (s=1). A timed endogenous reference is replaced
+The current direct NSSS construction does not assume that a variable's growth
+is additive or multiplicative. For every endogenous variable it introduces a
+reference level `x`, an intercept `xᴬ`, and a multiplier `xᴳ`:
+
+```math
+x_{t+1}=A_x+G_xx_t.
+```
+
+For a time-origin shift `s`, define
+
+```math
+\begin{aligned}
+F_x(0)&=x^*,\\
+F_x(k+1)&=A_x+G_xF_x(k),\\
+F_x(k-1)&=(F_x(k)-A_x)/G_x.
+\end{aligned}
+```
+
+Every timed reference is replaced by `F_x(timing + s)`, and every original
+equation is generated at `s = 0, 1, 2`. With `N` endogenous variables this
+gives `3N` equations for the `3N` unknowns consisting of the levels, all
+intercepts, and all multipliers. The existing NSSS block solver then solves
+this temporary ordinary model.
+
+The solved coefficients classify growth without an equation-pattern choice:
+
+| Coefficients | Interpretation |
+| --- | --- |
+| `xᴬ ≈ 0`, `xᴳ ≈ 1` | stationary variable |
+| `xᴬ ≠ 0`, `xᴳ ≈ 1` | additive growth |
+| `xᴬ ≈ 0`, `xᴳ ≠ 1` | multiplicative growth |
+
+For an additive log coordinate `ell` used in `exp(ell)`, the raw solve gives
+`ellᴬ = μ`, `ellᴳ = 1`; the associated positive level growth factor is
+`exp(ellᴬ)`. This is why the same system handles the forward-looking example
+with `c[1]` and `exp(z[0])`.
+
+The following formulas describe the multiplicative specialization of this
+recursion. They are useful for checking the RBC algebra, but the implementation
+now solves the general affine system above.
+
+When `xᴬ = 0`, the affine recursion reduces to the familiar two-point
+multiplicative specialization. It evaluates the equations at `s=0` and `s=1`.
+A timed endogenous reference is replaced
 according to
 
 ```math
@@ -102,7 +144,7 @@ driver is anchored to one. Here that anchor is
 a^*=1.
 ```
 
-### 2.1 What is arbitrary, and what is not?
+### 2.2 What is arbitrary, and what is not?
 
 The anchor \(a^*=1\) is a normalization of the level's units. It is not a
 normalization of technology growth. The growth factor remains an unknown and
@@ -120,9 +162,8 @@ and the compatible levels of the other variables. It would not change the
 growth factors or the stationary dynamics. The normalization simply chooses
 one representative from the family of level-scaled BGPs.
 
-The shifted technology equation is not transformed differently from the
-other equations. It is transformed and then deliberately omitted because it
-is exactly redundant. The two residuals would be
+In the multiplicative specialization, the shifted technology equation is
+redundant. The two residuals would be
 
 ```math
 R_{a,0}=a-g_Aa/G_a
@@ -138,11 +179,10 @@ R_{a,1}=aG_a-g_Aa
 ```
 
 Thus the shift-1 copy adds no independent restriction. The shift-0 copy
-identifies \(G_a\), while \(a^*=1\) fixes the otherwise arbitrary level. In
-the implementation, the shifted copy of every recognized driver-growth law
-is skipped for exactly this reason. Shifted copies of the other equations
-are retained because they identify the implied growth factors of variables
-that do not have their own direct growth law.
+identifies \(G_a\), while \(a^*=1\) fixes the otherwise arbitrary level. The
+current three-date affine implementation retains all copies and lets the
+rank-aware NSSS setup anchor only free levels; it does not need to skip a
+driver law.
 
 For several independent technology, population, or other trend drivers,
 one level anchor is added for each independent driver. The anchors remove
@@ -181,7 +221,7 @@ This distinction gives three cases:
 | --- | --- |
 | Stationary AR process for a log shock or log growth factor | Compatible; `log`/`exp` remain inside the stationary model |
 | Nonstationary level law \(a_t=g_ta_{t-1}\), where \(\log g_t\) is stationary | Compatible; this is the intended multiplicative BGP form |
-| Additive log-level unit root \(\ell a_t=\ell a_{t-1}+\mu+\varepsilon_t\) | Not automatically supported; it is classified as an additive unit root |
+| Additive log-level unit root \(\ell a_t=\ell a_{t-1}+\mu+\varepsilon_t\) | Solvable by raw affine NSSS; the symbolic stationary perturbation path uses it as a gross factor only when the log variable is used as an exponent, e.g. `exp(ella)` |
 
 The last case is mathematically related to multiplicative growth because
 
@@ -191,8 +231,12 @@ The last case is mathematically related to multiplicative growth because
 a_t=G_ta_{t-1}.
 ```
 
-However, the current automatic detector does not infer that equivalence from
-an additive equation written for `ell a`. It expects the level-side form
+The fallback path recognizes this restricted log-coordinate form when the
+additive variable is used inside `exp(...)`. It rewrites its growth equation
+as a gross factor, `ellaᴳ[0] = exp(mu + sigma * e[x])`, anchors `ella[0] = 0`,
+and carries references through the affine system using `ellaᴬ` and `ellaᴳ`.
+At the solved root this is equivalent to `ella[0] + timing * log(ellaᴳ[0])`.
+It expects the level-side form
 
 ```julia
 gA[0] = exp(mu + sigma * e[x])
@@ -206,14 +250,22 @@ law. A direct additive log-level equation such as
 ella[0] = ella[-1] + mu + sigma * e[x]
 ```
 
-is therefore rejected rather than silently treated as a gross-growth law.
-Likewise, `log` of a genuinely trending level is not treated as stationary
-by the symbolic restriction code; logarithms of stationary quantities are
-fine. If a model is written entirely in log deviations around a fixed
-steady state, those variables are stationary and follow the ordinary NSSS
-path rather than the BGP path.
+is retained as a raw affine NSSS candidate rather than silently treated as a
+gross-growth law. When that additive coordinate is used inside `exp(...)`,
+the raw affine solve can identify its increment and the perturbation wrapper
+can use the corresponding gross factor. A log-coordinate trend used
+additively outside `exp(...)` is not included in the symbolic stationary
+perturbation representation because it cannot be made stationary by a
+multiplicative BGP normalization. Stationary log shocks remain fully
+compatible.
 
-## 3. The transformed RBC equations
+## 3. The transformed RBC equations (multiplicative specialization)
+
+The equations in this section display the `xᴬ = 0` two-point specialization
+to keep the RBC algebra compact. The current implementation also introduces
+`aᴬ`, `kᴬ`, `yᴬ`, and `cᴬ`, retains the complete `s = 0, 1, 2` equation copies,
+and therefore solves twelve equations for twelve affine unknowns. The extra
+`s = 2` copy is generated by the same recursion in Section 2.
 
 The ordinary NSSS solver works with residuals, so each equality below means
 “left-hand side minus right-hand side equals zero”. The equations are shown
@@ -297,7 +349,8 @@ and parameter vector
 \theta=\begin{bmatrix}g_A & \alpha & \beta & \delta\end{bmatrix}^{\prime}.
 ```
 
-There are eight transformed equations for eight NSSS unknowns:
+The multiplicative specialization has eight displayed residuals for eight
+displayed unknowns:
 
 ```math
 \begin{aligned}
@@ -313,8 +366,9 @@ R_8&=a-1.
 \end{aligned}
 ```
 
-This is the exact multiplicative two-point problem. No additive increment
-such as (x^G) is introduced, and no post-solution differencing is needed.
+This is the exact multiplicative specialization. The live solver uses the
+general affine system and does not introduce a post-solution differencing
+step.
 
 ## 4. What solution does this system represent?
 
@@ -361,7 +415,8 @@ does not change the BGP growth factors or the stationary dynamics.
 
 ## 5. How this enters the existing NSSS solver
 
-The implementation has two model representations for an active BGP:
+The implementation has two model representations after a BGP fallback has
+been activated:
 
 1. the processed symbolic stationarized model, used by perturbation and
    moments;
@@ -370,18 +425,25 @@ The implementation has two model representations for an active BGP:
 The call path for the default `Float64` NSSS request is:
 
 ```text
-get_NSSS_and_parameters(active_model, parameters)
+get_NSSS_and_parameters(raw_model, parameters)
     |
-    | active stationarization and no custom NSSS function
+    | recognized active BGP: affine 3N NSSS attempt
+    v
+activate BGP metadata and record prefer_bgp
+    |
     v
 direct_bgp_nsss_and_parameters(active_model, parameters)
+    |
+    | if the direct route fails, restore raw equations
+    v
+ordinary raw NSSS fallback
     |
     v
 ensure_direct_bgp_steady_state_model!
     |
     | deepcopy active model and restore original equations
-    | build shift-0 and shift-1 raw residual equations
-    | add driver-level anchors
+    | build shift-0, shift-1, and shift-2 raw affine residual equations
+    | add rank-aware level normalizations
     | process them as an ordinary temporary model
     v
 get_NSSS_and_parameters(raw_bgp_model, parameters)
@@ -395,7 +457,9 @@ write_steady_state_solver_function!
 solve_nsss_wrapper -> solve_nsss_steps -> block solvers
 ```
 
-The recursive-looking call is intentional. The temporary raw BGP model has
+If `prefer_bgp` is already recorded, the direct path is tried first and the
+ordinary raw path remains the last-resort fallback. The recursive-looking call
+inside the temporary model is intentional. The temporary raw BGP model has
 already had its equations transformed into an ordinary stationary residual
 system, so its second `get_NSSS_and_parameters` call does not dispatch back
 to the BGP path.
@@ -406,12 +470,13 @@ The implementation in
 [`src/perturbation/direct_bgp.jl`](../src/perturbation/direct_bgp.jl)
 performs the following operations:
 
-1. Copy the original equations and the active trend-driver list.
-2. For `shift in (0, 1)`, replace every timed endogenous reference by
-   `level * growth_factor^(timing + shift)`.
-3. Skip only the shifted copy of each driver-growth law.
-4. Append `driver[0] = 1` for each independent trend driver.
-5. Pass the transformed equations through `process_model_equations`.
+1. Copy the original equations and all endogenous variable names.
+2. Introduce `xᴬ` and `xᴳ` for every endogenous `x`.
+3. For `shift in (0, 1, 2)`, replace every timed endogenous reference by the
+   recursive affine value `F_x(timing + shift)`.
+4. Pass all `3N` transformed equations through `process_model_equations`.
+5. Add only the level normalizations required by the rank-aware NSSS setup;
+   no growth-law pattern is skipped.
 6. Set the temporary model's stationarization metadata to `nothing`.
 7. Call `set_up_steady_state_solver!` on this temporary model.
 
@@ -419,11 +484,12 @@ For the RBC example, the temporary processed model therefore has the
 ordinary NSSS variables
 
 ```julia
-[:a, :c, :k, :y, :aᴳ, :cᴳ, :kᴳ, :yᴳ]
+[:a, :c, :k, :y, :aᴬ, :aᴳ, :cᴬ, :cᴳ, :kᴬ, :kᴳ, :yᴬ, :yᴳ]
 ```
 
 up to the package's deterministic variable ordering. Its generated equation
-functions evaluate the eight residuals (R_1,ldots,R_8) above.
+functions evaluate all twelve affine residuals; the eight residuals above are
+only the compact multiplicative specialization.
 
 ### 5.2 Building the NSSS solve structure
 
@@ -439,10 +505,10 @@ constructs the same structures used for an ordinary stationary model:
 - `nsss_sol_names`, the full internal solution ordering;
 - `nsss_output_indices`, the public output selection.
 
-For this example, the internal unknown vector contains all four levels and
-all four gross factors. There are no hidden “trend paths” or infinite
-sequences in the nonlinear solver: only the normalized reference levels and
-one factor per timed endogenous variable are solved.
+For this example, the internal unknown vector contains all four levels, four
+affine intercepts, and four multipliers. There are no hidden “trend paths” or
+infinite sequences in the nonlinear solver: only the normalized reference
+levels and one affine recurrence per timed endogenous variable are solved.
 
 The incidence matrix is used to find which equations can be solved for which
 unknowns. Analytical blocks are evaluated directly when available. Numerical
@@ -465,7 +531,7 @@ parameter vector is not already solved.
    pair.
 
 For a successful solution, the raw temporary model's full workspace buffer
-contains the eight values shown above. The direct BGP wrapper copies those
+contains the twelve affine values shown above. The direct BGP wrapper copies those
 values into the active model by matching `nsss_sol_names`. It then uses the
 active model's `nsss_output_indices` to return only public normalized levels
 and calibrated parameters. The hidden `ᴳ` values remain in the active
@@ -473,7 +539,7 @@ workspace because perturbation needs them.
 
 ## 6. What happens after NSSS?
 
-The raw two-point representation is not used to construct a second
+The raw affine representation is not used to construct a second
 perturbation algorithm. Once the direct NSSS has supplied the levels and
 growth factors, the active processed stationary model is used normally:
 
@@ -507,7 +573,7 @@ The main implementation points are:
 - [`get_NSSS_and_parameters`](../src/MacroModelling.jl) — dispatches active
   BGP `Float64` requests to the direct path;
 - [`direct_bgp.jl`](../src/perturbation/direct_bgp.jl) — constructs and caches
-  the raw two-point model and maps its full solution back to the active model;
+  the raw three-date affine model and maps its full solution back to the active model;
 - [`nsss_solver.jl`](../src/steady_state/nsss_solver.jl) — builds the ordinary
   NSSS blocks, executes them, applies continuation, and checks residuals;
 - [`moments.jl`](../src/moments.jl) — reconstructs the full internal BGP

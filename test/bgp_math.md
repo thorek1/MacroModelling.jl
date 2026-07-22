@@ -108,15 +108,17 @@ H_t^i = \prod_j H_t^{A_j\,b_{ij}},
 G_t^i = \prod_j (G_t^{A_j})^{b_{ij}}.
 ```
 
-Rank-deficient or inconsistent restrictions are errors. The implementation
-also rejects pure additive unit-root laws such as
+Rank-deficient or inconsistent restrictions are errors. The raw affine NSSS
+layer can solve pure additive unit-root laws such as
 
 ```julia
 x[0] = x[-1] + g
 ```
 
-because they do not define a positive multiplicative gross-growth factor
-without changing the model.
+without first classifying them as multiplicative. They are not, however,
+admitted to the symbolic stationary perturbation representation unless the
+variable is a log coordinate used inside `exp(...)`, where the increment can
+be mapped to the gross factor `exp(g)`.
 
 ## 3. Rewriting dynamic equations
 
@@ -254,7 +256,7 @@ They are filtered only when results are returned through the public API.
 ### Native perturbation path at higher order
 
 The direct BGP method changes the NSSS input, not the perturbation derivative
-engine. After the raw two-point solve, the complete internal BGP vector is
+engine. After the raw three-date affine solve, the complete internal BGP vector is
 reconstructed, including hidden growth-factor variables. The ordinary
 stationary Jacobian, Hessian, and third-order derivative functions then
 evaluate the already stationarized equations on that vector.
@@ -286,11 +288,11 @@ It then tried to repair IRFs and covariances after solving. That approach:
 5. handled forward-looking terms without the paper's explicit lead growth
    factor.
 
-The current implementation uses exact gross factors in the raw two-point NSSS
-cache and the symbolic stationary representation for derivatives,
+The current implementation uses affine intercepts and multipliers in the raw
+three-date NSSS cache and the symbolic stationary representation for derivatives,
 perturbation, moments, and expectations. Original equations are retained for
 rebuilding the cache, while the default NSSS path solves both normalized
-levels and gross factors directly.
+levels and affine growth coefficients directly.
 
 ## 8. Implementation representation
 
@@ -305,6 +307,7 @@ The stationarization metadata contains:
 ```julia
 stationarization_metadata(
     trend_drivers,
+    additive_log_drivers,
     trending_variables,
     growth_variables,
     growth_exponents,
@@ -331,11 +334,13 @@ bgp_detection_metadata(
     candidate_factors,
     candidate_has_timed_variables,
     additive_candidates,
+    additive_log_candidates,
     trigger_parameters,
     trigger_indices,
     trigger_values,
     parameter_indices,
     mode,
+    prefer_bgp,
 )
 ```
 
@@ -350,14 +355,19 @@ BGP_UNSUPPORTED_MODE
 The stationary mode leaves `equations.stationarization === nothing`, so
 ordinary models continue through the existing non-BGP numerical path. The
 active mode replaces the processed equation system with the stationary
-equations and generated growth variables. The unsupported mode is used for
-additive unit-root structures and raises an explicit error instead of
-silently applying a multiplicative transformation.
+equations and generated growth variables. Additive roots used as log
+coordinates inside `exp(...)` are represented by a positive gross factor.
+Other additive roots remain in the raw representation and are handled by
+ordinary NSSS or the generic affine route; they are not silently
+reinterpreted as multiplicative stationary levels.
 
 ## 9. Structural BGP detection
 
-Detection is performed once from the raw equations and the initial complete
-parameter vector. A variable is a candidate trend driver when the parser
+Candidate metadata is built before NSSS dispatch and cached in the model
+structure. Active candidates use the affine 3N route first; stationary
+models keep the ordinary raw path, and unrecognized candidates can still
+reach the affine route after a raw failure. A variable is a candidate trend
+driver when the parser
 finds either:
 
 ```julia
@@ -373,13 +383,19 @@ The parser separately detects exact additive unit-root structures such as
 x[0] = x[-1] + u[0]
 ```
 
-and rejects them because an additive increment does not define a positive
-gross factor \(G_t^x\).
+and treats them as log-coordinate trends only when their other uses are inside
+`exp(...)`. In that case the increment is represented internally by
+\(G_t^x=\exp(\Delta x_t)\). Generic additive levels remain in the raw
+representation and are solved by ordinary NSSS or the generic affine route;
+they are not silently reinterpreted as positive gross-growth stationary
+variables.
 
 The structural profile also retains the parsed candidate factors and the
 additive candidates. Trigger-changing parameter updates can therefore
 reclassify the cached factors directly; they do not rescan the raw equations.
-Only a mode or active-driver change rebuilds the stationarized representation.
+The first successful BGP fallback sets `prefer_bgp = true`; parameter changes
+then refresh numeric growth metadata without eagerly switching the model back
+to its raw representation.
 
 For a numeric multiplicative factor \(f\), the current dispatch rule treats
 the candidate as active when
@@ -646,7 +662,7 @@ public result axes continue to omit those entries.
 ### Direct BGP perturbation
 
 The direct method changes only the NSSS representation. After the raw
-two-point solve, the complete internal BGP vector is available:
+three-date affine solve, the complete internal BGP vector is available:
 
 ```math
 u^*=(\widehat X^*,G^*,p_c).

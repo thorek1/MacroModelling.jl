@@ -2,6 +2,7 @@ const BGPExponent = Union{Float64, Int, Symbol, Expr}
 
 struct stationarization_metadata
     trend_drivers::Vector{Symbol}
+    additive_log_drivers::Vector{Symbol}
     trending_variables::Vector{Symbol}
     growth_variables::Vector{Symbol}
     growth_exponents::Dict{Symbol, Vector{Float64}}
@@ -73,6 +74,54 @@ function exact_additive_unit_root(eq::Expr, name::Symbol)
     end
     other_reference[] && return false
     true
+end
+
+function additive_log_increment(eq::Expr, name::Symbol)
+    sides = stationarization_equation_sides(eq)
+    sides === nothing && return nothing
+    lhs, rhs = sides
+    exact_additive_unit_root(eq, name) || return nothing
+    postwalk(rhs) do node
+        timed_reference(node, name, -1) ? 0 : node
+    end
+end
+
+function timed_references_only_inside_exp(expr, name::Symbol)
+    found = Ref(false)
+    valid = Ref(true)
+    function visit(node, inside_exp::Bool)
+        if timed_reference(node, name, 0) ||
+           (node isa Expr && node.head == :ref && length(node.args) == 2 &&
+            node.args[1] == name && node.args[2] isa Int)
+            found[] = true
+            valid[] &= inside_exp
+            return
+        end
+        node isa Expr || return
+        next_inside_exp = if node.head == :call
+            inside_exp || node.args[1] == :exp
+        else
+            inside_exp
+        end
+        args = node.head == :call ? node.args[2:end] : node.args
+        for arg in args
+            visit(arg, next_inside_exp)
+        end
+    end
+    visit(expr, false)
+    found[], valid[]
+end
+
+function additive_log_driver(equations::Vector{Expr}, name::Symbol)
+    has_use = false
+    for equation in equations
+        exact_additive_unit_root(equation, name) && continue
+        found, valid = timed_references_only_inside_exp(equation, name)
+        found || continue
+        has_use = true
+        valid || return false
+    end
+    has_use
 end
 
 function multiplicative_factor(expr, name::Symbol)
@@ -178,7 +227,11 @@ function evaluate_growth_parameter(expr,
     nothing
 end
 
-function growth_form(expr, variables::Set{Symbol}, parameter_values::Dict{Symbol, Float64})
+function growth_form(expr,
+                     variables::Set{Symbol},
+                     parameter_values::Dict{Symbol, Float64},
+                     additive_log_drivers::Set{Symbol} = Set{Symbol}(),
+                     inside_exp::Bool = false)
     if expr isa Real
         return Dict{Symbol, Float64}(), Dict{Symbol, Float64}[]
     elseif expr isa Symbol
@@ -200,8 +253,21 @@ function growth_form(expr, variables::Set{Symbol}, parameter_values::Dict{Symbol
 
     if op == :+
         isempty(args) && return Dict{Symbol, Float64}(), Dict{Symbol, Float64}[]
-        forms = [growth_form(arg, variables, parameter_values) for arg in args]
+        forms = [growth_form(arg, variables, parameter_values, additive_log_drivers, inside_exp) for arg in args]
         restrictions = reduce(vcat, (item[2] for item in forms); init = Dict{Symbol, Float64}[])
+        if any(name -> name ∈ additive_log_drivers,
+               reduce(union, (keys(item[1]) for item in forms); init = Set{Symbol}())) && inside_exp
+            result = Dict{Symbol, Float64}()
+            for item in forms
+                log_form = Dict{Symbol, Float64}(name => value for (name, value) in item[1]
+                                if name ∈ additive_log_drivers)
+                stationary_form = Dict{Symbol, Float64}(name => value for (name, value) in item[1]
+                                       if name ∉ additive_log_drivers)
+                result = growth_add(result, log_form)
+                isempty(stationary_form) || push!(restrictions, stationary_form)
+            end
+            return result, restrictions
+        end
         first_form = forms[1][1]
         for item in forms[2:end]
             push!(restrictions, growth_equal(first_form, item[1]))
@@ -209,12 +275,29 @@ function growth_form(expr, variables::Set{Symbol}, parameter_values::Dict{Symbol
         return first_form, restrictions
     elseif op == :-
         if length(args) == 1
-            form, restrictions = growth_form(args[1], variables, parameter_values)
+            form, restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
             return growth_add(Dict{Symbol, Float64}(), form, -1.0), restrictions
         end
-        left, left_restrictions = growth_form(args[1], variables, parameter_values)
-        right_forms = [growth_form(arg, variables, parameter_values) for arg in args[2:end]]
+        left, left_restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
+        right_forms = [growth_form(arg, variables, parameter_values, additive_log_drivers, inside_exp) for arg in args[2:end]]
         restrictions = vcat(left_restrictions, reduce(vcat, (item[2] for item in right_forms); init = Dict{Symbol, Float64}[]))
+        if any(name -> name ∈ additive_log_drivers,
+               union(keys(left), reduce(union, (keys(item[1]) for item in right_forms); init = Set{Symbol}()))) && inside_exp
+            result = Dict{Symbol, Float64}(name => value for (name, value) in left
+                          if name ∈ additive_log_drivers)
+            stationary_left = Dict{Symbol, Float64}(name => value for (name, value) in left
+                                   if name ∉ additive_log_drivers)
+            isempty(stationary_left) || push!(restrictions, stationary_left)
+            for item in right_forms
+                log_form = Dict{Symbol, Float64}(name => value for (name, value) in item[1]
+                                if name ∈ additive_log_drivers)
+                stationary_form = Dict{Symbol, Float64}(name => value for (name, value) in item[1]
+                                       if name ∉ additive_log_drivers)
+                result = growth_add(result, log_form, -1.0)
+                isempty(stationary_form) || push!(restrictions, stationary_form)
+            end
+            return result, restrictions
+        end
         for item in right_forms
             push!(restrictions, growth_equal(left, item[1]))
         end
@@ -223,30 +306,42 @@ function growth_form(expr, variables::Set{Symbol}, parameter_values::Dict{Symbol
         result = Dict{Symbol, Float64}()
         restrictions = Dict{Symbol, Float64}[]
         for arg in args
-            form, local_restrictions = growth_form(arg, variables, parameter_values)
+            form, local_restrictions = growth_form(arg, variables, parameter_values, additive_log_drivers, inside_exp)
             result = growth_add(result, form)
             append!(restrictions, local_restrictions)
         end
         return result, restrictions
     elseif op == :/
         length(args) == 2 || throw(ArgumentError("Only binary division is supported in balanced-growth restrictions: $(expr)"))
-        left, left_restrictions = growth_form(args[1], variables, parameter_values)
-        right, right_restrictions = growth_form(args[2], variables, parameter_values)
+        left, left_restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
+        right, right_restrictions = growth_form(args[2], variables, parameter_values, additive_log_drivers, inside_exp)
         return growth_add(left, right, -1.0), vcat(left_restrictions, right_restrictions)
     elseif op == :^
         length(args) == 2 || throw(ArgumentError("Only binary powers are supported in balanced-growth restrictions: $(expr)"))
-        base, base_restrictions = growth_form(args[1], variables, parameter_values)
-        exponent, exponent_restrictions = growth_form(args[2], variables, parameter_values)
+        base, base_restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
+        exponent, exponent_restrictions = growth_form(args[2], variables, parameter_values, additive_log_drivers, inside_exp)
         isempty(exponent) || throw(ArgumentError("A non-stationary exponent is not supported by symbolic stationarization: $(expr)"))
         numeric_exponent = evaluate_growth_parameter(args[2], parameter_values)
         numeric_exponent === nothing && throw(ArgumentError("Power exponents must be numeric or parameter-resolved before stationarization: $(expr)"))
         return growth_add(Dict{Symbol, Float64}(), base, numeric_exponent),
                vcat(base_restrictions, exponent_restrictions)
     elseif op == :sqrt
-        form, restrictions = growth_form(args[1], variables, parameter_values)
+        form, restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
         return growth_add(Dict{Symbol, Float64}(), form, 0.5), restrictions
-    elseif op ∈ (:exp, :log)
-        form, restrictions = growth_form(args[1], variables, parameter_values)
+    elseif op == :exp
+        form, restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, true)
+        if any(name ∈ additive_log_drivers for name in keys(form))
+            log_form = Dict{Symbol, Float64}(name => value for (name, value) in form
+                            if name ∈ additive_log_drivers)
+            stationary_form = Dict{Symbol, Float64}(name => value for (name, value) in form
+                                   if name ∉ additive_log_drivers)
+            isempty(stationary_form) || push!(restrictions, stationary_form)
+            return log_form, restrictions
+        end
+        push!(restrictions, form)
+        return Dict{Symbol, Float64}(), restrictions
+    elseif op == :log
+        form, restrictions = growth_form(args[1], variables, parameter_values, additive_log_drivers, inside_exp)
         push!(restrictions, form)
         return Dict{Symbol, Float64}(), restrictions
     end
@@ -299,10 +394,10 @@ function symbolic_divide(left::BGPExponent, right::BGPExponent)
     Expr(:call, :/, left, right)
 end
 
-function symbolic_growth_add(a::Dict{Symbol, BGPExponent},
-                             b::Dict{Symbol, BGPExponent},
+function symbolic_growth_add(a::AbstractDict{Symbol, <:BGPExponent},
+                             b::AbstractDict{Symbol, <:BGPExponent},
                              scale::BGPExponent = 1.0)
-    result = copy(a)
+    result = Dict{Symbol, BGPExponent}(a)
     for (name, value) in b
         term = symbolic_multiply(scale, value)
         updated = symbolic_add(get(result, name, 0.0), term)
@@ -311,12 +406,15 @@ function symbolic_growth_add(a::Dict{Symbol, BGPExponent},
     result
 end
 
-function symbolic_growth_equal(a::Dict{Symbol, BGPExponent},
-                               b::Dict{Symbol, BGPExponent})
+function symbolic_growth_equal(a::AbstractDict{Symbol, <:BGPExponent},
+                               b::AbstractDict{Symbol, <:BGPExponent})
     symbolic_growth_add(a, b, -1.0)
 end
 
-function symbolic_growth_form(expr, variables::Set{Symbol})
+function symbolic_growth_form(expr,
+                             variables::Set{Symbol},
+                             additive_log_drivers::Set{Symbol} = Set{Symbol}(),
+                             inside_exp::Bool = false)
     if expr isa Real
         return Dict{Symbol, BGPExponent}(), Dict{Symbol, BGPExponent}[]
     elseif expr isa Symbol
@@ -340,8 +438,21 @@ function symbolic_growth_form(expr, variables::Set{Symbol})
 
     if op == :+
         isempty(args) && return Dict{Symbol, BGPExponent}(), Dict{Symbol, BGPExponent}[]
-        forms = [symbolic_growth_form(arg, variables) for arg in args]
+        forms = [symbolic_growth_form(arg, variables, additive_log_drivers, inside_exp) for arg in args]
         restrictions = reduce(vcat, (item[2] for item in forms); init = Dict{Symbol, BGPExponent}[])
+        if any(name -> name ∈ additive_log_drivers,
+               reduce(union, (keys(item[1]) for item in forms); init = Set{Symbol}())) && inside_exp
+            result = Dict{Symbol, BGPExponent}()
+            for item in forms
+                log_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in item[1]
+                                if name ∈ additive_log_drivers)
+                stationary_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in item[1]
+                                       if name ∉ additive_log_drivers)
+                result = symbolic_growth_add(result, log_form)
+                isempty(stationary_form) || push!(restrictions, stationary_form)
+            end
+            return result, restrictions
+        end
         first_form = forms[1][1]
         for item in forms[2:end]
             push!(restrictions, symbolic_growth_equal(first_form, item[1]))
@@ -349,14 +460,31 @@ function symbolic_growth_form(expr, variables::Set{Symbol})
         return first_form, restrictions
     elseif op == :-
         if length(args) == 1
-            form, restrictions = symbolic_growth_form(args[1], variables)
+            form, restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
             return symbolic_growth_add(Dict{Symbol, BGPExponent}(), form, -1.0), restrictions
         end
-        left, left_restrictions = symbolic_growth_form(args[1], variables)
-        right_forms = [symbolic_growth_form(arg, variables) for arg in args[2:end]]
+        left, left_restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
+        right_forms = [symbolic_growth_form(arg, variables, additive_log_drivers, inside_exp) for arg in args[2:end]]
         restrictions = vcat(left_restrictions,
                             reduce(vcat, (item[2] for item in right_forms);
                                    init = Dict{Symbol, BGPExponent}[]))
+        if any(name -> name ∈ additive_log_drivers,
+               union(keys(left), reduce(union, (keys(item[1]) for item in right_forms); init = Set{Symbol}()))) && inside_exp
+            result = Dict{Symbol, BGPExponent}(name => value for (name, value) in left
+                          if name ∈ additive_log_drivers)
+            stationary_left = Dict{Symbol, BGPExponent}(name => value for (name, value) in left
+                                   if name ∉ additive_log_drivers)
+            isempty(stationary_left) || push!(restrictions, stationary_left)
+            for item in right_forms
+                log_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in item[1]
+                                if name ∈ additive_log_drivers)
+                stationary_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in item[1]
+                                       if name ∉ additive_log_drivers)
+                result = symbolic_growth_add(result, log_form, -1.0)
+                isempty(stationary_form) || push!(restrictions, stationary_form)
+            end
+            return result, restrictions
+        end
         for item in right_forms
             push!(restrictions, symbolic_growth_equal(left, item[1]))
         end
@@ -365,21 +493,21 @@ function symbolic_growth_form(expr, variables::Set{Symbol})
         result = Dict{Symbol, BGPExponent}()
         restrictions = Dict{Symbol, BGPExponent}[]
         for arg in args
-            form, local_restrictions = symbolic_growth_form(arg, variables)
+            form, local_restrictions = symbolic_growth_form(arg, variables, additive_log_drivers, inside_exp)
             result = symbolic_growth_add(result, form)
             append!(restrictions, local_restrictions)
         end
         return result, restrictions
     elseif op == :/
         length(args) == 2 || throw(ArgumentError("Only binary division is supported in balanced-growth restrictions: $(expr)"))
-        left, left_restrictions = symbolic_growth_form(args[1], variables)
-        right, right_restrictions = symbolic_growth_form(args[2], variables)
+        left, left_restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
+        right, right_restrictions = symbolic_growth_form(args[2], variables, additive_log_drivers, inside_exp)
         return symbolic_growth_add(left, right, -1.0),
                vcat(left_restrictions, right_restrictions)
     elseif op == :^
         length(args) == 2 || throw(ArgumentError("Only binary powers are supported in balanced-growth restrictions: $(expr)"))
-        base, base_restrictions = symbolic_growth_form(args[1], variables)
-        exponent, exponent_restrictions = symbolic_growth_form(args[2], variables)
+        base, base_restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
+        exponent, exponent_restrictions = symbolic_growth_form(args[2], variables, additive_log_drivers, inside_exp)
         isempty(exponent) || throw(ArgumentError("A non-stationary exponent is not supported by symbolic stationarization: $(expr)"))
         exponent_expression = symbolic_parameter_expression(args[2])
         exponent_expression === nothing &&
@@ -387,10 +515,22 @@ function symbolic_growth_form(expr, variables::Set{Symbol})
         return symbolic_growth_add(Dict{Symbol, BGPExponent}(), base, exponent_expression),
                vcat(base_restrictions, exponent_restrictions)
     elseif op == :sqrt
-        form, restrictions = symbolic_growth_form(args[1], variables)
+        form, restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
         return symbolic_growth_add(Dict{Symbol, BGPExponent}(), form, 0.5), restrictions
-    elseif op ∈ (:exp, :log)
-        form, restrictions = symbolic_growth_form(args[1], variables)
+    elseif op == :exp
+        form, restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, true)
+        if any(name ∈ additive_log_drivers for name in keys(form))
+            log_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in form
+                            if name ∈ additive_log_drivers)
+            stationary_form = Dict{Symbol, BGPExponent}(name => value for (name, value) in form
+                                   if name ∉ additive_log_drivers)
+            isempty(stationary_form) || push!(restrictions, stationary_form)
+            return log_form, restrictions
+        end
+        push!(restrictions, form)
+        return Dict{Symbol, BGPExponent}(), restrictions
+    elseif op == :log
+        form, restrictions = symbolic_growth_form(args[1], variables, additive_log_drivers, inside_exp)
         push!(restrictions, form)
         return Dict{Symbol, BGPExponent}(), restrictions
     end
@@ -399,14 +539,16 @@ function symbolic_growth_form(expr, variables::Set{Symbol})
 end
 
 function collect_symbolic_growth_restrictions(equations::Vector{Expr},
-                                              variables::Set{Symbol})
+                                              variables::Set{Symbol},
+                                              additive_log_drivers::Set{Symbol} = Set{Symbol}())
     restrictions = Dict{Symbol, BGPExponent}[]
     for equation in equations
         sides = stationarization_equation_sides(equation)
         sides === nothing && continue
         lhs, rhs = sides
-        lhs_form, lhs_restrictions = symbolic_growth_form(lhs, variables)
-        rhs_form, rhs_restrictions = symbolic_growth_form(rhs, variables)
+        any(name -> exact_additive_unit_root(equation, name), additive_log_drivers) && continue
+        lhs_form, lhs_restrictions = symbolic_growth_form(lhs, variables, additive_log_drivers)
+        rhs_form, rhs_restrictions = symbolic_growth_form(rhs, variables, additive_log_drivers)
         append!(restrictions, lhs_restrictions)
         append!(restrictions, rhs_restrictions)
         push!(restrictions, symbolic_growth_equal(lhs_form, rhs_form))
@@ -475,8 +617,9 @@ end
 function symbolic_growth_coefficient_matrix(equations::Vector{Expr},
                                             variables::Vector{Symbol},
                                             drivers::Vector{Symbol},
-                                            parameter_values::Dict{Symbol, Float64})
-    restrictions = collect_symbolic_growth_restrictions(equations, Set(variables))
+                                            parameter_values::Dict{Symbol, Float64},
+                                            additive_log_drivers::Set{Symbol} = Set{Symbol}())
+    restrictions = collect_symbolic_growth_restrictions(equations, Set(variables), additive_log_drivers)
     rows = Dict{Symbol, BGPExponent}[]
     append!(rows, restrictions)
     mentioned = reduce(union, (Set(keys(row)) for row in restrictions); init = Set{Symbol}())
@@ -525,14 +668,16 @@ end
 
 function collect_growth_restrictions(equations::Vector{Expr},
                                      variables::Set{Symbol},
-                                     parameter_values::Dict{Symbol, Float64})
+                                     parameter_values::Dict{Symbol, Float64},
+                                     additive_log_drivers::Set{Symbol} = Set{Symbol}())
     restrictions = Dict{Symbol, Float64}[]
     for equation in equations
         sides = stationarization_equation_sides(equation)
         sides === nothing && continue
         lhs, rhs = sides
-        lhs_form, lhs_restrictions = growth_form(lhs, variables, parameter_values)
-        rhs_form, rhs_restrictions = growth_form(rhs, variables, parameter_values)
+        any(name -> exact_additive_unit_root(equation, name), additive_log_drivers) && continue
+        lhs_form, lhs_restrictions = growth_form(lhs, variables, parameter_values, additive_log_drivers)
+        rhs_form, rhs_restrictions = growth_form(rhs, variables, parameter_values, additive_log_drivers)
         append!(restrictions, lhs_restrictions)
         append!(restrictions, rhs_restrictions)
         push!(restrictions, growth_equal(lhs_form, rhs_form))
@@ -554,8 +699,9 @@ end
 function growth_coefficient_matrix(equations::Vector{Expr},
                                    variables::Vector{Symbol},
                                    drivers::Vector{Symbol},
-                                   parameter_values::Dict{Symbol, Float64})
-    restrictions = collect_growth_restrictions(equations, Set(variables), parameter_values)
+                                   parameter_values::Dict{Symbol, Float64},
+                                   additive_log_drivers::Set{Symbol} = Set{Symbol}())
+    restrictions = collect_growth_restrictions(equations, Set(variables), parameter_values, additive_log_drivers)
     rows = Dict{Symbol, Float64}[]
     append!(rows, restrictions)
     mentioned = reduce(union, (Set(keys(row)) for row in restrictions); init = Set{Symbol}())
@@ -639,24 +785,37 @@ end
 
 function stationarize_expression(expr,
                                  drivers::Vector{Symbol},
-                                 coefficients::Dict{Symbol, Vector{BGPExponent}})
-    postwalk(expr) do node
+                                 coefficients::Dict{Symbol, Vector{BGPExponent}},
+                                 additive_log_drivers::Set{Symbol} = Set{Symbol}())
+    function transform(node, inside_exp::Bool = false)
         if node isa Expr && node.head == :ref && length(node.args) == 2 &&
            node.args[2] isa Int
             name = node.args[1]
             timing = node.args[2]
-            if name ∈ drivers
-                driver_growth_factor_expression(name, timing)
+            if name ∈ additive_log_drivers
+                inside_exp || throw(ArgumentError(
+                    "Additive log-unit-root variable $name must be used inside exp(...) " *
+                    "for balanced-growth stationarization."))
+                level = Expr(:ref, name, 0)
+                factor = driver_growth_factor_expression(name, timing)
+                return factor == 1 ? level : Expr(:call, :+, level, Expr(:call, :log, factor))
+            elseif name ∈ drivers
+                return driver_growth_factor_expression(name, timing)
             elseif name ∈ keys(coefficients)
                 factor = growth_factor_expression(name, timing, drivers, coefficients)
-                factor == 1 ? node : Expr(:call, :*, node, factor)
-            else
-                node
+                return factor == 1 ? node : Expr(:call, :*, node, factor)
             end
-        else
-            node
+            return node
+        elseif node isa Expr && node.head == :call
+            op = node.args[1]
+            next_inside_exp = inside_exp || op == :exp
+            return Expr(:call, op, [transform(arg, next_inside_exp) for arg in node.args[2:end]]...)
+        elseif node isa Expr
+            return Expr(node.head, [transform(arg, inside_exp) for arg in node.args]...)
         end
+        node
     end
+    transform(expr)
 end
 
 function driver_growth_equation(eq::Expr, name::Symbol)
@@ -681,15 +840,25 @@ function driver_growth_equation(eq::Expr, name::Symbol)
     nothing
 end
 
+function additive_log_growth_equation(eq::Expr, name::Symbol)
+    increment = additive_log_increment(eq, name)
+    increment === nothing && return nothing
+    Expr(:(=), Expr(:ref, stationary_growth_symbol(name), 0),
+         Expr(:call, :exp, increment))
+end
+
 function stationarization_candidates(equations::Vector{Expr})
     variables = sort(collect(reduce(union, (expression_symbols(eq) for eq in equations); init = Set{Symbol}())))
-    drivers = [name for name in variables if is_trend_driver(equations, name)]
     additive = [name for name in variables if any(eq -> exact_additive_unit_root(eq, name), equations)]
-    variables, drivers, additive
+    additive_log = [name for name in additive if additive_log_driver(equations, name)]
+    multiplicative = [name for name in variables if is_trend_driver(equations, name)]
+    drivers = unique(vcat(multiplicative, additive_log))
+    variables, drivers, additive, additive_log
 end
 
 const BGP_CANDIDATE_RATIO = UInt8(1)
 const BGP_CANDIDATE_MULTIPLICATIVE = UInt8(2)
+const BGP_CANDIDATE_ADDITIVE_LOG = UInt8(3)
 
 function candidate_growth_factor(equations::Vector{Expr}, name::Symbol)
     for equation in equations
@@ -708,6 +877,9 @@ function candidate_growth_factor(equations::Vector{Expr}, name::Symbol)
             factor = multiplicative_factor(rhs, name)
             factor === nothing || return factor, BGP_CANDIDATE_MULTIPLICATIVE
         end
+
+        increment = additive_log_increment(equation, name)
+        increment === nothing || return Expr(:call, :exp, increment), BGP_CANDIDATE_ADDITIVE_LOG
     end
     return nothing, UInt8(0)
 end
@@ -777,7 +949,9 @@ function classify_bgp_candidates(drivers::Vector{Symbol},
         kind = candidate_kinds[index]
         factor === nothing && continue
 
-        active = if kind == BGP_CANDIDATE_RATIO || candidate_has_timed_variables[index]
+        active = if kind == BGP_CANDIDATE_RATIO ||
+                         kind == BGP_CANDIDATE_ADDITIVE_LOG ||
+                         candidate_has_timed_variables[index]
             true
         else
             value = evaluate_growth_parameter(factor, parameter_values, parameter_indices)
@@ -794,7 +968,7 @@ end
 function build_bgp_detection_metadata(raw_equations::Vector{Expr},
                                        parameters::Vector{Symbol},
                                        parameter_values::Vector{Float64})
-    _, drivers, additive = stationarization_candidates(raw_equations)
+    _, drivers, additive, additive_log = stationarization_candidates(raw_equations)
     candidate_kinds = fill(UInt8(0), length(drivers))
     candidate_factors = Vector{Union{Nothing, Real, Symbol, Expr}}(undef, length(drivers))
     candidate_has_timed_variables = falses(length(drivers))
@@ -828,7 +1002,8 @@ function build_bgp_detection_metadata(raw_equations::Vector{Expr},
         parameter_values,
         parameter_indices,
     )
-    !isempty(additive) && (mode = BGP_UNSUPPORTED_MODE)
+    unsupported_additive = setdiff(additive, additive_log)
+    !isempty(unsupported_additive) && (mode = BGP_UNSUPPORTED_MODE)
 
     bgp_detection_metadata(
         drivers,
@@ -836,13 +1011,28 @@ function build_bgp_detection_metadata(raw_equations::Vector{Expr},
         candidate_kinds,
         candidate_factors,
         candidate_has_timed_variables,
-        additive,
+        unsupported_additive,
+        additive_log,
         trigger_parameters,
         trigger_indices,
         copy(trigger_values),
         parameter_indices,
         mode,
+        false,
     )
+end
+
+function raw_nsss_requires_bgp_fallback(𝓂::ℳ)
+    profile = 𝓂.equations.bgp_detection
+    if profile === nothing
+        profile = build_bgp_detection_metadata(
+            𝓂.equations.original,
+            𝓂.constants.post_complete_parameters.parameters,
+            𝓂.parameter_values,
+        )
+        𝓂.equations.bgp_detection = profile
+    end
+    any(driver -> driver ∉ keys(𝓂.equations.ss_anchors), profile.active_drivers)
 end
 
 function refresh_bgp_detection!(𝓂::ℳ)
@@ -858,6 +1048,11 @@ function refresh_bgp_detection!(𝓂::ℳ)
     end
     changed || return false
 
+    if profile.prefer_bgp
+        profile.trigger_values .= values[profile.trigger_indices]
+        return false
+    end
+
     old_mode = profile.mode
     old_active_drivers = profile.active_drivers
     mode, active_drivers = classify_bgp_candidates(
@@ -870,8 +1065,6 @@ function refresh_bgp_detection!(𝓂::ℳ)
     )
     new_mode = !isempty(profile.additive_candidates) ?
                 BGP_UNSUPPORTED_MODE : mode
-    new_mode == BGP_UNSUPPORTED_MODE &&
-        throw(ArgumentError("The updated parameter values imply an unsupported balanced-growth path."))
     profile.active_drivers = active_drivers
     profile.trigger_values .= values[profile.trigger_indices]
     profile.mode = new_mode
@@ -882,10 +1075,12 @@ end
 function build_stationarization_metadata(raw_equations::Vector{Expr},
                                          parameter_values::Dict{Symbol, Float64} = Dict{Symbol, Float64}();
                                          drivers_override::Union{Nothing, Vector{Symbol}} = nothing)
-    variables, drivers, additive = stationarization_candidates(raw_equations)
-    !isempty(additive) &&
-        throw(ArgumentError("Additive BGP variables $(additive) are not supported by symbolic stationarization; write their trend as a positive multiplicative growth factor."))
+    variables, drivers, additive, additive_log = stationarization_candidates(raw_equations)
+    unsupported_additive = setdiff(additive, additive_log)
+    !isempty(unsupported_additive) &&
+        throw(ArgumentError("Additive BGP variables $(unsupported_additive) are not log-coordinate trends used inside exp(...); represent them with a positive multiplicative growth factor or use them only inside exp(...)."))
     drivers = drivers_override === nothing ? drivers : drivers_override
+    additive_log_drivers = Set(intersect(drivers, additive_log))
     isempty(drivers) && return nothing, raw_equations
 
     coefficient_expressions = symbolic_growth_coefficient_matrix(
@@ -893,6 +1088,7 @@ function build_stationarization_metadata(raw_equations::Vector{Expr},
         variables,
         drivers,
         parameter_values,
+        additive_log_drivers,
     )
     coefficients = Dict(
         name => Float64[
@@ -910,19 +1106,23 @@ function build_stationarization_metadata(raw_equations::Vector{Expr},
     for equation in raw_equations
         growth_equation = nothing
         for driver in drivers
-            growth_equation = driver_growth_equation(equation, driver)
+            growth_equation = driver ∈ additive_log_drivers ?
+                              additive_log_growth_equation(equation, driver) :
+                              driver_growth_equation(equation, driver)
             growth_equation === nothing || break
         end
         push!(stationary_equations,
               growth_equation === nothing ?
-              stationarize_expression(equation, drivers, coefficient_expressions_by_name) :
+              stationarize_expression(equation, drivers, coefficient_expressions_by_name, additive_log_drivers) :
               growth_equation)
     end
     append!(stationary_equations,
-            [Expr(:(=), Expr(:ref, driver, 0), 1) for driver in drivers])
+            [Expr(:(=), Expr(:ref, driver, 0), driver ∈ additive_log_drivers ? 0 : 1)
+             for driver in drivers])
 
     metadata = stationarization_metadata(
         drivers,
+        collect(intersect(drivers, additive_log)),
         trending,
         stationary_growth_symbol.(drivers),
         coefficients,
@@ -933,13 +1133,28 @@ function build_stationarization_metadata(raw_equations::Vector{Expr},
     metadata, stationary_equations
 end
 
-function stationarize_model!(𝓂::ℳ; verbose::Bool = false, silent::Bool = true)
+function stationarize_model!(𝓂::ℳ;
+                             verbose::Bool = false,
+                             silent::Bool = true,
+                             force_bgp::Bool = false)
     raw_equations = copy(𝓂.equations.original)
+    old_profile = 𝓂.equations.bgp_detection
+    prefer_bgp = old_profile !== nothing && old_profile.prefer_bgp
     profile = build_bgp_detection_metadata(
         raw_equations,
         𝓂.constants.post_complete_parameters.parameters,
         𝓂.parameter_values,
     )
+    if force_bgp && profile.mode != BGP_UNSUPPORTED_MODE
+        forced_drivers = Symbol[
+            driver for (driver, factor) in zip(profile.candidate_drivers,
+                                               profile.candidate_factors)
+            if factor !== nothing
+        ]
+        profile.active_drivers = forced_drivers
+        profile.mode = isempty(forced_drivers) ? BGP_STATIONARY_MODE : BGP_ACTIVE_MODE
+    end
+    profile.prefer_bgp = prefer_bgp
     𝓂.equations.bgp_detection = profile
     profile.mode == BGP_UNSUPPORTED_MODE &&
         throw(ArgumentError("The model contains an additive or unsupported balanced-growth path."))
@@ -991,7 +1206,44 @@ function stationarize_model!(𝓂::ℳ; verbose::Bool = false, silent::Bool = tr
     true
 end
 
-function restore_raw_model!(𝓂::ℳ)
+"""
+    activate_bgp_fallback!(𝓂) -> Bool
+
+Activates the symbolic stationary representation used to seed the raw affine
+3N BGP solve. Pure additive candidates remain raw because they do not have a
+symbolic multiplicative stationary representation. The preference bit is set
+only after a successful BGP NSSS solve.
+"""
+function activate_bgp_fallback!(𝓂::ℳ)
+    𝓂.equations.stationarization === nothing || return false
+    profile = 𝓂.equations.bgp_detection
+    if profile === nothing
+        profile = build_bgp_detection_metadata(
+            𝓂.equations.original,
+            𝓂.constants.post_complete_parameters.parameters,
+            𝓂.parameter_values,
+        )
+        𝓂.equations.bgp_detection = profile
+    end
+    # Pure additive candidates cannot be symbolically stationarized yet, but
+    # they are valid input to the generic raw affine 3N system.
+    profile.mode == BGP_UNSUPPORTED_MODE && return true
+    _, drivers, additive, additive_log = stationarization_candidates(𝓂.equations.original)
+    if !isempty(drivers) || !isempty(additive)
+        stationarize_model!(𝓂; force_bgp = true)
+        return 𝓂.equations.stationarization !== nothing
+    end
+
+    # The affine fallback is deliberately available even when no structural
+    # driver pattern was recognized. It is attempted only after the ordinary
+    # NSSS route has failed, so stationary models keep their fast path while a
+    # general 3N affine system can still reveal an unlabelled BGP.
+    true
+end
+
+function restore_raw_model!(𝓂::ℳ;
+                            rebuild_solver::Bool = true,
+                            allow_duplicate_equations::Bool = false)
     raw_equations = copy(𝓂.equations.original)
     old_equations = 𝓂.equations
     old_constants = 𝓂.constants
@@ -999,6 +1251,7 @@ function restore_raw_model!(𝓂::ℳ)
         Expr(:block, raw_equations...),
         old_constants.post_model_macro.max_obc_horizon,
         old_constants.post_parameters_macro.precompile,
+        allow_duplicate_equations = allow_duplicate_equations,
     )
 
     equations_struct.ss_anchors = old_equations.ss_anchors
@@ -1019,6 +1272,15 @@ function restore_raw_model!(𝓂::ℳ)
     𝓂.equations = equations_struct
     𝓂.workspaces = workspaces
     reset_solver_state!(𝓂)
+    if rebuild_solver
+        set_up_steady_state_solver!(
+            𝓂;
+            verbose = false,
+            silent = true,
+            ss_symbolic_mode = 𝓂.constants.post_parameters_macro.ss_symbolic_mode,
+        )
+        reset_nsss_solver_cache!(𝓂)
+    end
     return nothing
 end
 

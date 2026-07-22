@@ -1890,9 +1890,15 @@ end
                 for (row, name) in enumerate(all_names)
                     exponents = get(metadata.growth_exponents, name, nothing)
                     exponents === nothing && continue
-                    factor = prod(cumulative[index]^exponents[index]
-                                  for index in eachindex(cumulative))
-                    values[row, period, shock_index] *= factor
+                    if name ∈ metadata.additive_log_drivers
+                        increment = sum(exponents[index] * log(cumulative[index])
+                                        for index in eachindex(cumulative))
+                        values[row, period, shock_index] += increment
+                    else
+                        factor = prod(cumulative[index]^exponents[index]
+                                      for index in eachindex(cumulative))
+                        values[row, period, shock_index] *= factor
+                    end
                 end
             end
         end
@@ -2128,11 +2134,19 @@ And data, 4×6 Matrix{Float64}:
     calib_axis = 𝓂.constants.post_complete_parameters.calib_axis
     public_var_axis = var_axis[public_var_idx]
     public_var_names = 𝓂.constants.post_model_macro.var[public_var_idx]
-    axis1 = return_variables_only ? public_var_axis : vcat(public_var_axis, calib_axis)
+    bgp_model = is_bgp_model(𝓂)
+    if bgp_model
+        axis1 = return_variables_only ? public_var_axis : vcat(public_var_axis, calib_axis)
+    else
+        # NSSS returns only variables and calibration equations represented in
+        # the steady-state problem; label that selected vector rather than all
+        # dynamic variables, which may include auxiliary-only entries.
+        selected_axis = vcat(var_axis, calib_axis)
+        axis1 = selected_axis[[var_idx..., calib_idx...]]
+    end
     ss_names = return_variables_only ?
                public_var_names :
                vcat(public_var_names, 𝓂.equations.calibration_parameters)
-    bgp_model = is_bgp_model(𝓂)
     growth_column = bgp_model ? bgp_growth_column(𝓂, ss_names) : Float64[]
 
     axis2 = bgp_model ?

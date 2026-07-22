@@ -120,5 +120,104 @@ public/internal output mapping. The displayed numerical solution reproduces
 the residual system with maximum absolute residual below `2e-15`.
 The walkthrough also distinguishes arbitrary trend-level normalization from
 growth-factor identification and documents compatibility with stationary
-log-space shock/growth-factor processes versus unsupported additive log-level
-unit roots.
+log-space shock/growth-factor processes versus the raw affine handling of
+additive log-level roots.
+
+The BGP dispatch is now staged rather than eager: the raw ordinary NSSS path
+is attempted first, and a failed or unanchored active-trend root activates the
+direct BGP fallback. A successful fallback records
+`equations.bgp_detection.prefer_bgp = true`, so subsequent solves try BGP
+first while retaining the ordinary path as a fallback. Additive log-coordinate
+unit roots used inside `exp(...)` are represented with a gross factor
+`exp(Δell)` and a zero log-level anchor; generic additive-level roots remain in
+the raw representation. Runtime verification now passes:
+`tasks/reproduce_bgp_fallback.jl`
+passes the raw-first ratio fallback and additive log-coordinate reproduction,
+and `test/test_balanced_growth_path.jl` passes all 70 focused regression checks.
+
+The direct BGP NSSS representation is now a generic three-date affine system.
+For every endogenous variable it solves a level, an intercept (`xᴬ`), and a
+multiplier (`xᴳ`) from all original equations evaluated at shifts 0, 1, and 2.
+This removes the driver-law skip and allows the solved coefficients to classify
+stationary, additive, or multiplicative growth. Rank-aware level normalizations
+are retained for the active symbolic representation, and additive log drivers
+map their raw intercept to the stationary gross factor with `exp(xᴬ)`. The
+forward-looking additive-shock reproduction in
+`tasks/reproduce_affine_bgp_forward.jl` passes, including `c[1]`, `zᴬ=μ`,
+`zᴳ=1`, and induced `cᴳ=yᴳ=exp(μ)`. The focused BGP regression remains 70/70.
+
+Final verification after the affine-solver robustness fixes passes cleanly:
+`tasks/reproduce_bgp_fallback.jl`, `tasks/reproduce_affine_bgp_forward.jl`, and
+`test/test_balanced_growth_path.jl` (70/70). The generic raw route now builds
+its affine solver with numerical blocks for lag-coupled equations, keeps
+multipliers away from zero, and seeds/validates the raw 3N root from the
+active stationary solve when that representation is available. This prevents
+the solver from accepting the singular `xᴳ≈0` boundary while retaining the
+generic raw fallback for models without a recognized symbolic trend.
+
+The dispatch was subsequently made direct-first for recognized active BGPs:
+the affine \(3N\) raw system is attempted first, then the existing ordinary
+raw NSSS route is used if it fails. A successful affine solve records the
+cached BGP preference for later calls. Stationary models still use the
+ordinary raw route directly. Pure additive candidates remain on that ordinary
+route because attempting a fully generic affine solve on the large FRBUS
+fixture was numerically impractical; the affine representation remains a
+fallback after an ordinary failure.
+
+The mixed forward-looking reproduction now combines additive log growth,
+multiplicative technology growth, an expectation term, and a stationary shock.
+It passes finite first-, second-, pruned second-, third-, and pruned
+third-order perturbation solves. The default NSSS audit passes all 24 model
+fixtures, and a second audit passes all 24 after parameter-only trend stress
+overrides (mostly AR coefficients set to `1.01`). The model source calibrations
+were left unchanged; the stress script copies and modifies parameter vectors.
+
+Additional focused reproductions pass for pure additive large fixtures,
+small additive raw affine setup, affine forward-looking BGPs, and the fallback
+dispatch. The balanced-growth regression passes 72/72. The public steady-state
+wrapper was also corrected to label only the variables selected by the NSSS
+problem, so the default and trend-stressed audits now pass all 24 fixtures
+through both the internal NSSS and public `get_SS` paths.
+
+The perturbation boundary was tightened after the affine solver changes. When a
+raw model has a solved affine cache, the perturbation code uses only the
+numerically solved `(xᴬ, xᴳ)` pairs to detrend every timed endogenous reference,
+then calls `process_model_equations`, `set_up_steady_state_solver!`, and the
+ordinary symbolic derivative generator. The transformed raw clone is used for
+first-, second-, and third-order derivative tensors; it does not inspect
+`exp`, shock names, or equation forms. A regression restores a recognized
+model to its raw equations and verifies a finite Jacobian through this route.
+The already processed stationarized representation remains the dimensional
+authority for active symbolic BGP models; this is why the raw clone is not
+used after stationarization, rather than padding an incomplete derivative
+system with hidden growth equations.
+
+The explicit cold/warm benchmark is in
+`tasks/benchmark_bgp_nsss_explicit.jl`. With `cold_start=true`, the mixed
+additive/multiplicative forward model measured 0.235 s for direct 3N versus
+0.295 s for the ordinary raw solve, 0.019 s warm; the three-trend forward
+model measured 0.377 s versus 0.0025 s, 0.028 s warm. The latter is about
+152x slower on a cold uncached solve because the 3N construction and coupled
+root are included; warm calls are about 10x the sub-millisecond ordinary call.
+The comparison is route-cost-oriented: the ordinary timing reuses the raw
+model setup, while the direct timing includes affine-model construction.
+
+The 24-model parameter-stress dispatch audit completed with zero residuals for
+all 24 models. None selected `direct_3N`: the AR-coefficient overrides do not
+create a recognized deterministic BGP in these equations, and the ordinary
+raw route solved first. The OBC raw-copy diagnostics still report their
+pre-existing duplicate-equation limitation, but the public dispatch route
+solved those fixtures; the forced direct-first FRBUS experiment was stopped
+after more than six minutes, so unsupported large models remain ordinary-first
+with direct fallback for performance.
+
+Latest direct-first audit correction: the route is now attempted without using
+the detector to select it. The accepted `direct_3N` models were Baxter--King,
+Gali--Monacelli, Iacoviello linear, Ireland, SGU debt-premium, and Smets--Wouters
+2007 linear (6/24). Thirteen models solved through ordinary fallback. Five
+large direct attempts exceeded the 90-second audit bound: FRBUS, GNSS, NAWM,
+QUEST3, and Smets--Wouters 2007. OBC residual expressions that are not
+equalities are capability-guarded and immediately use ordinary NSSS. Completed
+fallback residuals were below `3e-14`; the direct route independently checks
+the full affine residual before acceptance. The focused BGP regression passes
+76/76 after these changes.

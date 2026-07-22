@@ -399,10 +399,11 @@ end
     end
 
     other_vars_input = Symbol[]
-    # Balanced growth path: growth unknowns (`xᴳ`) are SS unknowns but not in `var`;
-    # include them so a block using a growth solved in another block receives it.
-    growth_vars = filter(s -> endswith(string(s), "ᴳ"), 𝓂.constants.post_model_macro.vars_in_ss_equations)
-    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars, growth_vars),
+    # Balanced growth path: affine unknowns (`xᴬ`, `xᴳ`) are SS unknowns but not
+    # in `var`; include them so a block using an affine coefficient solved in
+    # another block receives it.
+    affine_vars = filter(is_bgp_affine_name, 𝓂.constants.post_model_macro.vars_in_ss_equations)
+    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars, affine_vars),
                                         sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
 
@@ -1115,8 +1116,6 @@ end
     end
     @assert length(unknowns) <= n_equations_total "Unable to solve steady state. More unknowns than equations."
 
-    incidence_matrix = spzeros(Int, length(unknowns), length(unknowns))
-
     eq_list = if symbolics_data === nothing
         empty_var_redundant_list = [Symbol[] for _ in eachindex(𝓂.constants.post_model_macro.var_list_aux_SS)]
         vcat(
@@ -1154,6 +1153,8 @@ end
         )
     end
 
+    incidence_matrix = spzeros(Int, length(unknowns), length(eq_list))
+
     for (i,u) in enumerate(unknowns)
         for (k,e) in enumerate(eq_list)
             incidence_matrix[i,k] = u ∈ e
@@ -1171,14 +1172,23 @@ end
     # existing indeterminate→default path pins them to 0 (a valid particular
     # solution; for a linear model dynamics/IRFs are anchor-invariant).
     unknown_names = Symbol.(string.(unknowns))
-    if symbolics_data !== nothing && any(n -> endswith(string(n), "ᴳ"), unknown_names)
+    if any(is_bgp_affine_name, unknown_names)
         check_unknowns = Symbol.(string.(union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)))
         Jbuf = 𝓂.caches.NSSS_∂equations_∂SS_and_pars
-        𝓂.functions.NSSS_∂equations_∂SS_and_pars(Jbuf, 𝓂.parameter_values, zeros(length(check_unknowns)))
+        # Evaluate the rank at a positive unit-level affine reference point.
+        # Intercepts use their neutral value zero and multipliers use one. At
+        # the all-zero vector, induced growth derivatives can vanish; at an
+        # all-one affine vector, stationary recurrences look spuriously
+        # independent because their intercept is not at its neutral value.
+        probe = Float64[
+            is_bgp_affine_intercept_name(name) ? 0.0 : 1.0
+            for name in check_unknowns
+        ]
+        𝓂.functions.NSSS_∂equations_∂SS_and_pars(Jbuf, 𝓂.parameter_values, probe)
         Jdense = Matrix(Jbuf)
         colpos = Dict(n => i for (i, n) in enumerate(check_unknowns))
-        growth_idx = [i for i in eachindex(unknown_names) if endswith(string(unknown_names[i]), "ᴳ")]
-        level_idx  = [i for i in eachindex(unknown_names) if !endswith(string(unknown_names[i]), "ᴳ")]
+        growth_idx = [i for i in eachindex(unknown_names) if is_bgp_affine_name(unknown_names[i])]
+        level_idx  = [i for i in eachindex(unknown_names) if !is_bgp_affine_name(unknown_names[i])]
         anchored_any = false
 
         # M4: user-supplied `x[ss] = expr` level anchors force that trend's level to
@@ -1188,7 +1198,7 @@ end
         ss_anchors = 𝓂.equations.ss_anchors
         forced = Int[]
         if !isempty(ss_anchors)
-            for i in level_idx
+            for i in eachindex(unknown_names)
                 if haskey(ss_anchors, unknown_names[i])
                     incidence_matrix[i, :] .= 0
                     push!(forced, i)
@@ -1199,7 +1209,11 @@ end
 
         kept = Int[]
         currank = 0
-        for i in vcat(growth_idx, setdiff(level_idx, forced))   # keep growths first, anchor redundant levels
+        for i in vcat(setdiff(growth_idx, forced), setdiff(level_idx, forced))
+            # Affine coefficients are retained unless their neutral values were
+            # explicitly identified from the stationary representation above.
+            # A neutral probe alone cannot distinguish an induced multiplier
+            # from a redundant coefficient of a stationary sequence.
             c = get(colpos, unknown_names[i], 0)
             c == 0 && continue
             candidate_columns = vcat(kept, c)
@@ -1210,6 +1224,14 @@ end
                 push!(kept, c)
                 currank = r
             else
+                # A stationary law such as `g[0] = ḡ` leaves the affine
+                # representation's intercept/multiplier pair underidentified.
+                # Pin every rank-free affine coefficient to its neutral value
+                # (0 for an intercept, 1 for a multiplier), just as a free
+                # level receives its ordinary NSSS normalization. This keeps
+                # the 3N attempt recognition-free and lets the standard NSSS
+                # route remain the fallback when the affine system is not
+                # identified.
                 incidence_matrix[i, :] .= 0   # anchor this free level → default value
                 anchored_any = true
             end
@@ -1281,15 +1303,15 @@ end
     end
 
     output_var_names = unique(Symbol.(replace.(string.(sort(union(
-        filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
+        filter(name -> !is_bgp_affine_name(name), 𝓂.constants.post_model_macro.var),
         𝓂.constants.post_model_macro.exo_past,
         𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
     plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
-    # Balanced growth path: store solved growth unknowns (`xᴳ`) so later stages
-    # (linearization, IRFs) can read them. They are extra SS unknowns, not levels.
-    growth_var_names = Symbol[s for s in 𝓂.constants.post_model_macro.vars_in_ss_equations if endswith(string(s), "ᴳ")]
-    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names, growth_var_names)
+    # Balanced growth path: store solved affine unknowns (`xᴬ`, `xᴳ`) so later
+    # stages can read them. They are extra SS unknowns, not public levels.
+    affine_var_names = Symbol[s for s in 𝓂.constants.post_model_macro.vars_in_ss_equations if is_bgp_affine_name(s)]
+    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names, affine_var_names)
     n_sol = length(all_sol_names)
     sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
     plus_var_count_at_start = length(plus_var_names)
@@ -1304,7 +1326,7 @@ end
 
     output_names_full = vcat(
         Symbol.(replace.(string.(sort(union(
-            filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
+            filter(name -> !is_bgp_affine_name(name), 𝓂.constants.post_model_macro.var),
             𝓂.constants.post_model_macro.exo_past,
             𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
         calib_param_names
@@ -1429,12 +1451,14 @@ end
                 )
             else
                 bgp_profile = 𝓂.equations.bgp_detection
-                gross_growth_default = endswith(string(var_sym), "ᴳ")
+                gross_growth_default = is_bgp_growth_name(var_sym)
+                affine_intercept_default = is_bgp_affine_intercept_name(var_sym)
                 driver_level_default = bgp_profile !== nothing &&
                                        var_sym ∈ bgp_profile.active_drivers
                 default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
                     Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) :
-                    (gross_growth_default || driver_level_default ? 1.0 : 0.0)
+                    (affine_intercept_default ? 0.0 :
+                     gross_growth_default || driver_level_default ? 1.0 : 0.0)
 
                 eval_func! = let cv = default_val
                     (out, _sol_vec, _params_vec) -> begin

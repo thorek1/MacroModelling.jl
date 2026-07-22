@@ -133,24 +133,24 @@ G_{i,t}=\prod_{j=1}^{m}G_{A_j,t}^{b_{ij}(\theta)}.
 The raw model is transformed into a symbolic stationary representation before
 derivative functions, perturbation solutions, and moment calculations are
 generated. The default NSSS path separately builds a cached raw-equation BGP
-residual system at two consecutive BGP points. It assigns a gross factor to
-each timed endogenous variable, so every lead and lag is evaluated at its
-correct BGP level. The resulting full internal solution is then supplied to
-the ordinary stationary perturbation infrastructure.
+residual system at three consecutive BGP points. It assigns an affine
+intercept and multiplier to each timed endogenous variable, so every lead and
+lag is evaluated by the same recurrence. The resulting full internal solution
+is then supplied to the ordinary stationary perturbation infrastructure.
 
-The raw shadow is the gross-growth version of the former two-point
-construction. If \(s=0\) denotes the first point and \(s=1\) the next point,
-it substitutes
+The raw shadow is the affine version of the former two-point construction. If
+\(s=0,1,2\) denote the three points, it substitutes
 
 ```math
-x_{i,t+k}\mapsto \widehat{x}_i^*G_i^{k+s}.
+x_{i,t+k}\mapsto F_i(k+s),
+\qquad F_i(k+1)=A_i+G_iF_i(k).
 ```
 
-Thus a lag becomes \(\widehat{x}_i^*/G_i\), while a lead becomes
-\(\widehat{x}_i^*G_i\). Independent trend-driver levels are normalized to one.
-The shifted copy of a driver law is omitted because it is redundant after
-that normalization; all other equations are kept at both points so their
-shifted copies identify implied gross factors.
+Thus a lag becomes \((\widehat{x}_i^*-A_i)/G_i\), while a one-period lead
+becomes \(A_i+G_i\widehat{x}_i^*\). Independent trend-driver levels are
+normalized only when the rank-aware NSSS setup finds a free level. All three
+copies are retained, so the same system identifies additive and
+multiplicative growth without skipping driver laws.
 
 For example, with
 
@@ -287,7 +287,10 @@ variable axis, but they must remain in the internal solution because:
 
 ### 5.1 Build the BGP representations
 
-At model setup, the stationarization pass:
+For a recognized active BGP, the default NSSS dispatch first activates the
+stationary metadata and tries the cached affine 3N raw-equation system. If
+that attempt fails, the raw model is restored and the ordinary NSSS solver
+then:
 
 1. preserves the raw equations in `equations.original`;
 2. identifies multiplicative trend candidates;
@@ -307,7 +310,9 @@ steady-state solve, a separate cached shadow is constructed from
 the raw equations, turns each driver law into a growth-factor equation plus a
 level anchor, and then sends that transformed block through the ordinary NSSS
 solver. This shadow is rebuilt only when the raw equations or active driver
-set changes.
+set changes. After a successful direct solve,
+`equations.bgp_detection.prefer_bgp` records that fact and subsequent solves
+try the direct BGP path first.
 
 ### 5.2 Construct the NSSS dependency structure
 
@@ -543,22 +548,32 @@ silently treated as stationary.
 
 ### The transformation is not universal
 
-The current implementation is designed for multiplicative stationarization.
-It intentionally rejects a pure additive law such as
+The direct NSSS representation is affine and can solve additive or
+multiplicative recurrences without classifying the equation first. The
+downstream symbolic stationarization and perturbation representation still
+requires a positive multiplicative level interpretation; a pure additive law
+such as
 
 ```julia
 x[0] = x[-1] + u[0]
 ```
 
-and mixed models containing both unsupported additive and multiplicative
-trend structures.
+is solved in the raw affine system without requiring a prior additive versus
+multiplicative classification. Symbolic stationary perturbation metadata still
+requires a positive multiplicative interpretation; an additive law can enter
+that downstream representation when it is a log coordinate inside `exp(...)`.
+Pure additive candidates that do not meet that condition remain in the raw
+representation and use ordinary NSSS or the generic affine fallback.
 
-### Structural recognition is pattern-based
+### Symbolic stationarization remains pattern-based
 
 A model must expose a trend carrier through a recognized ratio or
-multiplicative law. A mathematically equivalent model written with an
-unsupported rearrangement, implicit division, or unusual function may not be
-recognized automatically.
+multiplicative law for the symbolic stationary perturbation representation. A
+mathematically equivalent model written with an unsupported rearrangement,
+implicit division, or unusual function may not be stationarized automatically.
+The direct affine NSSS route is broader: for recognized active BGPs it is
+tried before ordinary NSSS, and after an ordinary failure it can still solve
+the three-date recurrence system without symbolic trend recognition.
 
 ### Growth restrictions must be identifiable
 
@@ -579,13 +594,13 @@ The generated normalized NSSS can fail because of:
 - solver bounds or tolerances;
 - unstable or ill-conditioned local Jacobians.
 
-### Near-boundary mode changes can be sensitive
+### Parameter changes do not eagerly switch a successful BGP off
 
-The early detector classifies a constant multiplicative candidate using the
-current rule \(|f|\geq 1\). Draws near the boundary can switch between the
-stationary and active representations. A mode switch is handled explicitly,
-but it requires rebuilding the processed representation and resetting solver
-state.
+Before the first direct attempt, a constant multiplicative candidate is considered
+active for deciding whether the raw root is an unanchored BGP root when
+\(|f|\geq 1\). Once the BGP route has solved successfully, that preference
+is retained across parameter changes; numeric growth metadata is refreshed in
+place and the direct route is tried first.
 
 ### Normalized levels require interpretation
 

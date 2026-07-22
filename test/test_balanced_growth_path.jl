@@ -9,29 +9,82 @@ using AxisKeys: axiskeys
 end
 
 @testset verbose = true "Symbolic balanced growth path stationarization" begin
-    @testset "pure additive trends are rejected" begin
-        @test_throws ArgumentError begin
-            @model AdditiveBGPRejected begin
-                x[0] = x[-1] + g + e[x]
-                dx[0] = x[0] - x[-1]
-            end
-            @parameters AdditiveBGPRejected begin
-                g = 0.02
-            end
+    @testset "pure additive candidates remain in the raw affine path" begin
+        @model AdditiveBGPRejected begin
+            x[0] = x[-1] + g + e[x]
+            dx[0] = x[0] - x[-1]
+        end
+        @parameters AdditiveBGPRejected begin
+            g = 0.02
+        end
+        @test AdditiveBGPRejected.equations.stationarization === nothing
+        @test AdditiveBGPRejected.equations.bgp_detection.mode ==
+              MacroModelling.BGP_UNSUPPORTED_MODE
+
+        @model MixedAdditiveBGPRejected begin
+            x[0] = x[-1] + g + ex[x]
+            y[0] = y[-1] * μ
+        end
+        @parameters MixedAdditiveBGPRejected begin
+            g = 0.02
+            μ = 1.02
+        end
+        @test MixedAdditiveBGPRejected.equations.stationarization === nothing
+        @test MixedAdditiveBGPRejected.equations.bgp_detection.mode ==
+              MacroModelling.BGP_UNSUPPORTED_MODE
+    end
+
+    @testset "raw affine coefficients drive perturbation automatically" begin
+        @model RawAffinePerturbation begin
+            ell[0] = ell[-1] + μ + σe * e[x]
+            y[0] = exp(ell[0])
+        end
+        @parameters RawAffinePerturbation begin
+            μ = 0.02
+            σe = 0.0
         end
 
-        @testset "mixed additive and multiplicative trends are rejected" begin
-            @test_throws ArgumentError begin
-                @model MixedAdditiveBGPRejected begin
-                    x[0] = x[-1] + g + ex[x]
-                    y[0] = y[-1] * μ
-                end
-                @parameters MixedAdditiveBGPRejected begin
-                    g = 0.02
-                    μ = 1.02
-                end
-            end
+        raw_result = MacroModelling.get_NSSS_and_parameters(
+            RawAffinePerturbation,
+            RawAffinePerturbation.parameter_values;
+            caching = false,
+        )
+        @test raw_result[2][1] < 1e-8
+        raw_solution = raw_result[1]
+        MacroModelling.restore_raw_model!(RawAffinePerturbation)
+        raw_jacobian = MacroModelling.calculate_bgp_jacobian(
+            RawAffinePerturbation,
+            RawAffinePerturbation.parameter_values,
+            raw_solution;
+            caching = false,
+        )
+        @test all(isfinite, raw_jacobian)
+        @test RawAffinePerturbation.direct_bgp_cache.perturbation_model isa MacroModelling.ℳ
+    end
+
+    @testset "additive log-coordinate trends use gross factors" begin
+        @model AdditiveLogBGP begin
+            ell[0] = ell[-1] + μ + σe * e[x]
+            y[0] = exp(ell[0])
         end
+        @parameters AdditiveLogBGP begin
+            μ = 0.02
+            σe = 0.01
+        end
+
+        metadata = AdditiveLogBGP.equations.stationarization
+        @test metadata !== nothing
+        @test metadata.additive_log_drivers == [:ell]
+        @test isapprox(
+            get_SS(AdditiveLogBGP, derivatives = false)(:ell, :Growth_rate),
+            0.02;
+            atol = 1e-10,
+        )
+        @test isapprox(
+            get_SS(AdditiveLogBGP, derivatives = false)(:y, :Growth_rate),
+            0.02;
+            atol = 1e-10,
+        )
     end
 
     @testset "multiplicative trend public APIs" begin
@@ -48,6 +101,7 @@ end
 
         model_variables = MultiplicativeBGP.constants.post_model_macro.var
         @test any(==(Symbol("xᴳ")), model_variables)
+        @test MultiplicativeBGP.equations.bgp_detection.prefer_bgp
         @test all(name -> !endswith(string(name), "ᴳ"),
                   axiskeys(get_SS(MultiplicativeBGP, derivatives = false), 1))
 
@@ -342,7 +396,7 @@ end
         @test initial_ss(:y, :Growth_rate) != updated_ss(:y, :Growth_rate)
     end
 
-    @testset "stationary and BGP representations switch lazily" begin
+    @testset "generic 3N NSSS activates BGP representation" begin
         @model LazyBGPMode begin
             x[0] = ρ * x[-1]
             y[0] = x[0]
@@ -351,14 +405,16 @@ end
             ρ = 0.8
         end
 
-        @test LazyBGPMode.equations.stationarization === nothing
+        @test LazyBGPMode.equations.stationarization !== nothing
+        @test LazyBGPMode.equations.bgp_detection.prefer_bgp
         solve!(LazyBGPMode; parameters = [1.1], silent = true)
         @test LazyBGPMode.equations.stationarization !== nothing
         @test Symbol("xᴳ") ∈ LazyBGPMode.constants.post_model_macro.var
 
         solve!(LazyBGPMode; parameters = [0.9], silent = true)
-        @test LazyBGPMode.equations.stationarization === nothing
-        @test Symbol("xᴳ") ∉ LazyBGPMode.constants.post_model_macro.var
+        @test LazyBGPMode.equations.stationarization !== nothing
+        @test LazyBGPMode.equations.bgp_detection.prefer_bgp
+        @test Symbol("xᴳ") ∈ LazyBGPMode.constants.post_model_macro.var
     end
 
     @testset "missing parameters initialize BGP dispatch" begin

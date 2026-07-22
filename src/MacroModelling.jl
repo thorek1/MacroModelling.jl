@@ -1415,7 +1415,8 @@ function solve_steady_state!(𝓂::ℳ,
     found_solution = true
     
     if !(𝓂.functions.NSSS_custom isa Function) &&
-       𝓂.equations.stationarization === nothing
+       𝓂.equations.stationarization === nothing &&
+       solution_error <= opts.tol.nsss.acceptance_tol
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
         if solution_error > opts.tol.nsss.acceptance_tol
@@ -1615,6 +1616,15 @@ function solve!(𝓂::ℳ;
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+
+    # A parameter change can move a raw model into the lazy BGP fallback
+    # path. Rebuild compiled equation functions before dynamics are evaluated
+    # so a representation switch cannot pair raw derivatives with
+    # stationarized constants (or vice versa).
+    if 𝓂.functions.functions_written &&
+       𝓂.caches.valid_for.non_stochastic_steady_state != 𝓂.parameter_values
+        𝓂.functions.functions_written = false
+    end
     
     if 𝓂.functions.functions_written &&
         isnothing(𝓂.functions.NSSS_custom) &&
@@ -1846,12 +1856,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
         end
-        𝓂.equations.bgp_detection === nothing ||
-            refresh_bgp_representation!(𝓂)
-    end
-
-    if isempty(p.missing_parameters) && 𝓂.equations.bgp_detection === nothing
-        stationarize_model!(𝓂)
+        𝓂.equations.bgp_detection === nothing || refresh_bgp_detection!(𝓂)
+        𝓂.equations.stationarization === nothing || refresh_bgp_numeric_state!(𝓂)
     end
 
     return nothing
@@ -1916,8 +1922,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             end
 
             𝓂.parameter_values[match_idx] = parameters[match_idx]
-            𝓂.equations.bgp_detection === nothing ||
-                refresh_bgp_representation!(𝓂)
+            𝓂.equations.bgp_detection === nothing || refresh_bgp_detection!(𝓂)
+            𝓂.equations.stationarization === nothing || refresh_bgp_numeric_state!(𝓂)
         end
     end
 
@@ -2678,23 +2684,67 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     opts::CalculationOptions = merge_calculation_options(),
                                     cold_start::Bool = false,
                                     estimation::Bool = false,
-                                    caching::Bool = true)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    caching::Bool = true,
+                                    allow_bgp_fallback::Bool = true)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
 
     # @timeit_debug timer "Calculate NSSS" begin
     ensure_model_structure_constants!(𝓂.constants, 𝓂.equations.calibration_parameters)
+    bgp_attempted = false
 
-    if S === Float64 &&
-       𝓂.equations.stationarization !== nothing &&
-       !(𝓂.functions.NSSS_custom isa Function)
-        return direct_bgp_nsss_and_parameters(
+    if S === Float64 && allow_bgp_fallback &&
+       !(𝓂.functions.NSSS_custom isa Function) &&
+       direct_bgp_equations_supported(𝓂)
+        profile = 𝓂.equations.bgp_detection
+        if profile === nothing
+            profile = build_bgp_detection_metadata(
+                𝓂.equations.original,
+                𝓂.constants.post_complete_parameters.parameters,
+                𝓂.parameter_values,
+            )
+            𝓂.equations.bgp_detection = profile
+        end
+
+        # Every non-custom Float64 model gets the same first attempt. The
+        # affine route itself decides whether the solved coefficients describe
+        # stationary, additive, or multiplicative growth; the detector is
+        # retained only for compatibility metadata and post-solve API setup.
+        bgp_attempted = true
+        bgp_result = direct_bgp_nsss_and_parameters(
             𝓂,
             parameter_values;
             opts = opts,
-            cold_start = cold_start,
+            # The recognition-free affine system needs continuation even when
+            # the public NSSS call is warm-started; otherwise a valid 3N root
+            # can be returned as an unaccepted zero-iteration probe.
+            cold_start = true,
             estimation = estimation,
             caching = caching,
-        )::Tuple{Vector{S}, Tuple{S, Int}}
+        )
+        bgp_solved = isfinite(bgp_result[2][1]) &&
+                     bgp_result[2][1] <= opts.tol.nsss.acceptance_tol &&
+                     direct_bgp_solution_valid(𝓂)
+        if bgp_solved
+            𝓂.equations.bgp_detection.prefer_bgp = true
+            # Build the existing processed representation only after the
+            # recognition-free raw solve has succeeded, so public BGP APIs
+            # retain their established variable labels and mappings.
+            if 𝓂.equations.stationarization === nothing
+                activate_bgp_fallback!(𝓂)
+            end
+            if 𝓂.equations.stationarization !== nothing
+                mapped_output, mapped_result, _ = direct_bgp_nsss_solution!(
+                    𝓂,
+                    parameter_values;
+                    opts = opts,
+                    cold_start = false,
+                    caching = caching,
+                )
+                bgp_result = (mapped_output, mapped_result)
+            end
+            return bgp_result::Tuple{Vector{S}, Tuple{S, Int}}
+        end
+        𝓂.equations.stationarization === nothing || restore_raw_model!(𝓂)
     end
 
     ms = 𝓂.constants.post_complete_parameters
@@ -2738,6 +2788,16 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     # Update counters
     solved = !(solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error))
+    if solved && allow_bgp_fallback && S === Float64 &&
+       𝓂.equations.stationarization === nothing &&
+       !(𝓂.functions.NSSS_custom isa Function) &&
+       raw_nsss_requires_bgp_fallback(𝓂)
+        # A zero-level or otherwise unanchored active trend is an algebraic
+        # root of the raw NSSS equations, but not a valid stationary level
+        # representation. Let the direct BGP fallback normalize it.
+        solved = false
+        solution_error = Inf
+    end
     update_ss_counter!(𝓂.counters, solved, estimation = estimation)
     
     if !solved
@@ -2745,6 +2805,29 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             println("Failed to find NSSS") 
         end
         # return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    if !solved && allow_bgp_fallback && S === Float64 &&
+       𝓂.equations.stationarization === nothing &&
+       !(𝓂.functions.NSSS_custom isa Function) &&
+       activate_bgp_fallback!(𝓂)
+        bgp_attempted = true
+        direct_cold_start = 𝓂.equations.bgp_detection.mode == BGP_UNSUPPORTED_MODE ?
+                            false : cold_start
+        bgp_output, bgp_result, _ = direct_bgp_nsss_solution!(𝓂,
+                                                               parameter_values;
+                                                               opts = opts,
+                                                               cold_start = direct_cold_start,
+                                                               caching = caching)
+        bgp_solved = isfinite(bgp_result[1]) &&
+                     bgp_result[1] <= opts.tol.nsss.acceptance_tol
+        if bgp_solved
+            𝓂.equations.bgp_detection.prefer_bgp = true
+            update_ss_counter!(𝓂.counters, true, estimation = estimation)
+            return bgp_output, bgp_result
+        end
+        restore_raw_model!(𝓂)
+        update_ss_counter!(𝓂.counters, false, estimation = estimation)
     end
 
     # end # timeit_debug
