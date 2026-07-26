@@ -257,13 +257,15 @@ shows the variables of the model (blue), data (red), the shock decomposition for
 
 ## Nonlinear estimation with the particle filter
 
-For genuinely nonlinear models the structural shocks can be integrated out by Monte Carlo using the particle filter (`filter = :particle`). It works for every perturbation order (`:first_order` through `:pruned_third_order`), requires measurement error on the observables (`measurement_error_std`), and is selected via `particle_filter_algorithm`:
+For genuinely nonlinear models the structural shocks can be integrated out by Monte Carlo using a particle filter. These work for every perturbation order (`:first_order` through `:pruned_third_order`) and require measurement error on the observables (`measurement_error_std`, which defaults to a small data-driven value). Each variant is its own `filter` value:
 
-- `:bootstrap` — the sequential-importance-resampling filter (as in Dynare),
-- `:auxiliary` — the Pitt–Shephard auxiliary particle filter,
-- `:tempered` — the Herbst–Schorfheide tempered particle filter, which yields a much lower-variance likelihood estimate for the same number of particles.
+- `:bootstrap_particle` — the sequential-importance-resampling filter of Gordon, Salmond & Smith (1993), applied to DSGE models by Fernández-Villaverde & Rubio-Ramírez (2007),
+- `:auxiliary_particle` — the auxiliary particle filter of Pitt & Shephard (1999), which uses a look-ahead proposal,
+- `:tempered_particle` — the tempered particle filter of Herbst & Schorfheide (2019), which yields a much lower-variance likelihood estimate for the same number of particles.
 
-The particle-filter likelihood is a stochastic estimator and is **not** differentiable (resampling is discontinuous), so it must be used with gradient-free samplers such as the slice sampler in `Pigeons.jl` or nested sampling. Pass a seeded `rng` for reproducibility.
+The particle-filter likelihood is a stochastic estimator and is **not** differentiable (resampling is discontinuous), so it must be used with gradient-free samplers such as the slice sampler in `Pigeons.jl` or nested sampling. Pass a seeded `particle_rng` for reproducibility.
+
+See the [Filters](../filters.md) page for the full comparison, the maths behind each filter, and guidance on choosing between them.
 
 ```julia
 using MacroModelling
@@ -275,11 +277,10 @@ Turing.@model function FS2000_particle(data, m)
     parameters ~ Turing.product_distribution(prior_distributions)
     Turing.@addlogprob! get_loglikelihood(m, data, parameters;
                                           algorithm = :pruned_second_order,
-                                          filter = :particle,
-                                          particle_filter_algorithm = :tempered,
+                                          filter = :tempered_particle,
                                           n_particles = 5000,
                                           measurement_error_std = 1e-3,
-                                          rng = Random.Xoshiro(1),
+                                          particle_rng = Random.Xoshiro(1),
                                           on_failure_loglikelihood = -1e12)
 end
 
@@ -287,4 +288,4 @@ pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_particle(data, F
                      n_rounds = 8)
 ```
 
-Because the likelihood is noisy, set `on_failure_loglikelihood` to a finite value (as above) so the sampler tolerates occasional failed evaluations, and prefer a larger `n_particles` (and the `:tempered` variant) to reduce the estimate's variance.
+Because the likelihood is noisy, set `on_failure_loglikelihood` to a finite value (as above) so the sampler tolerates occasional failed evaluations, and prefer a larger `n_particles` (and the `:tempered_particle` filter) to reduce the estimate's variance.

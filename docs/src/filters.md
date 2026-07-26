@@ -1,0 +1,180 @@
+# Filters
+
+Every likelihood in `MacroModelling.jl` answers the same question: given the model, the parameters, and the data, how plausible is what we observed? They differ in *how they deal with the states we cannot see*.
+
+The model is a state-space system. The solution gives a transition,
+
+```math
+x_t = g(x_{t-1}, \varepsilon_t), \qquad \varepsilon_t \sim N(0, I),
+```
+
+where ``g`` is linear at first order and nonlinear at higher orders, and an observation equation that picks the observed variables out of the state and (optionally) adds measurement error,
+
+```math
+y_t = x_t[\text{observables}] + \eta_t, \qquad \eta_t \sim N(0, H).
+```
+
+The likelihood we want is ``p(y_{1:T}) = \prod_t p(y_t \mid y_{1:t-1})``. Each filter is a different way of tracking the distribution of ``x_t`` given the data so far, which is what turns that product into something computable.
+
+Select a filter with the `filter` keyword:
+
+```julia
+get_loglikelihood(model, data, parameters; filter = :kalman)
+```
+
+## Choosing a filter
+
+| filter | models | likelihood | differentiable | measurement error | smoothing | relative cost |
+|---|---|---|---|---|---|---|
+| `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes | 1× |
+| `:inversion` | linear and nonlinear | exact given the shocks | yes | not available | no | ~1–10× |
+| `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~10³× |
+| `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~2× bootstrap |
+| `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~5–10× bootstrap |
+
+A short decision rule:
+
+- **Linear model?** Use `:kalman`. It is exact, fast and differentiable, so gradient-based samplers (NUTS/HMC) work. There is no reason to use anything else.
+- **Nonlinear model, as many shocks as observables, no measurement error?** Use `:inversion` (the default at higher order). It is exact and differentiable.
+- **Nonlinear model with measurement error, or fewer shocks than observables?** Use a particle filter. Start with `:tempered_particle` if the observation is informative (small measurement error, many observables), otherwise `:bootstrap_particle`.
+- Particle-filter likelihoods are noisy and non-differentiable: pair them with gradient-free samplers such as slice sampling (Pigeons.jl) or nested sampling.
+
+By default the package picks `:kalman` for `:first_order` and `:inversion` for the nonlinear algorithms.
+
+## The Kalman filter
+
+For a linear model with Gaussian shocks the filtering distribution stays Gaussian forever, so tracking it only requires tracking a mean and a covariance. The recursion alternates prediction and update:
+
+```math
+\begin{aligned}
+v_t &= y_t - C u_t, & F_t &= C P_t C' + H,\\
+u_{t+1} &= A (u_t + K_t v_t), & P_{t+1} &= A (P_t - K_t C P_t) A' + BB',
+\end{aligned}
+```
+
+with the Kalman gain ``K_t = P_t C' F_t^{-1}``. Each period contributes
+
+```math
+\log p(y_t \mid y_{1:t-1}) = -\tfrac{1}{2}\left( d\log 2\pi + \log\det F_t + v_t' F_t^{-1} v_t \right).
+```
+
+This is exact — no approximation beyond the linearity of the model itself — and every step is a smooth function of the parameters, which is why the Kalman likelihood is differentiable and works with NUTS.
+
+`initial_covariance` sets ``P_1``: `:theoretical` solves the Lyapunov equation ``P = APA' + BB'`` for the ergodic covariance, `:diagonal` starts diffuse (10 on the diagonal), or supply your own matrix. Missing observations are handled by shrinking the update to the observed rows in that period; a fully unobserved period becomes a pure prediction step.
+
+The Kalman filter is also the only filter that supports **smoothing** (`smooth = true`), i.e. estimates of ``x_t`` given the *whole* sample rather than only the past. `get_model_estimates`, `get_estimated_shocks` and the estimate plots use the Durbin–Koopman smoother.
+
+**References:** Kalman (1960); Durbin & Koopman (2012), *Time Series Analysis by State Space Methods*.
+
+## The inversion filter
+
+The inversion filter takes a different route: instead of integrating the shocks out, it asks *which shocks would have produced exactly this data?* Given the state ``x_{t-1}`` it solves
+
+```math
+y_t = g(x_{t-1}, \varepsilon_t)[\text{observables}]
+```
+
+for ``\varepsilon_t``. At first order this is a linear solve; at higher order it is a small Newton problem per period (`filter_algorithm = :LagrangeNewton`). The recovered shocks are then scored under their own standard normal prior, with a Jacobian term for the change of variables:
+
+```math
+\log p(y_{1:T}) = -\tfrac{1}{2}\sum_t \left( \varepsilon_t'\varepsilon_t + d\log 2\pi \right) - \sum_t \log\left|\det J_t\right|.
+```
+
+Because it inverts the observation equation exactly, the inversion filter:
+
+- needs **at least as many shocks as observables** (otherwise the system is not invertible), and
+- admits **no measurement error** — measurement error would make the mapping stochastic, and there would be nothing left to invert uniquely.
+
+In exchange it is exact for nonlinear models, deterministic, and differentiable, which makes it the default at higher order. It provides no smoothed estimates.
+
+**References:** Fair & Taylor (1983); Cuba-Borda, Guerrieri, Iacoviello & Zhong (2019).
+
+## Particle filters
+
+When the model is nonlinear *and* there is measurement error, the filtering distribution is no longer Gaussian and no longer invertible. Particle filters represent it by a cloud of ``N`` weighted draws ("particles") and update the cloud each period. They are the general-purpose fallback: they work for any transition, any number of shocks, and any measurement error.
+
+All variants share the same skeleton:
+
+1. **Predict** — push every particle through the model's transition with a freshly drawn shock.
+2. **Weight** — score each particle by ``p(y_t \mid x_t)``. The weighted average of those scores estimates the period's likelihood contribution:
+   ```math
+   \widehat{p}(y_t \mid y_{1:t-1}) = \sum_p W_{t-1}^p \, p(y_t \mid x_t^p).
+   ```
+3. **Resample** — when the weights get too uneven, replace the weighted cloud by an equally weighted one, so particles are spent where the probability mass is.
+
+The crucial property is that ``\widehat{p}(y_{1:T})`` is an **unbiased** estimator of the true likelihood, for any ``N``. That is what makes particle filters usable inside a sampler (pseudo-marginal MCMC targets the exact posterior despite the noise). Note the consequence for the *log* likelihood: by Jensen's inequality ``E[\log \widehat{p}] < \log p``, with a downward bias of roughly ``\mathrm{Var}(\log\widehat p)/2``. So a particle log-likelihood is systematically a little *below* the Kalman value on a linear model, and the gap shrinks as ``N`` grows — this is the expected behaviour, not a bug.
+
+### Why measurement error is required
+
+Without measurement error the observation equation is a deterministic function of the state. A particle would have to reproduce ``y_t`` *exactly* to get non-zero weight, which happens with probability zero — every weight collapses to zero and the filter dies. Measurement error smears the observation density and gives particles something to score against.
+
+`measurement_error_std = :auto` (the default) therefore resolves to 10% of each observable's sample standard deviation for the particle filters, and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable.
+
+### Bootstrap (`:bootstrap_particle`)
+
+The plain sequential-importance-resampling filter: propose from the model's own transition (the "prior"), weight by the observation density. Simple, robust, and the cheapest per particle.
+
+Its weakness is that it proposes blindly — it draws shocks without looking at ``y_t``, so when the observation is very informative most particles land in implausible places and are discarded. This gets worse as the number of observables grows (the weights concentrate exponentially in the observation dimension), which is why a 7-observable model needs far more particles than a 2-observable one at the same measurement error.
+
+**References:** Gordon, Salmond & Smith (1993); Fernández-Villaverde & Rubio-Ramírez (2007) for the DSGE application.
+
+### Auxiliary (`:auxiliary_particle`)
+
+Peeks at the observation *before* deciding which particles to propagate. Each ancestor gets a cheap preview of how plausible its children will look (the measurement density at its zero-shock transition mean, inflated by the shock-induced predictive variance), and ancestors are resampled in proportion to weight × preview. Only then are shocks drawn.
+
+Selecting on a preview biases the cloud, so the second stage divides the preview back out — the child's weight is the true density divided by the preview used to pick its parent. The preview cancels exactly, so the estimator stays unbiased regardless of how good the preview is; a poor preview costs efficiency, never correctness.
+
+Helps most when the signal is informative *and* the one-step-ahead state is well predicted by its mean. It costs roughly one extra transition evaluation per particle per period.
+
+**Reference:** Pitt & Shephard (1999).
+
+### Tempered (`:tempered_particle`)
+
+Instead of confronting the particles with the full observation in one step, the tempered filter introduces the information gradually. Within each period it walks a bridging sequence ``0 = \phi_0 < \phi_1 < \dots < \phi_N = 1``, at each stage using an inflated measurement covariance ``H/\phi``: early stages are nearly uninformative and easy to match, later stages sharpen towards the true density. At every stage the particles are reweighted by the incremental density, resampled, and then **mutated** by a few random-walk Metropolis steps on their shocks that target the stage's tempered posterior. The stage contributions telescope back to the period's likelihood.
+
+The mutation is what makes this powerful: it *moves* particles towards the data rather than merely reweighting the ones that happen to be well placed, so the cloud does not degenerate even when the observation is sharp. The bridging schedule is chosen adaptively to hit a target inefficiency ratio (`tempering_target_ratio`), so hard periods automatically get more stages than easy ones.
+
+In practice this buys a large variance reduction per particle — several times lower standard deviation than the bootstrap filter at the same ``N`` — at several times the cost per particle. It is the right default when the bootstrap filter degenerates.
+
+**Reference:** Herbst & Schorfheide (2019), *Tempered Particle Filtering*; see also Herbst & Schorfheide (2015), *Bayesian Estimation of DSGE Models*.
+
+### Resampling schemes
+
+`particle_resampling` selects how survivors are drawn. All schemes are unbiased, so the choice affects only the extra Monte-Carlo noise that resampling itself injects, ordered here from least to most:
+
+- `:systematic` (default) — one uniform draw, then ``N`` equally spaced points through the cumulative weights. Lowest variance and cheapest.
+- `:stratified` — one independent uniform per stratum of width ``1/N``. Nearly as good, with independent draws.
+- `:residual` — assign ``\lfloor N W_i \rfloor`` copies deterministically, draw only the remainder.
+- `:multinomial` — ``N`` independent draws. The textbook scheme, and the noisiest.
+
+Resampling only happens when the effective sample size ``1/\sum_i W_i^2`` falls below `particle_resampling_threshold * n_particles` (default 0.5), which avoids paying the noise in periods that do not need it.
+
+**References:** Kitagawa (1996); Douc & Cappé (2005).
+
+## How the filters relate
+
+- **Particle → Kalman.** On a *linear* model with Gaussian shocks, the particle filters estimate exactly the quantity the Kalman filter computes in closed form. As ``N \to \infty`` the particle log-likelihood converges to the Kalman log-likelihood (from below, by the Jensen bias above). This is the sharpest correctness check available and is exactly what the package's tests do, on both a small RBC model and Smets-Wouters (2007).
+- **Kalman → particle.** The Kalman filter is the special case where the transition and observation are linear and the noise Gaussian, so the "cloud" is fully described by its first two moments.
+- **Inversion → particle.** Both handle nonlinear models, but they make opposite trades. The inversion filter assumes measurement error is *zero* and recovers the shocks exactly; the particle filter assumes measurement error is *positive* and integrates the shocks out. As the measurement error goes to zero the particle filter degenerates towards the inversion filter's problem — and this is precisely where it needs the most particles.
+- **Correlated measurement error.** The Kalman filter accepts an arbitrary `measurement_error_covariance`. The particle filters require it to be diagonal, but this is not a real restriction: correlated measurement error can be written into the model itself as measurement-error processes in the observation equations, which moves the correlation into the state transition and makes ``H`` diagonal again. That reformulation works for every filter.
+
+## Reproducibility and cost
+
+Particle-filter likelihoods are random. Pass a seeded generator via `particle_rng` to make an evaluation reproducible:
+
+```julia
+import Random
+get_loglikelihood(model, data, parameters;
+                  filter = :tempered_particle,
+                  algorithm = :pruned_second_order,
+                  n_particles = 20_000,
+                  measurement_error_std = 1e-3,
+                  particle_rng = Random.Xoshiro(1))
+```
+
+Two practical notes when using them inside a sampler:
+
+- Use the *same* seed across parameter draws only if you want a "common random numbers" scheme; otherwise let the sampler see fresh noise, which is what pseudo-marginal correctness assumes.
+- Set `on_failure_loglikelihood` to a large finite negative number so an occasional failed evaluation does not abort the chain.
+
+Cost scales roughly linearly in `n_particles` and in the sample length, and the number of particles needed grows quickly with the number of observables. The default of 10,000 particles keeps a Smets-Wouters-sized problem accurate to a couple of log-likelihood points; raise it when the estimates look noisy.
