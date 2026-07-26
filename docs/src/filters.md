@@ -26,11 +26,11 @@ get_loglikelihood(model, data, parameters; filter = :kalman)
 
 | filter | models | likelihood | differentiable | measurement error | smoothing | relative cost |
 |---|---|---|---|---|---|---|
-| `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes | 1× |
-| `:inversion` | linear and nonlinear | exact given the shocks | yes | not available | no | ~1–10× |
-| `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~10³× |
-| `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~2× bootstrap |
-| `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~5–10× bootstrap |
+| `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes (Durbin–Koopman) | 1× |
+| `:inversion` | linear and nonlinear | exact given the shocks | yes | not available | n/a (filtered = smoothed) | ~1–10× |
+| `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~10³× |
+| `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~2× bootstrap |
+| `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~5–10× bootstrap |
 
 A short decision rule:
 
