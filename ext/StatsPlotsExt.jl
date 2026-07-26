@@ -5,6 +5,7 @@ using MacroModelling
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
 import MacroModelling: DEFAULT_CACHING, DEFAULT_USE_WORKSPACES, DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
+import Random
 import LaTeXStrings
 
 const irf_active_plot_container = Dict[]
@@ -705,7 +706,19 @@ function plot_model_estimates(𝓂::ℳ,
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
-                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR_STD,
+                                n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR_STD,
+                                n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -840,6 +853,12 @@ function plot_model_estimates(𝓂::ℳ,
     x_axis = x_axis[periods]
     
     extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
+    if filter ∈ MacroModelling.PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; measurement_error_std, n_particles, particle_resampling,
+                                      particle_resampling_threshold, particle_initial_state_scaling,
+                                      particle_rng))
+    end
+
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
 
     if is_pruned
@@ -1360,6 +1379,12 @@ function plot_model_estimates!(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR_STD,
+                                n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(),
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -1482,7 +1507,11 @@ function plot_model_estimates!(𝓂::ℳ,
 
     x_axis = x_axis[periods]
     
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    particle_kw = filter ∈ MacroModelling.PARTICLE_FILTERS ?
+        (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng) : NamedTuple()
+
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; particle_kw...)
     
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta

@@ -297,6 +297,12 @@ And data, 4×2×40 Array{Float64, 3}:
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                                n_particles::Int = DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(),
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -339,6 +345,11 @@ And data, 4×2×40 Array{Float64, 3}:
     data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
     extra_kw = marginal_contribution ? (; marginal_contribution = true) : NamedTuple()
+    if filter ∈ PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; measurement_error_std, n_particles, particle_resampling,
+                                      particle_resampling_threshold, particle_initial_state_scaling,
+                                      particle_rng))
+    end
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
@@ -441,7 +452,13 @@ And data, 1×40 Matrix{Float64}:
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
-                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                            measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                            particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                            particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                            particle_rng::Random.AbstractRNG = Random.default_rng(), 
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                             smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -485,10 +502,15 @@ And data, 1×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Shocks = axis1, Periods = 1:0)
     end
 
+    particle_kw = filter ∈ PARTICLE_FILTERS ?
+        (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng) : NamedTuple()
+
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
-                                                                                    smooth = smooth)
+                                                                                    smooth = smooth;
+                                                                                    particle_kw...)
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
@@ -567,7 +589,13 @@ And data, 4×40 Matrix{Float64}:
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
-                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                                n_particles::Int = DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 levels::Bool = DEFAULT_LEVELS,
@@ -612,10 +640,15 @@ And data, 4×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Variables = axis1, Periods = 1:0)
     end
 
+    particle_kw = filter ∈ PARTICLE_FILTERS ?
+        (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng) : NamedTuple()
+
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
-                                                                                    smooth = smooth)
+                                                                                    smooth = smooth;
+                                                                                    particle_kw...)
 
     result = KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data_in_deviations,2))
 
@@ -698,6 +731,12 @@ And data, 5×40 Matrix{Float64}:
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                             measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                             n_particles::Int = DEFAULT_N_PARTICLES,
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                              data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                              levels::Bool = DEFAULT_LEVELS,

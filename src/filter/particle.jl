@@ -1605,4 +1605,183 @@ function run_particle_filter(::Val{:first_order},
     return isfinite(loglik) ? loglik : Float64(on_failure_loglikelihood)
 end
 
+
+# ── Filtered estimates from a particle filter ────────────────────────────────
+#
+# `filter_data_with_model` is the entry point behind `get_model_estimates`,
+# `get_estimated_variables`, `get_estimated_shocks` and the estimate plots. For
+# the particle filters it returns the *filtered* moments of the particle cloud:
+#
+#   variables            E[xₜ | y₁..ₜ]      — weighted mean of the cloud
+#   standard_deviations  sd(xₜ | y₁..ₜ)     — weighted spread of the cloud
+#   shocks               E[εₜ | y₁..ₜ]      — weighted mean of the drawn shocks
+#
+# All three particle variants target the same filtering distribution p(xₜ|y₁..ₜ)
+# — they differ only in how efficiently they estimate the *likelihood* — so the
+# moments below are produced by the standard predict/weight/resample recursion
+# whichever particle filter was selected.
+#
+# Two caveats relative to the Kalman path: these are filtered, not smoothed,
+# estimates (a particle smoother is a different algorithm), and a linear shock
+# decomposition does not exist for a nonlinear filter, so `decomposition` is
+# returned as zeros.
+@unstable function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{algo},
+    ::Union{Val{:bootstrap_particle},Val{:auxiliary_particle},Val{:tempered_particle}};
+    warmup_iterations::Int = 0,
+    opts::CalculationOptions = merge_calculation_options(),
+    smooth::Bool = true,
+    measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+    n_particles::Int = DEFAULT_N_PARTICLES,
+    particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+    particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+    particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+    particle_rng::Random.AbstractRNG = Random.default_rng(),
+    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical) where {algo}
+
+    obs_axis = collect(axiskeys(data_in_deviations, 1))
+    observables = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    constants = 𝓂.constants
+    T = constants.post_model_macro
+    nVars = T.nVars
+    nExo  = T.nExo
+    past_idx = T.past_not_future_and_mixed_idx
+
+    ss_names = constants.post_complete_parameters.SS_and_pars_names
+    observables_index = convert(Vector{Int}, indexin(observables, ss_names))
+
+    dat = missing_data_to_nan(collect(data_in_deviations))
+    obs_idx_per_t, has_missing = build_obs_index(dat)
+    nT = size(dat, 2)
+
+    # measurement error: same `:auto` convention as the likelihood path
+    me_std = measurement_error_std === :auto ?
+        DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION .* vec(sqrt.(sum(abs2, dat .- sum(dat, dims = 2) ./ nT, dims = 2) ./ max(nT - 1, 1))) :
+        measurement_error_std
+    me_var = me_std isa AbstractVector ? collect(float.(me_std)) .^ 2 : fill(float(me_std)^2, length(observables))
+    @inbounds for i in eachindex(me_var)
+        if !(isfinite(me_var[i])) || me_var[i] <= 0
+            me_var[i] = (DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION)^2
+        end
+    end
+
+    # solution matrices and the initial state, exactly as the likelihood path builds them
+    _, _, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algo), 𝓂.parameter_values, 𝓂, opts = opts)
+    @assert solved "Could not solve the model for `algorithm = $(algo)`; cannot run the particle filter."
+
+    Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
+    L = particle_initial_cloud_factor(Σ, Float64(particle_initial_state_scaling))
+
+    log2pi = log(2π)
+    rng = particle_rng
+
+    # storage for the filtered moments
+    variables  = zeros(nVars, nT)
+    stds       = zeros(nVars, nT)
+    shocks_out = zeros(nExo, nT)
+
+    W       = fill(1.0 / n_particles, n_particles)
+    logdens = Vector{Float64}(undef, n_particles)
+    idx     = Vector{Int}(undef, n_particles)
+    bins    = Vector{Float64}(undef, n_particles)
+    shocks  = [Vector{Float64}(undef, nExo) for _ in 1:n_particles]
+    full_buf = Vector{Float64}(undef, nVars)
+
+    if algo == :first_order
+        tr = build_linear_particle_transition(𝐒, T)
+        mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
+        parts  = [mean0 .+ L * randn(rng, nVars) for _ in 1:n_particles]
+        parts2 = [zeros(Float64, nVars) for _ in 1:n_particles]
+        propagate! = (out, prev, sh) -> linear_propagate_estimates!(out, tr, prev, sh)
+    else
+        𝐒f = [Matrix{Float64}(S) for S in 𝐒]
+        scr = build_higher_scratch(Val(algo), T.nPast_not_future_and_mixed, nExo)
+        parts  = init_higher_particles(Val(algo), rng, state, L, n_particles, nVars)
+        parts2 = [zeros_like_particle(parts[1]) for _ in 1:n_particles]
+        propagate! = (out, prev, sh) -> higher_propagate!(Val(algo), out, prev, sh, past_idx, 𝐒f, scr)
+    end
+
+    for t in 1:nT
+        rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
+        data_col = @view dat[:, t]
+
+        @inbounds for p in 1:n_particles
+            Random.randn!(rng, shocks[p])
+            propagate!(parts2[p], parts[p], shocks[p])
+        end
+        parts, parts2 = parts2, parts
+
+        if isempty(rows)
+            # nothing observed: the weights are unchanged, the cloud just predicts
+            fill!(logdens, 0.0)
+        else
+            @inbounds for p in 1:n_particles
+                full = measurement_full(parts[p], full_buf)
+                logdens[p] = particle_log_measurement_density(full, data_col, observables_index, me_var, rows, log2pi)
+            end
+            m = maximum(logdens)
+            if isfinite(m)
+                s = 0.0
+                @inbounds for p in 1:n_particles
+                    s += W[p] * exp(logdens[p] - m)
+                end
+                if s > 0 && isfinite(s)
+                    @inbounds for p in 1:n_particles
+                        W[p] = W[p] * exp(logdens[p] - m) / s
+                    end
+                end
+            end
+        end
+
+        # filtered moments of the (weighted) cloud
+        @inbounds for p in 1:n_particles
+            full = measurement_full(parts[p], full_buf)
+            w = W[p]
+            for i in 1:nVars
+                variables[i, t] += w * full[i]
+            end
+            for e in 1:nExo
+                shocks_out[e, t] += w * shocks[p][e]
+            end
+        end
+        @inbounds for p in 1:n_particles
+            full = measurement_full(parts[p], full_buf)
+            w = W[p]
+            for i in 1:nVars
+                stds[i, t] += w * (full[i] - variables[i, t])^2
+            end
+        end
+        @inbounds for i in 1:nVars
+            stds[i, t] = sqrt(max(stds[i, t], 0.0))
+        end
+
+        if effective_sample_size(W) < particle_resampling_threshold * n_particles
+            particle_resample_indices!(idx, bins, rng, W, particle_resampling)
+            @inbounds for j in 1:n_particles
+                copy_particle!(parts2[j], parts[idx[j]])
+            end
+            parts, parts2 = parts2, parts
+            fill!(W, 1.0 / n_particles)
+        end
+    end
+
+    @info "Shock decomposition is not defined for the particle filters (the state transition is nonlinear and the contributions do not add up); returning zeros. Use `filter = :kalman` for a shock decomposition." maxlog = 1
+
+    decomposition = zeros(nVars, nExo + 2, nT)
+    decomposition[:, end, :] .= variables
+
+    return variables, shocks_out, stds, decomposition
+end
+
+# out = A·prev[past] + B·shock for a single particle (estimates path; the
+# likelihood path propagates the whole swarm with one gemm instead).
+@inline function linear_propagate_estimates!(out::Vector{Float64}, tr::LinearParticleTransition,
+                                             prev::Vector{Float64}, shock::Vector{Float64})
+    ℒ.mul!(out, tr.A, prev)
+    ℒ.mul!(out, tr.B, shock, 1.0, 1.0)
+    return out
+end
+
 end # @stable

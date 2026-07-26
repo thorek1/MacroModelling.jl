@@ -139,6 +139,30 @@ threw(f) = try; f(); false; catch; true; end
         @test abs(kal_m - pf_m) < 3.0
     end
 
+    @testset "Filtered estimates from the particle filters" begin
+        # the filtered particle estimates should track the Kalman estimates closely
+        kal_v = get_estimated_variables(RBC_pf, data; filter = :kalman)
+        for pf_filter in (:bootstrap_particle, :tempered_particle)
+            v = get_estimated_variables(RBC_pf, data; filter = pf_filter, algorithm = :first_order,
+                                        measurement_error_std = me, n_particles = 20_000,
+                                        particle_rng = Random.Xoshiro(1))
+            @test size(v) == size(kal_v)
+            @test all(isfinite, collect(v))
+            @test maximum(abs, collect(v) .- collect(kal_v)) < 0.1
+        end
+        s = get_estimated_shocks(RBC_pf, data; filter = :bootstrap_particle, algorithm = :first_order,
+                                 measurement_error_std = me, n_particles = 10_000,
+                                 particle_rng = Random.Xoshiro(1))
+        @test all(isfinite, collect(s))
+        # nonlinear orders and the combined estimates entry point
+        @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :pruned_second_order, measurement_error_std = me,
+                        n_particles = 5_000, particle_rng = Random.Xoshiro(1))))
+        @test all(isfinite, collect(get_model_estimates(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :first_order, measurement_error_std = me,
+                        n_particles = 5_000, particle_rng = Random.Xoshiro(1))))
+    end
+
     @testset "Full measurement-error covariance" begin
         Hdiag = [me^2 0.0; 0.0 me^2]
         # a diagonal covariance reproduces the equivalent per-observable stds
