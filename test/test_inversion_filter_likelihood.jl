@@ -96,6 +96,24 @@ import LinearAlgebra as ℒ
     i2 = get_loglikelihood(RBC_lik, d2, p; filter = :inversion, presample_periods = 50)
     @test isapprox(i2, k2, atol = 0.5)
 
+    # Sharper: the whole difference between the two filters on a square system is
+    # the initial state covariance. The inversion filter assumes x₀ is known, so
+    # Var(x₁) = BB'; hand the Kalman filter that same prior and the two agree to
+    # machine precision, period by period, with no presample needed.
+    get_loglikelihood(RBC_lik, d2, p)          # populate the solution cache
+    Tc = RBC_lik.constants.post_model_macro
+    S1 = RBC_lik.caches.first_order_solution_matrix
+    nP = Tc.nPast_not_future_and_mixed
+    ssn = RBC_lik.constants.post_complete_parameters.SS_and_pars_names
+    oas = sort(union(Tc.past_not_future_and_mixed_idx,
+                     convert(Vector{Int}, indexin([:c, :q], ssn))))
+    Bm = S1[oas, nP+1:end]
+
+    @test isapprox(get_loglikelihood(RBC_lik, d2, p; filter = :inversion),
+                   get_loglikelihood(RBC_lik, d2, p; filter = :kalman,
+                                     initial_covariance = Bm * Bm'),
+                   rtol = 1e-10)
+
     # With more shocks than observables the state is no longer pinned down by the
     # data. The inversion filter clamps the state covariance to zero, so it uses
     # a strictly smaller innovation covariance than the Kalman filter and the two
