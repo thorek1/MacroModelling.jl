@@ -640,6 +640,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$MacroModelling.PARTICLE_FILTER_KEYWORDS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
@@ -713,6 +714,10 @@ function plot_model_estimates(𝓂::ℳ,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                                tempering_target_ratio::Real = MacroModelling.DEFAULT_TEMPERING_TARGET_RATIO,
+                                tempering_mh_steps::Int = MacroModelling.DEFAULT_TEMPERING_MH_STEPS,
+                                tempering_max_stages::Int = MacroModelling.DEFAULT_TEMPERING_MAX_STAGES,
+                                tempering_mh_scale::Real = MacroModelling.DEFAULT_TEMPERING_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -1289,6 +1294,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$MacroModelling.PARTICLE_FILTER_KEYWORDS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
@@ -1379,6 +1385,10 @@ function plot_model_estimates!(𝓂::ℳ,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                tempering_target_ratio::Real = MacroModelling.DEFAULT_TEMPERING_TARGET_RATIO,
+                                tempering_mh_steps::Int = MacroModelling.DEFAULT_TEMPERING_MH_STEPS,
+                                tempering_max_stages::Int = MacroModelling.DEFAULT_TEMPERING_MAX_STAGES,
+                                tempering_mh_scale::Real = MacroModelling.DEFAULT_TEMPERING_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -1503,7 +1513,9 @@ function plot_model_estimates!(𝓂::ℳ,
     
     particle_kw = filter ∈ MacroModelling.PARTICLE_FILTERS ?
         (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
-           particle_initial_state_scaling, particle_rng) : NamedTuple()
+           particle_initial_state_scaling, particle_rng,
+           tempering_target_ratio, tempering_mh_steps,
+           tempering_max_stages, tempering_mh_scale) : NamedTuple()
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; particle_kw...)
     

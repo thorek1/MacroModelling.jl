@@ -225,6 +225,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
@@ -303,6 +304,10 @@ And data, 4×2×40 Array{Float64, 3}:
                                 particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                                tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                                tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                                tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -404,6 +409,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
 - $QME®
@@ -460,6 +466,10 @@ And data, 1×40 Matrix{Float64}:
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                             particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                             smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -507,7 +517,9 @@ And data, 1×40 Matrix{Float64}:
 
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
-           particle_initial_state_scaling, particle_rng) : NamedTuple()
+           particle_initial_state_scaling, particle_rng,
+           tempering_target_ratio, tempering_mh_steps,
+           tempering_max_stages, tempering_mh_scale) : NamedTuple()
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
@@ -539,6 +551,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
 - $SMOOTH®
@@ -599,6 +612,10 @@ And data, 4×40 Matrix{Float64}:
                                 particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                                tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                                tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                                tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                                tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 levels::Bool = DEFAULT_LEVELS,
@@ -647,7 +664,9 @@ And data, 4×40 Matrix{Float64}:
 
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
-           particle_initial_state_scaling, particle_rng) : NamedTuple()
+           particle_initial_state_scaling, particle_rng,
+           tempering_target_ratio, tempering_mh_steps,
+           tempering_max_stages, tempering_mh_scale) : NamedTuple()
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
@@ -681,6 +700,7 @@ docstrings of `get_estimated_variables` and `get_estimated_shocks` for details.
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
 - $SMOOTH®
@@ -742,6 +762,10 @@ And data, 5×40 Matrix{Float64}:
                              particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                              particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                              particle_rng::Random.AbstractRNG = Random.default_rng(),
+                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                              data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                              levels::Bool = DEFAULT_LEVELS,
@@ -873,6 +897,10 @@ And data, 4×40 Matrix{Float64}:
                                                     particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                                     particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                                     particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                                    tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+                                                    tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+                                                    tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+                                                    tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                                     smooth::Bool = DEFAULT_SMOOTH_FLAG,
                                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -926,7 +954,9 @@ And data, 4×40 Matrix{Float64}:
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations),
            n_particles, particle_resampling, particle_resampling_threshold,
-           particle_initial_state_scaling, particle_rng) : NamedTuple()
+           particle_initial_state_scaling, particle_rng,
+           tempering_target_ratio, tempering_mh_steps,
+           tempering_max_stages, tempering_mh_scale) : NamedTuple()
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     smooth = smooth, 

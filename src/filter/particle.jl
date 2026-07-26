@@ -1752,19 +1752,31 @@ end
 # the genealogy smoother in `smooth_particle_trajectories!` below.
 #
 # All three particle variants target the same filtering distribution p(xₜ|y₁..ₜ)
-# — they differ only in how efficiently they estimate the *likelihood* — so the
-# moments below are produced by the standard predict/weight/resample recursion
-# whichever particle filter was selected.
+# — they differ only in how they get there — so the recursion below is shared.
+# `:bootstrap_particle` and `:auxiliary_particle` use the plain
+# predict/weight/resample step: the auxiliary filter's look-ahead proposal changes
+# the *variance* of the likelihood estimate, not the cloud it leaves behind, so
+# there is nothing extra to do for the moments. `:tempered_particle` does change
+# the cloud: within each period it bridges from the prior to the full measurement
+# density in stages, resampling and rejuvenating the shocks by random-walk
+# Metropolis at each one. That leaves a cloud with far more distinct support
+# points at the same `n_particles`, which is exactly what the moments (and the
+# smoother, which walks the genealogy) benefit from — so the tempering controls
+# act here too.
 #
 # `decomposition` is the shock decomposition of whichever shock path was
 # produced — filtered when `smooth = false`, smoothed when `smooth = true`.
 @unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{algo},
-    ::Union{Val{:bootstrap_particle},Val{:auxiliary_particle},Val{:tempered_particle}};
+    ::Val{pf};
     warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
     smooth::Bool = true,
+    tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
+    tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
+    tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
+    tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
     measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
     n_particles::Int = DEFAULT_N_PARTICLES,
     particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -1772,7 +1784,9 @@ end
     particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
     particle_rng::Random.AbstractRNG = Random.default_rng(),
     marginal_contribution::Bool = false,
-    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical) where {algo}
+    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical) where {algo, pf}
+
+    @assert pf ∈ PARTICLE_FILTERS "`filter_data_with_model` was dispatched to the particle path with `filter = :$(pf)`."
 
     obs_axis = collect(axiskeys(data_in_deviations, 1))
     observables = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
@@ -1838,11 +1852,37 @@ end
     hist_states = smooth ? [Matrix{Float64}(undef, nVars, n_particles) for _ in 1:nT] : Matrix{Float64}[]
     hist_shocks = smooth ? [Matrix{Float64}(undef, nExo,  n_particles) for _ in 1:nT] : Matrix{Float64}[]
     parent      = smooth ? [Int[] for _ in 1:nT] : Vector{Int}[]
+    # `within[t]` is the composition of the tempering stages' resampling maps for
+    # period t: post-stage slot ↦ pre-stage slot. Empty for the non-tempered
+    # variants, which do no within-period resampling.
+    within      = smooth ? [Int[] for _ in 1:nT] : Vector{Int}[]
     terminal_weights = smooth ? fill(1.0 / n_particles, n_particles) : Float64[]
+
+    tempered = pf == :tempered_particle
+    r_star     = Float64(tempering_target_ratio)
+    mh_scale   = Float64(tempering_mh_scale)
+    n_mh       = tempering_mh_steps
+    max_stages = tempering_max_stages
+    # scratch used only by the tempering stages
+    anc_pool  = tempered ? [zeros_like_particle(parts[1]) for _ in 1:n_particles] : typeof(parts)()
+    anc_pool2 = tempered ? [zeros_like_particle(parts[1]) for _ in 1:n_particles] : typeof(parts)()
+    shocks2   = tempered ? [Vector{Float64}(undef, nExo) for _ in 1:n_particles] : Vector{Float64}[]
+    sprop     = tempered ? zeros_like_particle(parts[1]) : parts[1]
+    eprop     = tempered ? Vector{Float64}(undef, nExo) : Float64[]
+    dv        = tempered ? Vector{Float64}(undef, n_particles) : Float64[]
+    dv2       = tempered ? Vector{Float64}(undef, n_particles) : Float64[]
+    comp      = tempered ? collect(1:n_particles) : Int[]
+    comp2     = tempered ? collect(1:n_particles) : Int[]
 
     for t in 1:nT
         rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
         data_col = @view dat[:, t]
+
+        if tempered
+            @inbounds for p in 1:n_particles
+                copy_particle!(anc_pool[p], parts[p])
+            end
+        end
 
         @inbounds for p in 1:n_particles
             Random.randn!(rng, shocks[p])
@@ -1853,6 +1893,85 @@ end
         if isempty(rows)
             # nothing observed: the weights are unchanged, the cloud just predicts
             fill!(logdens, 0.0)
+        elseif tempered
+            # Bridge from the prior to the full measurement density in stages,
+            # resampling and rejuvenating at each one. The likelihood contribution
+            # is not needed here (that is `run_particle_filter`'s job) — only the
+            # cloud that comes out, which ends up equally weighted.
+            @inbounds for p in 1:n_particles
+                dv[p] = particle_quadratic_form(measurement_full(parts[p], full_buf), data_col, observables_index, me_var, rows)
+            end
+            if any(isfinite, dv)
+                @inbounds for p in 1:n_particles
+                    comp[p] = p
+                end
+                d_obs = length(rows)
+                φ_old = 0.0
+                stage = 0
+                while φ_old < 1.0 - 1e-12 && stage < max_stages
+                    stage += 1
+                    φ_new = tempered_next_phi(φ_old, dv, r_star, n_particles)
+
+                    lr = 0.5 * d_obs * (φ_old == 0.0 ? log(φ_new) : log(φ_new) - log(φ_old))
+                    @inbounds for p in 1:n_particles
+                        logdens[p] = lr - 0.5 * (φ_new - φ_old) * dv[p]
+                    end
+                    m = maximum(logdens)
+                    isfinite(m) || break
+                    sw = 0.0
+                    @inbounds for p in 1:n_particles
+                        sw += exp(logdens[p] - m)
+                    end
+                    (sw > 0 && isfinite(sw)) || break
+                    logsw = m + log(sw)
+                    @inbounds for p in 1:n_particles
+                        W[p] = exp(logdens[p] - logsw)
+                    end
+
+                    particle_resample_indices!(idx, bins, rng, W, particle_resampling)
+                    @inbounds for j in 1:n_particles
+                        a = idx[j]
+                        copy_particle!(anc_pool2[j], anc_pool[a])
+                        copyto!(shocks2[j], shocks[a])
+                        copy_particle!(parts2[j], parts[a])
+                        dv2[j]   = dv[a]
+                        comp2[j] = comp[a]
+                    end
+                    anc_pool, anc_pool2 = anc_pool2, anc_pool
+                    shocks,   shocks2   = shocks2,   shocks
+                    parts,    parts2    = parts2,    parts
+                    dv,       dv2       = dv2,       dv
+                    comp,     comp2     = comp2,     comp
+
+                    # Rejuvenate: random-walk Metropolis on the shocks, targeting
+                    # π(ε) ∝ N(ε;0,I)·exp(-φ/2·e(ε)ᵀH⁻¹e(ε)).
+                    @inbounds for p in 1:n_particles
+                        shp = shocks[p]
+                        for _ in 1:n_mh
+                            Random.randn!(rng, eprop)
+                            esq_old = 0.0; esq_new = 0.0
+                            for e in 1:nExo
+                                ep = shp[e] + mh_scale * eprop[e]
+                                eprop[e] = ep
+                                esq_new += ep * ep
+                                esq_old += shp[e] * shp[e]
+                            end
+                            propagate!(sprop, anc_pool[p], eprop)
+                            dprop = particle_quadratic_form(measurement_full(sprop, full_buf), data_col, observables_index, me_var, rows)
+                            if log(rand(rng)) < -0.5 * ((esq_new - esq_old) + φ_new * (dprop - dv[p]))
+                                copyto!(shp, eprop)
+                                copy_particle!(parts[p], sprop)
+                                dv[p] = dprop
+                            end
+                        end
+                    end
+
+                    φ_old = φ_new
+                end
+                # the tempering stages leave an equally weighted cloud
+                fill!(W, 1.0 / n_particles)
+                if smooth; within[t] = copy(comp); end
+            end
         else
             @inbounds for p in 1:n_particles
                 full = measurement_full(parts[p], full_buf)
@@ -1921,7 +2040,7 @@ end
     end
 
     if smooth
-        smooth_particle_trajectories!(variables, stds, shocks_out, hist_states, hist_shocks, parent, terminal_weights)
+        smooth_particle_trajectories!(variables, stds, shocks_out, hist_states, hist_shocks, parent, within, terminal_weights)
     end
 
     # ── Shock decomposition ──────────────────────────────────────────────────
@@ -2054,6 +2173,7 @@ function smooth_particle_trajectories!(variables::Matrix{Float64},
                                        hist_states::Vector{Matrix{Float64}},
                                        hist_shocks::Vector{Matrix{Float64}},
                                        parent::Vector{Vector{Int}},
+                                       within::Vector{Vector{Int}},
                                        W::Vector{Float64})
     nT = length(hist_states)
     nT == 0 && return nothing
@@ -2086,8 +2206,18 @@ function smooth_particle_trajectories!(variables::Matrix{Float64},
             stds[i, t] = sqrt(max(stds[i, t], 0.0))
         end
 
-        # step the lineage back across the resampling applied at the end of t-1
+        # Step the lineage back one period. Two maps may apply, innermost first:
+        # the tempered filter's within-period resampling (post-stage slot ↦
+        # pre-stage slot at t, which is the slot the ancestor occupied after the
+        # end-of-(t-1) resampling), then the end-of-(t-1) resampling itself
+        # (↦ the slot indexing `hist_states[t-1]`). Either may be empty.
         if t > 1
+            wit = within[t]
+            if !isempty(wit)
+                @inbounds for p in 1:n_particles
+                    lineage[p] = wit[lineage[p]]
+                end
+            end
             par = parent[t-1]
             if !isempty(par)
                 @inbounds for p in 1:n_particles

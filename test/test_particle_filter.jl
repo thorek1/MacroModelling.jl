@@ -191,6 +191,24 @@ threw(f) = try; f(); false; catch; true; end
         # the inversion filter still has no smoother
         @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = :inversion,
                         algorithm = :first_order, smooth = true)))
+
+        # The tempered filter rejuvenates the cloud within each period, so its
+        # estimates path runs a different recursion — it must still land on the
+        # same smoothing distribution the bootstrap filter targets, and hence
+        # close to the Kalman smoother on this linear model.
+        tp_sm = collect(get_estimated_variables(RBC_pf, data; filter = :tempered_particle,
+                        algorithm = :first_order, smooth = true, measurement_error = me^2,
+                        n_particles = 20_000, particle_rng = Random.Xoshiro(1)))
+        @test size(tp_sm) == size(kal_sm)
+        @test maximum(abs, tp_sm .- kal_sm) < maximum(abs, pf_filt .- kal_sm)
+        # ... and the tempering controls must actually reach the recursion
+        tp_coarse = collect(get_estimated_variables(RBC_pf, data; filter = :tempered_particle,
+                        algorithm = :first_order, smooth = true, measurement_error = me^2,
+                        n_particles = 20_000, particle_rng = Random.Xoshiro(1),
+                        tempering_target_ratio = 50.0, tempering_mh_steps = 3,
+                        tempering_mh_scale = 0.9))
+        @test tp_coarse != tp_sm
+        @test all(isfinite, tp_coarse)
     end
 
     @testset "Shock decomposition" begin
