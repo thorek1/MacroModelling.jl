@@ -144,6 +144,12 @@ In practice this buys a large variance reduction per particle — several times 
 
 Why not the textbook backward-kernel smoother? That one reweights particles at ``t`` by the backward transition density ``p(x_{t+1} \mid x_t)``. In a DSGE that density is **singular**: with fewer shocks than states the transition maps ``x_t`` onto a lower-dimensional manifold, so ``p(x_{t+1} \mid x_t)`` is a Dirac on that manifold and the reweighting is undefined. The genealogy is what remains well defined.
 
+#### Shock decomposition
+
+A shock decomposition needs a shock path, and the smoother supplies one, so the particle filters decompose too. At **first order** the contributions are additive and the split is exact — each shock's contribution is propagated through the linear transition and the columns sum to the total. At **pruned second and third order** the contributions are *not* additive, which is exactly what the Aumann–Shapley (marginal contribution) attribution is for; set `marginal_contribution = true` and the particle path reuses the same routines the inversion filter uses. Non-pruned `:second_order` / `:third_order` have no decomposition at any filter.
+
+One subtlety specific to a Monte-Carlo filter: the smoothed *mean* path is not itself a model trajectory, because averaging does not commute with a nonlinear transition (``E[g(x,\varepsilon)] \neq g(E[x],E[\varepsilon])``). The pruned decomposition therefore attributes the trajectory implied by the smoothed shocks — the same object the inversion filter decomposes — so that the contributions close exactly.
+
 The known limitation is **path degeneracy**: ancestral lines coalesce as one goes back in time, so the earliest periods rest on fewer distinct trajectories than the particle count suggests. More particles push the coalescence point further back. Smoothing also stores the whole cloud, so its memory cost is about ``n_{vars} \times N \times T \times 8`` bytes — worth keeping in mind before raising `n_particles` for a long sample.
 
 ### Resampling schemes

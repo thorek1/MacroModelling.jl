@@ -1643,6 +1643,7 @@ end
     particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
     particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
     particle_rng::Random.AbstractRNG = Random.default_rng(),
+    marginal_contribution::Bool = false,
     initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical) where {algo}
 
     obs_axis = collect(axiskeys(data_in_deviations, 1))
@@ -1801,10 +1802,69 @@ end
         smooth_particle_trajectories!(variables, stds, shocks_out, hist_states, hist_shocks, parent, terminal_weights)
     end
 
-    @info "Shock decomposition is not defined for the particle filters (the state transition is nonlinear and the contributions do not add up); returning zeros. Use `filter = :kalman` for a shock decomposition." maxlog = 1
-
+    # ── Shock decomposition ──────────────────────────────────────────────────
+    # A decomposition needs a shock path; the particle filter supplies one (the
+    # smoothed shocks above), so the same attribution the inversion filter uses
+    # applies here. At first order contributions are additive and the split is
+    # exact. At pruned higher order they are not additive, which is precisely
+    # what the Aumann-Shapley (marginal contribution) attribution is for, so the
+    # pruned decomposition reuses the routines in `inversion.jl`. Non-pruned
+    # `:second_order` / `:third_order` have no decomposition at all (the caller
+    # already turns `shock_decomposition` off for them).
     decomposition = zeros(nVars, nExo + 2, nT)
     decomposition[:, end, :] .= variables
+
+    if algo == :first_order
+        𝐒₁ = 𝐒 isa AbstractMatrix ? 𝐒 : 𝐒[1]
+        init_vec = state isa AbstractVector{<:AbstractVector} ? state[1] : state
+        sck = zeros(nExo)
+        @inbounds for i in 1:nExo
+            fill!(sck, 0.0); sck[i] = shocks_out[i, 1]
+            decomposition[:, i, 1] .= 𝐒₁ * vcat(init_vec[past_idx], sck)
+        end
+        decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end-2, 1], dims = 2)
+        for t in 2:nT
+            @inbounds for i in 1:nExo
+                fill!(sck, 0.0); sck[i] = shocks_out[i, t]
+                decomposition[:, i, t] .= 𝐒₁ * vcat(decomposition[past_idx, i, t-1], sck)
+            end
+            decomposition[:, end - 1, t] .= decomposition[:, end, t] - sum(decomposition[:, 1:end-2, t], dims = 2)
+        end
+    elseif algo ∈ (:pruned_second_order, :pruned_third_order) && marginal_contribution
+        # The Aumann-Shapley attribution requires `variables` and `shocks` to lie
+        # on the *same* model trajectory — it checks that the contributions plus
+        # the zero-shock baseline reproduce `variables`. A smoothed mean is not a
+        # model path (averaging does not commute with the nonlinear transition:
+        # E[g(x,ε)] ≠ g(E[x],E[ε])), so feeding it in directly leaves a closure
+        # error that the routine tries to remove by refining its quadrature.
+        # Decompose the trajectory implied by the smoothed shocks instead, which
+        # is the same object the inversion filter decomposes and closes exactly.
+        traj = zeros(nVars, nT)
+        cur  = deepcopy(state)
+        nxt  = zeros_like_particle(cur)
+        buf  = Vector{Float64}(undef, nVars)
+        shk  = Vector{Float64}(undef, nExo)
+        for t in 1:nT
+            @inbounds for e in 1:nExo; shk[e] = shocks_out[e, t]; end
+            higher_propagate!(Val(algo), nxt, cur, shk, past_idx, 𝐒f, scr)
+            full = measurement_full(nxt, buf)
+            @inbounds for i in 1:nVars; traj[i, t] = full[i]; end
+            cur, nxt = nxt, cur
+        end
+        decomposition[:, end, :] .= traj
+
+        if algo == :pruned_second_order
+            aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition, traj, shocks_out,
+                                                                 state, 𝐒, T, nExo; verbose = opts.verbose)
+        else
+            aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition, traj, shocks_out,
+                                                                 state, 𝐒, T, nExo; verbose = opts.verbose)
+        end
+    elseif algo ∈ (:pruned_second_order, :pruned_third_order)
+        @info "At pruned higher order the shock contributions are not additive, so the particle filter decomposes them with the Aumann-Shapley (marginal contribution) attribution. Set `marginal_contribution = true` to get it; returning zeros otherwise." maxlog = 1
+    else
+        @info "Shock decomposition is not available for $(algo) solutions (use a pruned solution); returning zeros." maxlog = 1
+    end
 
     return variables, shocks_out, stds, decomposition
 end

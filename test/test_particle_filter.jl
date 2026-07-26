@@ -5,6 +5,7 @@ import Statistics
 import AxisKeys: KeyedArray
 import ForwardDiff
 import Zygote
+using StatsPlots
 
 # A small RBC model with two shocks and two observables, so the (bootstrap)
 # particle filter is non-degenerate and can be validated against the exact
@@ -190,6 +191,40 @@ threw(f) = try; f(); false; catch; true; end
         # the inversion filter still has no smoother
         @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = :inversion,
                         algorithm = :first_order, smooth = true)))
+    end
+
+    @testset "Shock decomposition" begin
+        # first order: contributions are additive, so the split is exact
+        d1 = collect(get_shock_decomposition(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :first_order, smooth = true, measurement_error_std = me,
+                        n_particles = 10_000, particle_rng = Random.Xoshiro(1)))
+        @test all(isfinite, d1)
+        @test !all(iszero, d1)
+        # pruned orders: not additive, hence the Aumann-Shapley (marginal contribution) split
+        for algo in (:pruned_second_order, :pruned_third_order)
+            d = collect(get_shock_decomposition(RBC_pf, data; filter = :bootstrap_particle,
+                            algorithm = algo, smooth = true, marginal_contribution = true,
+                            measurement_error_std = me, n_particles = 2_000,
+                            particle_rng = Random.Xoshiro(2)))
+            @test all(isfinite, d)
+            @test !all(iszero, d)
+        end
+    end
+
+    @testset "Plotting with the particle filters" begin
+        tmp = mktempdir()
+        for (pf_filter, algo, kw) in ((:bootstrap_particle, :first_order, (;)),
+                                      (:tempered_particle, :first_order, (; smooth = true)),
+                                      (:bootstrap_particle, :pruned_second_order,
+                                       (; smooth = true, shock_decomposition = true, marginal_contribution = true)))
+            p = plot_model_estimates(RBC_pf, data; filter = pf_filter, algorithm = algo,
+                                     measurement_error_std = me, n_particles = 2_000,
+                                     particle_rng = Random.Xoshiro(1), show_plots = false,
+                                     save_plots = true, save_plots_path = tmp,
+                                     save_plots_format = :png, kw...)
+            @test p !== nothing
+        end
+        @test !isempty(readdir(tmp))
     end
 
     @testset "Full measurement-error covariance" begin
