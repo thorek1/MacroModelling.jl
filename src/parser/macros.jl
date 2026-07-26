@@ -169,7 +169,7 @@ Parameters can be defined in either of the following ways:
 - $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
-- `ss_symbolic_mode` [Default: `:auto`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks. `:auto` retains single-equation symbolic solves for small redundancy workloads and selects the numerical-only setup when many redundant-variable candidates would require expensive symbolic solves.
+- `ss_symbolic_mode` [Default: `:single_equation`, Type: `Symbol`]: controls symbolic steps in non-stochastic steady state (NSSS) setup. Use `:none` for numerical-only setup, `:single_equation` to allow symbolic solves only for single-equation blocks, or `:full` to allow symbolic solves for both single- and multi-equation blocks.
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
 - `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
@@ -224,7 +224,7 @@ macro parameters(𝓂, ex...)
     # parse options
     verbose = false
     silent = false
-    ss_symbolic_mode = :auto
+    ss_symbolic_mode = :single_equation
     precompile = false
     report_missing_parameters = true
     perturbation_order = 1
@@ -266,7 +266,7 @@ macro parameters(𝓂, ex...)
         exp)
     end
 
-    @assert ss_symbolic_mode ∈ [:none, :single_equation, :full, :auto] "ss_symbolic_mode must be :none, :single_equation, :full, or :auto. Got $ss_symbolic_mode."
+    @assert ss_symbolic_mode ∈ [:none, :single_equation, :full] "ss_symbolic_mode must be :none, :single_equation, or :full. Got $ss_symbolic_mode."
 
     @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
 

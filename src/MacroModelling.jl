@@ -2760,7 +2760,7 @@ end # dispatch_doctor
         # Warm the standard first-order workflow used by a simple IRF script.
         get_steady_state(
             RBC_for_precompile;
-            derivatives = false,
+            # derivatives = false,
             stochastic = false,
             return_variables_only = true,
             silent = true,
@@ -2783,7 +2783,7 @@ end # dispatch_doctor
             variance = true,
             covariance = true,
             correlation = true,
-            derivatives = false,
+            # derivatives = false,
             silent = true,
             verbose = false,
         )

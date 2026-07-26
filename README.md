@@ -52,36 +52,6 @@ For full benchmarks across operating systems, CPU architectures, and models, see
 
 Wall-clock user experience is a different story. `MacroModelling.jl` inherits Julia's just-in-time compilation cost: time-to-first-output can take a minute or more on a small model while the relevant functions are compiled. Once compiled, every subsequent call is fast. Dynare, being built on a compiled host - MATLAB, has the edge on the first call, but this advantage erodes as model size grows and disappears entirely as soon as functions are reused.
 
-The standard command-line NSSS/IRF/moments path can be measured with the generic fixture in `benchmark/ttfx_basic.jl`:
-
-```sh
-julia --startup-file=no --history-file=no --project=. benchmark/ttfx_basic.jl
-```
-
-Run `Pkg.precompile()` once before timing a fresh process so the measurement reflects the package's precompiled workflow.
-
-To separate package loading from the model workflow, run `benchmark/ttfx_load_breakdown.jl` in a fresh process:
-
-```sh
-julia --startup-file=no --history-file=no --project=. benchmark/ttfx_load_breakdown.jl
-```
-
-The larger FRB/US model can be measured with `benchmark/ttfx_frbus.jl`:
-
-```sh
-julia --startup-file=no --history-file=no --project=. benchmark/ttfx_frbus.jl
-```
-
-FRB/US contains unit-root variables, so the benchmark reports its supported mean/NSSS moments path; full covariance-based moments are not defined for this model.
-
-The smaller Smets–Wouters 2007 model can be used to isolate NSSS setup timing:
-
-```sh
-julia --startup-file=no --history-file=no --project=. benchmark/ttfx_sw07.jl
-```
-
-Set `MACROMODELLING_SW07_SS_SYMBOLIC_MODE=single_equation` or `none` to compare the automatic NSSS setup with an explicit mode.
-
 In practice: if the goal is a single output from a model run once, Dynare will deliver it sooner. For iterative work — changing parameters or equations interactively, running estimation, or anything that calls the solvers many times — `MacroModelling.jl` is the better fit, thanks to its interactive design, the speed of precompiled functions, and its compatibility with Julia's rich ecosystem of gradient-based samplers.
 
 ## Getting started

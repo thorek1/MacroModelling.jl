@@ -530,32 +530,6 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
 end
 
 
-const NSSS_AUTO_SYMBOLIC_CANDIDATE_THRESHOLD = 20
-
-function resolve_steady_state_symbolic_mode(𝓂::ℳ, ss_symbolic_mode::Symbol)::Symbol
-    ss_symbolic_mode !== :auto && return ss_symbolic_mode
-
-    post_model = 𝓂.constants.post_model_macro
-    redundant_vars = intersect.(
-        union.(
-            intersect.(post_model.var_future_list_aux_SS, post_model.var_present_list_aux_SS),
-            intersect.(post_model.var_future_list_aux_SS, post_model.var_past_list_aux_SS),
-            intersect.(post_model.var_present_list_aux_SS, post_model.var_past_list_aux_SS),
-            intersect.(post_model.ss_list_aux_SS, post_model.var_present_list_aux_SS),
-            intersect.(post_model.ss_list_aux_SS, post_model.var_past_list_aux_SS),
-            intersect.(post_model.ss_list_aux_SS, post_model.var_future_list_aux_SS),
-        ),
-        post_model.var_list_aux_SS,
-    )
-    candidate_count = sum(
-        length(redundant_vars[i])
-        for i in eachindex(redundant_vars)
-        if !isempty(redundant_vars[i]) && length(post_model.var_list_aux_SS[i]) > 1
-    )
-
-    return candidate_count > NSSS_AUTO_SYMBOLIC_CANDIDATE_THRESHOLD ? :none : :single_equation
-end
-
 function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::Bool = false)
     precompile && (ss_symbolic_mode = :none)
     ss_symbolic_mode == :none && return true, false
@@ -565,7 +539,6 @@ function steady_state_symbolic_mode_flags(ss_symbolic_mode::Symbol, precompile::
 end
 
 function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, ss_symbolic_mode::Symbol = :single_equation)
-    ss_symbolic_mode = resolve_steady_state_symbolic_mode(𝓂, ss_symbolic_mode)
     avoid_solve, symbolic_enabled = steady_state_symbolic_mode_flags(ss_symbolic_mode, 𝓂.constants.post_parameters_macro.precompile)
     use_symbolics = !𝓂.constants.post_parameters_macro.precompile
 
