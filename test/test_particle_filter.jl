@@ -163,6 +163,35 @@ threw(f) = try; f(); false; catch; true; end
                         n_particles = 5_000, particle_rng = Random.Xoshiro(1))))
     end
 
+    @testset "Particle smoothing" begin
+        kal_sm  = collect(get_estimated_variables(RBC_pf, data; filter = :kalman, smooth = true))
+        pf_filt = collect(get_estimated_variables(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :first_order, smooth = false, measurement_error_std = me,
+                        n_particles = 20_000, particle_rng = Random.Xoshiro(1)))
+        pf_sm   = collect(get_estimated_variables(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :first_order, smooth = true, measurement_error_std = me,
+                        n_particles = 20_000, particle_rng = Random.Xoshiro(1)))
+        @test all(isfinite, pf_sm)
+        @test size(pf_sm) == size(kal_sm)
+        # using the whole sample must move the estimates closer to the Kalman smoother
+        @test maximum(abs, pf_sm .- kal_sm) < maximum(abs, pf_filt .- kal_sm)
+        # smoothing works for the other variants and at nonlinear orders
+        for pf_filter in (:auxiliary_particle, :tempered_particle)
+            @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = pf_filter,
+                            algorithm = :first_order, smooth = true, measurement_error_std = me,
+                            n_particles = 5_000, particle_rng = Random.Xoshiro(2))))
+        end
+        @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :pruned_second_order, smooth = true, measurement_error_std = me,
+                        n_particles = 3_000, particle_rng = Random.Xoshiro(3))))
+        @test all(isfinite, collect(get_estimated_shocks(RBC_pf, data; filter = :bootstrap_particle,
+                        algorithm = :first_order, smooth = true, measurement_error_std = me,
+                        n_particles = 10_000, particle_rng = Random.Xoshiro(4))))
+        # the inversion filter still has no smoother
+        @test all(isfinite, collect(get_estimated_variables(RBC_pf, data; filter = :inversion,
+                        algorithm = :first_order, smooth = true)))
+    end
+
     @testset "Full measurement-error covariance" begin
         Hdiag = [me^2 0.0; 0.0 me^2]
         # a diagonal covariance reproduces the equivalent per-observable stds

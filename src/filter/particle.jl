@@ -18,11 +18,13 @@
 # solution matrices 𝐒), and the state transition is the perturbation solution's
 # `state_update` (first order through pruned third order).
 #
-# Three variants are provided, selected by `particle_filter_algorithm`:
-#   :bootstrap  — sequential-importance-resampling (as in Dynare 7's
-#                 `sequential_importance_particle_filter.m`)
-#   :auxiliary  — Pitt & Shephard (1999) auxiliary particle filter
-#   :tempered   — Herbst & Schorfheide (2019) tempered particle filter
+# Three variants are provided, each selected by its own `filter` value:
+#   :bootstrap_particle — sequential importance resampling, i.e. the bootstrap
+#                         filter of Gordon, Salmond & Smith (1993), applied to
+#                         DSGE models by Fernández-Villaverde & Rubio-Ramírez
+#                         (2007)
+#   :auxiliary_particle — auxiliary particle filter of Pitt & Shephard (1999)
+#   :tempered_particle  — tempered particle filter of Herbst & Schorfheide (2019)
 #
 # The particle filter is a stochastic likelihood estimator and is **not**
 # differentiable (resampling is discontinuous); it is intended for use with
@@ -176,7 +178,8 @@ end
 # Covariance used to spread the initial particle cloud over the full state.
 # `:theoretical` (default) uses the first-order ergodic (unconditional) state
 # covariance Σ solving the discrete Lyapunov equation Σ = A Σ A' + B B' (built
-# from the cached first-order solution, as in Dynare); `:diagonal` uses 10·I; an
+# from the cached first-order solution, the usual choice for a stationary model);
+# `:diagonal` uses 10·I; an
 # nVars×nVars matrix is used directly.
 function particle_initial_state_covariance(𝓂::ℳ, T, opts::CalculationOptions,
                                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}})
@@ -1612,19 +1615,21 @@ end
 # `get_estimated_variables`, `get_estimated_shocks` and the estimate plots. For
 # the particle filters it returns the *filtered* moments of the particle cloud:
 #
-#   variables            E[xₜ | y₁..ₜ]      — weighted mean of the cloud
-#   standard_deviations  sd(xₜ | y₁..ₜ)     — weighted spread of the cloud
-#   shocks               E[εₜ | y₁..ₜ]      — weighted mean of the drawn shocks
+#   variables            mean of the cloud       (states)
+#   standard_deviations  spread of the cloud     (states)
+#   shocks               mean of the drawn shocks
+#
+# With `smooth = false` these condition on the past only, E[xₜ | y₁..ₜ]. With
+# `smooth = true` they condition on the whole sample, E[xₜ | y₁..T], obtained by
+# the genealogy smoother in `smooth_particle_trajectories!` below.
 #
 # All three particle variants target the same filtering distribution p(xₜ|y₁..ₜ)
 # — they differ only in how efficiently they estimate the *likelihood* — so the
 # moments below are produced by the standard predict/weight/resample recursion
 # whichever particle filter was selected.
 #
-# Two caveats relative to the Kalman path: these are filtered, not smoothed,
-# estimates (a particle smoother is a different algorithm), and a linear shock
-# decomposition does not exist for a nonlinear filter, so `decomposition` is
-# returned as zeros.
+# One caveat relative to the Kalman path: a linear shock decomposition does not
+# exist for a nonlinear filter, so `decomposition` is returned as zeros.
 @unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{algo},
@@ -1703,6 +1708,15 @@ end
         propagate! = (out, prev, sh) -> higher_propagate!(Val(algo), out, prev, sh, past_idx, 𝐒f, scr)
     end
 
+    # Smoothing storage (see the backward pass below). `hist_*` keep the cloud and
+    # the shocks of every period; `parent[t]` is the resampling map applied at the
+    # end of period t (empty ⇒ no resampling ⇒ identity), which is the genealogy
+    # the backward pass walks.
+    hist_states = smooth ? [Matrix{Float64}(undef, nVars, n_particles) for _ in 1:nT] : Matrix{Float64}[]
+    hist_shocks = smooth ? [Matrix{Float64}(undef, nExo,  n_particles) for _ in 1:nT] : Matrix{Float64}[]
+    parent      = smooth ? [Int[] for _ in 1:nT] : Vector{Int}[]
+    terminal_weights = smooth ? fill(1.0 / n_particles, n_particles) : Float64[]
+
     for t in 1:nT
         rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
         data_col = @view dat[:, t]
@@ -1735,26 +1749,41 @@ end
             end
         end
 
-        # filtered moments of the (weighted) cloud
-        @inbounds for p in 1:n_particles
-            full = measurement_full(parts[p], full_buf)
-            w = W[p]
-            for i in 1:nVars
-                variables[i, t] += w * full[i]
+        if smooth
+            # The backward pass starts from the cloud as stored here, i.e. *before*
+            # any resampling at the end of this period, so it needs the weights in
+            # that same indexing. Resampling would overwrite `W` with uniform ones.
+            copyto!(terminal_weights, W)
+            # keep the whole cloud so the backward pass can walk the genealogy
+            Hs = hist_states[t]; Hh = hist_shocks[t]
+            @inbounds for p in 1:n_particles
+                full = measurement_full(parts[p], full_buf)
+                for i in 1:nVars; Hs[i, p] = full[i]; end
+                sp = shocks[p]
+                for e in 1:nExo; Hh[e, p] = sp[e]; end
             end
-            for e in 1:nExo
-                shocks_out[e, t] += w * shocks[p][e]
+        else
+            # filtered moments of the (weighted) cloud
+            @inbounds for p in 1:n_particles
+                full = measurement_full(parts[p], full_buf)
+                w = W[p]
+                for i in 1:nVars
+                    variables[i, t] += w * full[i]
+                end
+                for e in 1:nExo
+                    shocks_out[e, t] += w * shocks[p][e]
+                end
             end
-        end
-        @inbounds for p in 1:n_particles
-            full = measurement_full(parts[p], full_buf)
-            w = W[p]
-            for i in 1:nVars
-                stds[i, t] += w * (full[i] - variables[i, t])^2
+            @inbounds for p in 1:n_particles
+                full = measurement_full(parts[p], full_buf)
+                w = W[p]
+                for i in 1:nVars
+                    stds[i, t] += w * (full[i] - variables[i, t])^2
+                end
             end
-        end
-        @inbounds for i in 1:nVars
-            stds[i, t] = sqrt(max(stds[i, t], 0.0))
+            @inbounds for i in 1:nVars
+                stds[i, t] = sqrt(max(stds[i, t], 0.0))
+            end
         end
 
         if effective_sample_size(W) < particle_resampling_threshold * n_particles
@@ -1764,7 +1793,12 @@ end
             end
             parts, parts2 = parts2, parts
             fill!(W, 1.0 / n_particles)
+            if smooth; parent[t] = copy(idx); end
         end
+    end
+
+    if smooth
+        smooth_particle_trajectories!(variables, stds, shocks_out, hist_states, hist_shocks, parent, terminal_weights)
     end
 
     @info "Shock decomposition is not defined for the particle filters (the state transition is nonlinear and the contributions do not add up); returning zeros. Use `filter = :kalman` for a shock decomposition." maxlog = 1
@@ -1773,6 +1807,78 @@ end
     decomposition[:, end, :] .= variables
 
     return variables, shocks_out, stds, decomposition
+end
+
+# Backward pass of the particle smoother (fixed-interval smoothing by genealogy,
+# a.k.a. forward-filtering backward-sampling on the filter's ancestral lines).
+#
+# Why this and not the textbook backward kernel? The usual particle smoother
+# reweights particles at t by the backward transition density p(xₜ₊₁ | xₜ). For a
+# DSGE that density is *singular*: with fewer shocks than states the transition
+# maps xₜ onto a lower-dimensional manifold, so p(xₜ₊₁ | xₜ) is a Dirac on that
+# manifold and the reweighting is undefined. What is well defined is the filter's
+# own genealogy: every surviving particle at T carries the ancestral line that
+# produced it, and those lines are draws from p(x₁..T | y₁..T). Averaging the
+# lines with the final weights therefore gives the smoothed moments directly.
+#
+# `parent[t]` is the resampling map applied at the end of period t (empty means no
+# resampling happened, i.e. the identity). Walking it backwards from T turns each
+# final particle index into the index it occupied at every earlier period.
+#
+# Caveat worth knowing: ancestral lines coalesce as one goes back in time (path
+# degeneracy), so the smoothed estimate for the earliest periods rests on fewer
+# distinct trajectories than the particle count suggests. More particles push the
+# coalescence point further back.
+function smooth_particle_trajectories!(variables::Matrix{Float64},
+                                       stds::Matrix{Float64},
+                                       shocks_out::Matrix{Float64},
+                                       hist_states::Vector{Matrix{Float64}},
+                                       hist_shocks::Vector{Matrix{Float64}},
+                                       parent::Vector{Vector{Int}},
+                                       W::Vector{Float64})
+    nT = length(hist_states)
+    nT == 0 && return nothing
+    nVars = size(variables, 1)
+    nExo  = size(shocks_out, 1)
+    n_particles = length(W)
+
+    # lineage: where each final particle sat at the period currently being visited
+    lineage = collect(1:n_particles)
+
+    for t in nT:-1:1
+        Hs = hist_states[t]; Hh = hist_shocks[t]
+
+        @inbounds for p in 1:n_particles
+            a = lineage[p]; w = W[p]
+            for i in 1:nVars
+                variables[i, t] += w * Hs[i, a]
+            end
+            for e in 1:nExo
+                shocks_out[e, t] += w * Hh[e, a]
+            end
+        end
+        @inbounds for p in 1:n_particles
+            a = lineage[p]; w = W[p]
+            for i in 1:nVars
+                stds[i, t] += w * (Hs[i, a] - variables[i, t])^2
+            end
+        end
+        @inbounds for i in 1:nVars
+            stds[i, t] = sqrt(max(stds[i, t], 0.0))
+        end
+
+        # step the lineage back across the resampling applied at the end of t-1
+        if t > 1
+            par = parent[t-1]
+            if !isempty(par)
+                @inbounds for p in 1:n_particles
+                    lineage[p] = par[lineage[p]]
+                end
+            end
+        end
+    end
+
+    return nothing
 end
 
 # out = A·prev[past] + B·shock for a single particle (estimates path; the

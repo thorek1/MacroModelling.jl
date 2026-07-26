@@ -28,9 +28,9 @@ get_loglikelihood(model, data, parameters; filter = :kalman)
 |---|---|---|---|---|---|---|
 | `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes | 1× |
 | `:inversion` | linear and nonlinear | exact given the shocks | yes | not available | no | ~1–10× |
-| `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~10³× |
-| `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~2× bootstrap |
-| `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required | no | ~5–10× bootstrap |
+| `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~10³× |
+| `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~2× bootstrap |
+| `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required | yes (genealogy) | ~5–10× bootstrap |
 
 A short decision rule:
 
@@ -62,7 +62,7 @@ This is exact — no approximation beyond the linearity of the model itself — 
 
 `initial_covariance` sets ``P_1``: `:theoretical` solves the Lyapunov equation ``P = APA' + BB'`` for the ergodic covariance, `:diagonal` starts diffuse (10 on the diagonal), or supply your own matrix. Missing observations are handled by shrinking the update to the observed rows in that period; a fully unobserved period becomes a pure prediction step.
 
-The Kalman filter is also the only filter that supports **smoothing** (`smooth = true`), i.e. estimates of ``x_t`` given the *whole* sample rather than only the past. `get_model_estimates`, `get_estimated_shocks` and the estimate plots use the Durbin–Koopman smoother.
+The Kalman filter also supports **smoothing** (`smooth = true`), i.e. estimates of ``x_t`` given the *whole* sample rather than only the past. `get_model_estimates`, `get_estimated_shocks` and the estimate plots use the Durbin–Koopman smoother. The particle filters support smoothing too (see below); the inversion filter does not.
 
 **References:** Kalman (1960); Durbin & Koopman (2012), *Time Series Analysis by State Space Methods*.
 
@@ -137,6 +137,14 @@ The mutation is what makes this powerful: it *moves* particles towards the data 
 In practice this buys a large variance reduction per particle — several times lower standard deviation than the bootstrap filter at the same ``N`` — at several times the cost per particle. It is the right default when the bootstrap filter degenerates.
 
 **Reference:** Herbst & Schorfheide (2019), *Tempered Particle Filtering*; see also Herbst & Schorfheide (2015), *Bayesian Estimation of DSGE Models*.
+
+### Smoothing
+
+`smooth = true` returns ``E[x_t \mid y_{1:T}]`` rather than ``E[x_t \mid y_{1:t}]``, i.e. estimates that use the *whole* sample. For the particle filters this is done by **fixed-interval smoothing along the filter's genealogy**: every particle surviving at ``T`` carries the ancestral line that produced it, and those lines are draws from the joint smoothing distribution ``p(x_{1:T} \mid y_{1:T})``, so averaging them with the terminal weights gives the smoothed moments directly.
+
+Why not the textbook backward-kernel smoother? That one reweights particles at ``t`` by the backward transition density ``p(x_{t+1} \mid x_t)``. In a DSGE that density is **singular**: with fewer shocks than states the transition maps ``x_t`` onto a lower-dimensional manifold, so ``p(x_{t+1} \mid x_t)`` is a Dirac on that manifold and the reweighting is undefined. The genealogy is what remains well defined.
+
+The known limitation is **path degeneracy**: ancestral lines coalesce as one goes back in time, so the earliest periods rest on fewer distinct trajectories than the particle count suggests. More particles push the coalescence point further back. Smoothing also stores the whole cloud, so its memory cost is about ``n_{vars} \times N \times T \times 8`` bytes — worth keeping in mind before raising `n_particles` for a long sample.
 
 ### Resampling schemes
 

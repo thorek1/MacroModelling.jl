@@ -345,6 +345,7 @@ And data, 4×2×40 Array{Float64, 3}:
     data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
     extra_kw = marginal_contribution ? (; marginal_contribution = true) : NamedTuple()
+    warn_unused_measurement_error(filter, measurement_error_std)
     if filter ∈ PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; measurement_error_std, n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
@@ -502,6 +503,8 @@ And data, 1×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Shocks = axis1, Periods = 1:0)
     end
 
+    warn_unused_measurement_error(filter, measurement_error_std)
+
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng) : NamedTuple()
@@ -639,6 +642,8 @@ And data, 4×40 Matrix{Float64}:
         if !use_workspaces; 𝓂.workspaces = orig_ws; end
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Variables = axis1, Periods = 1:0)
     end
+
+    warn_unused_measurement_error(filter, measurement_error_std)
 
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
@@ -4334,6 +4339,16 @@ function get_statistics(𝓂::ℳ,
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
     return ret
+end
+
+# The Kalman smoother path (`filter_and_smooth`) does not take measurement error,
+# so a `measurement_error_std` supplied to the estimate entry points only has an
+# effect for the particle filters. Say so rather than silently dropping it.
+function warn_unused_measurement_error(filter::Symbol, measurement_error_std; maxlog::Int = DEFAULT_MAXLOG)
+    if filter ∉ PARTICLE_FILTERS && measurement_error_std !== DEFAULT_MEASUREMENT_ERROR_STD
+        @info "`measurement_error_std` is only used by the particle filters on this path; it is ignored for `filter = :$(filter)`. Use `get_loglikelihood` if you need measurement error in the Kalman likelihood." maxlog = maxlog
+    end
+    return nothing
 end
 
 # Resolve `measurement_error_std = :auto` for the filter-based `get_loglikelihood`

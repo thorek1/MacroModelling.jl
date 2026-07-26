@@ -419,8 +419,11 @@ function normalize_filtering_options(filter::Symbol,
         is_particle = false
     end
 
-    if filter != :kalman && smooth
-        @info "Only the Kalman filter supports smoothing. Setting `smooth = false`." maxlog = maxlog
+    # Smoothing is available for the Kalman filter (Durbin-Koopman smoother) and
+    # for the particle filters (fixed-interval smoothing along the filter's
+    # genealogy). The inversion filter has no smoothing counterpart.
+    if filter == :inversion && smooth
+        @info "The inversion filter does not support smoothing. Setting `smooth = false`." maxlog = maxlog
         smooth = false
     end
 
