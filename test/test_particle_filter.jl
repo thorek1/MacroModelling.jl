@@ -194,20 +194,40 @@ threw(f) = try; f(); false; catch; true; end
     end
 
     @testset "Shock decomposition" begin
-        # first order: contributions are additive, so the split is exact
-        d1 = collect(get_shock_decomposition(RBC_pf, data; filter = :bootstrap_particle,
-                        algorithm = :first_order, smooth = true, measurement_error_std = me,
-                        n_particles = 10_000, particle_rng = Random.Xoshiro(1)))
-        @test all(isfinite, d1)
-        @test !all(iszero, d1)
-        # pruned orders: not additive, hence the Aumann-Shapley (marginal contribution) split
-        for algo in (:pruned_second_order, :pruned_third_order)
-            d = collect(get_shock_decomposition(RBC_pf, data; filter = :bootstrap_particle,
-                            algorithm = algo, smooth = true, marginal_contribution = true,
-                            measurement_error_std = me, n_particles = 2_000,
-                            particle_rng = Random.Xoshiro(2)))
-            @test all(isfinite, d)
-            @test !all(iszero, d)
+        # `get_shock_decomposition` returns [contributions..., (interaction,) residual];
+        # the residual carries whatever the shocks do not explain, i.e. the
+        # contribution of the initial state.
+        nE = length(get_shocks(RBC_pf))
+        dec(; kw...) = get_shock_decomposition(RBC_pf, data; filter = :bootstrap_particle,
+                            measurement_error_std = me, n_particles = 6_000,
+                            particle_rng = Random.Xoshiro(1), kw...)
+
+        # available for the filtered *and* the smoothed shock estimates
+        for sm in (false, true)
+            d = dec(algorithm = :first_order, smooth = sm)
+            @test size(d, 2) == nE + 1
+            @test all(isfinite, collect(d))
+            @test !all(iszero, collect(d))
+            # first order is additive, so the shocks explain most of the movement
+            A = collect(d)
+            @test maximum(abs, A[:, end, :]) < 0.25 * maximum(abs, A[:, 1:end-1, :])
+        end
+        # filtered and smoothed shock paths give different decompositions
+        @test collect(dec(algorithm = :first_order, smooth = false)) !=
+              collect(dec(algorithm = :first_order, smooth = true))
+
+        # pruned orders, both attributions, filtered and smoothed
+        for algo in (:pruned_second_order, :pruned_third_order), sm in (false, true)
+            # sequential: an explicit interaction column for the non-additive part
+            ds = dec(algorithm = algo, smooth = sm, marginal_contribution = false)
+            @test size(ds, 2) == nE + 2
+            @test all(isfinite, collect(ds))
+            @test !all(iszero, collect(ds))
+            # Aumann-Shapley: the interaction is distributed across the shocks
+            dm = dec(algorithm = algo, smooth = sm, marginal_contribution = true)
+            @test size(dm, 2) == nE + 1
+            @test all(isfinite, collect(dm))
+            @test !all(iszero, collect(dm))
         end
     end
 

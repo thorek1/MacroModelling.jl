@@ -1628,8 +1628,8 @@ end
 # moments below are produced by the standard predict/weight/resample recursion
 # whichever particle filter was selected.
 #
-# One caveat relative to the Kalman path: a linear shock decomposition does not
-# exist for a nonlinear filter, so `decomposition` is returned as zeros.
+# `decomposition` is the shock decomposition of whichever shock path was
+# produced — filtered when `smooth = false`, smoothed when `smooth = true`.
 @unstable function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{algo},
@@ -1811,7 +1811,12 @@ end
     # pruned decomposition reuses the routines in `inversion.jl`. Non-pruned
     # `:second_order` / `:third_order` have no decomposition at all (the caller
     # already turns `shock_decomposition` off for them).
-    decomposition = zeros(nVars, nExo + 2, nT)
+    # Column layout follows the inversion filter: with the Aumann-Shapley
+    # attribution (and at first order) it is [contributions…, baseline, total] =
+    # nExo+2; the sequential pruned attribution adds an explicit interaction and
+    # residual column, [contributions…, interaction, residual, total] = nExo+3.
+    sequential_pruned = algo ∈ (:pruned_second_order, :pruned_third_order) && !marginal_contribution
+    decomposition = zeros(nVars, sequential_pruned ? nExo + 3 : nExo + 2, nT)
     decomposition[:, end, :] .= variables
 
     if algo == :first_order
@@ -1860,8 +1865,40 @@ end
             aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition, traj, shocks_out,
                                                                  state, 𝐒, T, nExo; verbose = opts.verbose)
         end
-    elseif algo ∈ (:pruned_second_order, :pruned_third_order)
-        @info "At pruned higher order the shock contributions are not additive, so the particle filter decomposes them with the Aumann-Shapley (marginal contribution) attribution. Set `marginal_contribution = true` to get it; returning zeros otherwise." maxlog = 1
+    elseif sequential_pruned
+        # Sequential attribution: run one trajectory per shock with only that
+        # shock switched on, plus one with all of them. Each single-shock path is
+        # that shock's contribution; the all-shock path minus the sum of the
+        # single-shock paths is the interaction the nonlinearity creates (this is
+        # the term the Aumann-Shapley variant instead distributes across shocks),
+        # and whatever is still left over goes into the residual column.
+        states_dec = [deepcopy(state) for _ in 1:nExo + 1]
+        nxt   = zeros_like_particle(state)
+        dbuf  = Vector{Float64}(undef, nVars)
+        single = zeros(nExo)
+        allsh  = Vector{Float64}(undef, nExo)
+
+        for t in 1:nT
+            @inbounds for ii in 1:nExo
+                fill!(single, 0.0); single[ii] = shocks_out[ii, t]
+                higher_propagate!(Val(algo), nxt, states_dec[ii], single, past_idx, 𝐒f, scr)
+                copy_particle!(states_dec[ii], nxt)
+                full = measurement_full(states_dec[ii], dbuf)
+                for v in 1:nVars; decomposition[v, ii, t] = full[v]; end
+            end
+
+            @inbounds for e in 1:nExo; allsh[e] = shocks_out[e, t]; end
+            higher_propagate!(Val(algo), nxt, states_dec[end], allsh, past_idx, 𝐒f, scr)
+            copy_particle!(states_dec[end], nxt)
+            full = measurement_full(states_dec[end], dbuf)
+
+            # interaction = all-shock path − Σ single-shock paths
+            @inbounds for v in 1:nVars; decomposition[v, end - 2, t] = full[v]; end
+            decomposition[:, end - 2, t] .-= sum(decomposition[:, 1:end-3, t], dims = 2)
+            # residual = reported estimate − everything attributed so far
+            decomposition[:, end - 1, t] .= variables[:, t]
+            decomposition[:, end - 1, t] .-= sum(decomposition[:, 1:end-2, t], dims = 2)
+        end
     else
         @info "Shock decomposition is not available for $(algo) solutions (use a pruned solution); returning zeros." maxlog = 1
     end
