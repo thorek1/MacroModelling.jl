@@ -299,49 +299,94 @@ end
 # missing-data pattern and cache it; with complete data that is a single
 # factorisation for the whole sample. `DenseMeasurementError` is then accepted
 # anywhere `me_var` is, by dispatch, leaving the diagonal path untouched.
-struct DenseMeasurementError
+mutable struct DenseMeasurementError
     H::Matrix{Float64}
-    factors::Dict{Vector{Int},Tuple{ℒ.Cholesky{Float64,Matrix{Float64}},Float64}}
-    buf::Vector{Float64}   # innovation scratch, sized to the number of observables
+    # rows pattern → (lower Cholesky factor of H[rows, rows], log det H[rows, rows]).
+    # Kept as a plain matrix rather than a `Cholesky`: the solve below is a hand
+    # written forward substitution, which for the handful of observables a DSGE
+    # has is both faster and allocation-free (a triangular `ldiv!` on a view of
+    # the scratch buffer heap-allocates the view, once per particle per period).
+    factors::Dict{Vector{Int},Tuple{Matrix{Float64},Float64}}
+    buf::Vector{Float64}   # innovation scratch, sized to the current pattern
+    # The row pattern is constant across a period's inner loop, so the dictionary
+    # lookup (which needs a freshly allocated key vector) is guarded by a
+    # one-entry memo on the last pattern seen.
+    last_rows::Vector{Int}
+    last_L::Matrix{Float64}
+    last_logdet::Float64
 end
 
 function DenseMeasurementError(H::AbstractMatrix{<:Real})
     Hf = Matrix{Float64}(H)
     return DenseMeasurementError(Hf,
-                                 Dict{Vector{Int},Tuple{ℒ.Cholesky{Float64,Matrix{Float64}},Float64}}(),
-                                 Vector{Float64}(undef, size(Hf, 1)))
+                                 Dict{Vector{Int},Tuple{Matrix{Float64},Float64}}(),
+                                 Float64[],
+                                 Int[],
+                                 zeros(Float64, 0, 0),
+                                 0.0)
 end
 
-# Cholesky of H[rows, rows] and log det H[rows, rows], memoised on the row pattern.
-@inline function me_factor(me::DenseMeasurementError, rows)
+# Allocation-free comparison of the memoised pattern against the current `rows`
+# (which may be a Vector, a range, or any iterable of indices).
+@inline function same_rows(last::Vector{Int}, rows)
+    length(last) == length(rows) || return false
+    @inbounds for (k, r) in enumerate(rows)
+        last[k] == r || return false
+    end
+    return true
+end
+
+# Point the memo at the factorisation for `rows`, computing it on first sight.
+@inline function me_sync!(me::DenseMeasurementError, rows)
+    same_rows(me.last_rows, rows) && return nothing
+
     key = collect(Int, rows)
     cached = get(me.factors, key, nothing)
-    cached === nothing || return cached
-    Hsub = me.H[key, key]
-    F = ℒ.cholesky(ℒ.Symmetric(Hsub))
-    ld = 2 * sum(log, ℒ.diag(F.U))
-    me.factors[key] = (F, ld)
-    return (F, ld)
+    if cached === nothing
+        F = ℒ.cholesky(ℒ.Symmetric(me.H[key, key]))
+        cached = (Matrix{Float64}(F.L), 2 * sum(log, ℒ.diag(F.U)))
+        me.factors[key] = cached
+    end
+    me.last_rows   = key
+    me.last_L      = cached[1]
+    me.last_logdet = cached[2]
+    resize!(me.buf, length(key))
+    return nothing
 end
 
 # vᵀH⁻¹v over the observed rows. `Inf` on a non-finite prediction, matching the
 # diagonal version's contract (an impossible particle gets zero weight).
+# vᵀH⁻¹v = ‖L⁻¹v‖², so one forward substitution gives both the solve and the norm.
 @inline function particle_quadratic_form(full::AbstractVector, data_col, observables_index,
                                          me::DenseMeasurementError, rows)
-    F, _ = me_factor(me, rows)
-    v = @view me.buf[1:length(rows)]
+    me_sync!(me, rows)
+    v = me.buf
     @inbounds for (k, r) in enumerate(rows)
         f = full[observables_index[r]]
         isfinite(f) || return Inf
         v[k] = data_col[r] - f
     end
-    ℒ.ldiv!(F.L, v)          # v ← L⁻¹v, so ‖v‖² = original vᵀH⁻¹v
-    return sum(abs2, v)
+    return dense_me_quadform!(v, me.last_L)
+end
+
+# In-place forward substitution L y = v, returning ‖y‖².
+@inline function dense_me_quadform!(v::Vector{Float64}, L::Matrix{Float64})
+    q = 0.0
+    @inbounds for i in eachindex(v)
+        acc = v[i]
+        for j in 1:i-1
+            acc -= L[i, j] * v[j]
+        end
+        y = acc / L[i, i]
+        v[i] = y
+        q += y * y
+    end
+    return q
 end
 
 @inline function particle_measurement_logZ(me::DenseMeasurementError, rows, log2pi::Float64)
-    _, ld = me_factor(me, rows)
-    return -0.5 * (length(rows) * log2pi + ld)
+    me_sync!(me, rows)
+    return -0.5 * (length(rows) * log2pi + me.last_logdet)
 end
 
 @inline function particle_log_measurement_density(full::AbstractVector, data_col, observables_index,
@@ -1296,16 +1341,15 @@ end
 # Same, for a correlated H: gather the innovation, then one triangular solve.
 @inline function linear_quadform_col(X::Matrix{Float64}, p::Int, data_col, observables_index,
                                      me::DenseMeasurementError, rows)
-    F, _ = me_factor(me, rows)
-    v = @view me.buf[1:length(rows)]
+    me_sync!(me, rows)
+    v = me.buf
     @inbounds for k in eachindex(rows)
         r = rows[k]
         f = X[observables_index[r], p]
         isfinite(f) || return Inf
         v[k] = data_col[r] - f
     end
-    ℒ.ldiv!(F.L, v)
-    return sum(abs2, v)
+    return dense_me_quadform!(v, me.last_L)
 end
 
 # Copy column `src` of `X` into column `dst` of `Y` (contiguous, allocation-free).
