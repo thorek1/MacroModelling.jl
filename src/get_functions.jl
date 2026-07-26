@@ -4378,6 +4378,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
 - `measurement_error_std` [Default: `:auto`, Type: `Union{Symbol,Real,AbstractVector{<:Real}}`]: standard deviation of Gaussian measurement error on the observables. A scalar is broadcast to all observables; a vector supplies one entry per observable. `:auto` resolves per filter: no measurement error for the Kalman and inversion filters, and $(DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION) times each observable's sample standard deviation for the particle filters, which are degenerate without it. Measurement error is supported by the Kalman filter and required by the particle filters; it is not available for the inversion filter, which reproduces the observables exactly.
+- `measurement_error_covariance` [Default: `nothing`, Type: `Union{Nothing,AbstractMatrix{<:Real}}`]: full measurement-error covariance matrix (one row/column per observable), for correlated measurement error. Supersedes `measurement_error_std` when supplied. Must be symmetric positive definite. The Kalman filter supports an arbitrary covariance; the particle filters currently require it to be diagonal — correlated measurement error can instead be modelled structurally by adding measurement-error processes to the observation equations.
 - `n_particles` [Default: `$(DEFAULT_N_PARTICLES)`, Type: `Int`]: number of particles used by the particle filters. More particles reduce the Monte-Carlo variance of the likelihood at roughly linear cost.
 - `particle_resampling` [Default: `:$(DEFAULT_PARTICLE_RESAMPLING)`, Type: `Symbol`]: resampling scheme. One of `:systematic`, `:stratified`, `:multinomial`, `:residual`.
 - `particle_resampling_threshold` [Default: `$(DEFAULT_PARTICLE_RESAMPLING_THRESHOLD)`, Type: `Real`]: resample whenever the effective sample size falls below `particle_resampling_threshold * n_particles`.
@@ -4436,6 +4437,7 @@ function get_loglikelihood(𝓂::ℳ,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                            measurement_error_covariance::Union{Nothing,AbstractMatrix{<:Real}} = nothing,
                             n_particles::Int = DEFAULT_N_PARTICLES,
                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -4465,6 +4467,7 @@ function get_loglikelihood(𝓂::ℳ,
                              initial_covariance = initial_covariance,
                              filter_algorithm = filter_algorithm,
                              measurement_error_std = measurement_error_std,
+                             measurement_error_covariance = measurement_error_covariance,
                              n_particles = n_particles,
                              particle_resampling = particle_resampling,
                              particle_resampling_threshold = particle_resampling_threshold,
@@ -4496,6 +4499,7 @@ function get_loglikelihood(𝓂::ℳ,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                            measurement_error_covariance::Union{Nothing,AbstractMatrix{<:Real}} = nothing,
                             n_particles::Int = DEFAULT_N_PARTICLES,
                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -4650,7 +4654,22 @@ function get_loglikelihood(𝓂::ℳ,
 
     @assert !(resolved_measurement_error_std isa Symbol) "`measurement_error_std` must be `:auto`, a scalar, or a per-observable vector; got `:$(resolved_measurement_error_std)`."
 
-    measurement_error_variances = build_filter_measurement_error_variances(resolved_measurement_error_std, size(data_in_deviations, 1))
+    measurement_error_variances = if measurement_error_covariance !== nothing
+        # A full covariance matrix supersedes the per-observable standard deviations.
+        n_obs_me = size(data_in_deviations, 1)
+        @assert size(measurement_error_covariance) == (n_obs_me, n_obs_me) "`measurement_error_covariance` must be a square matrix with one row/column per observable ($(n_obs_me)); got $(size(measurement_error_covariance))."
+        H = Matrix{Float64}(measurement_error_covariance)
+        @assert all(isfinite, H) "`measurement_error_covariance` must contain only finite entries."
+        @assert isapprox(H, H', rtol = 1e-10) "`measurement_error_covariance` must be symmetric."
+        H = (H + H') / 2   # symmetrise away round-off
+        @assert ℒ.isposdef(H) "`measurement_error_covariance` must be positive definite."
+        if is_particle_filter && !ℒ.isdiag(H)
+            error("The particle filters currently require a diagonal measurement-error covariance; `measurement_error_covariance` is off-diagonal. Either use `filter = :kalman` (which supports a full covariance), or model the correlated measurement error structurally by adding measurement-error processes to the observation equations, which turns it back into an independent (diagonal) one.")
+        end
+        H
+    else
+        build_filter_measurement_error_variances(resolved_measurement_error_std, size(data_in_deviations, 1))
+    end
 
     if filter == :inversion && measurement_error_variances !== nothing
         error("`measurement_error_std` is not supported by the inversion filter (`filter = :inversion`). Use `filter = :kalman` (linear) or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`).")
@@ -4677,7 +4696,10 @@ function get_loglikelihood(𝓂::ℳ,
                             constants_obj,
                             state,
                             𝓂,
-                            measurement_error_variances,
+                            # the particle filters take the per-observable variances;
+                            # a (necessarily diagonal) covariance matrix is reduced here
+                            measurement_error_variances isa AbstractMatrix ?
+                                collect(ℒ.diag(measurement_error_variances)) : measurement_error_variances,
                             obs_idx_per_t,
                             has_missing;
                             n_particles = n_particles,

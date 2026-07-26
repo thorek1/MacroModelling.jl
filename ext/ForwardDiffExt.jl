@@ -1009,7 +1009,7 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 lyapunov_algorithm::Symbol = :doubling,
                                 on_failure_loglikelihood::U = -Inf,
-                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real}} = nothing,
+                                measurement_error_variances::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                                 opts::CalculationOptions = merge_calculation_options())::ℱ.Dual{Z,S,N} where {Z,S,N,R <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
                                                 
@@ -1073,10 +1073,17 @@ function MacroModelling.calculate_loglikelihood(::Val{:kalman},
         ℒ.mul!(CP, C, P)
         ℒ.mul!(F_buf, CP, C')
 
-        # Add the diagonal measurement-error covariance H: F = C P C' + H.
+        # Add the measurement-error covariance H: F = C P C' + H (a vector of
+        # per-observable variances, or a full covariance matrix).
         if measurement_error_variances !== nothing
-            @inbounds for i in 1:no
-                F_buf[i, i] += measurement_error_variances[i]
+            if measurement_error_variances isa AbstractMatrix
+                @inbounds for j in 1:no, i in 1:no
+                    F_buf[i, j] += measurement_error_variances[i, j]
+                end
+            else
+                @inbounds for i in 1:no
+                    F_buf[i, i] += measurement_error_variances[i]
+                end
             end
         end
 

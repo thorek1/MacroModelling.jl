@@ -139,6 +139,29 @@ threw(f) = try; f(); false; catch; true; end
         @test abs(kal_m - pf_m) < 3.0
     end
 
+    @testset "Full measurement-error covariance" begin
+        Hdiag = [me^2 0.0; 0.0 me^2]
+        # a diagonal covariance reproduces the equivalent per-observable stds
+        @test get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_covariance = Hdiag) ≈
+              get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_std = me)
+        # the Kalman filter accepts genuinely correlated measurement error
+        Hfull = [me^2 0.6me^2; 0.6me^2 me^2]
+        llf = get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_covariance = Hfull)
+        @test isfinite(llf)
+        @test llf != get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_std = me)
+        # the particle filters take a diagonal covariance but reject an off-diagonal one
+        @test isfinite(get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                         measurement_error_covariance = Hdiag, n_particles = 2_000,
+                                         particle_rng = Random.Xoshiro(1)))
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                            measurement_error_covariance = Hfull, n_particles = 500,
+                                            particle_rng = Random.Xoshiro(1)))
+        # a covariance must be symmetric, positive definite and correctly sized
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_covariance = [1.0 2.0; 0.0 1.0]))
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_covariance = -Hdiag))
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_covariance = fill(me^2, 1, 1)))
+    end
+
     @testset "Filter selection and automatic measurement error" begin
         # `:particle` is an alias for the bootstrap filter: same RNG ⇒ same value
         @test get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,

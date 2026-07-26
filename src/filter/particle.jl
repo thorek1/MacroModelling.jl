@@ -2,8 +2,18 @@
 
 # Particle filters for the (possibly nonlinear) DSGE state-space representation.
 #
-# The measurement equation is  yₜ = full_stateₜ[observables] + ηₜ,  ηₜ ~ N(0, H),
-# with H a diagonal matrix of measurement-error variances. The structural shocks
+# The measurement equation is  yₜ = full_stateₜ[observables] + ηₜ,  ηₜ ~ N(0, H).
+#
+# H is taken to be diagonal here. Nothing in the algorithm requires that — the
+# filters only ever need H⁻¹ and log det H, so a full covariance would just mean
+# replacing the elementwise quadratic form below by a triangular solve against a
+# Cholesky factor of H (cached per missing-data pattern). It is kept diagonal
+# because that is what the elementwise inner loop is optimised for, and because
+# correlated measurement error in a DSGE is more naturally written into the model
+# itself: adding measurement-error processes to the observation equations makes
+# the correlation part of the state transition and leaves H diagonal again. The
+# Kalman filter, whose innovation covariance is formed as a matrix anyway, does
+# accept an arbitrary `measurement_error_covariance`. The structural shocks
 # are i.i.d. standard normal (their standard deviations are baked into the
 # solution matrices 𝐒), and the state transition is the perturbation solution's
 # `state_update` (first order through pruned third order).
