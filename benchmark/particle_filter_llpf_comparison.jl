@@ -47,7 +47,7 @@ function bench_model(name, m, data, observables, me; N = 20000, nseed = 8)
     params = m.parameter_values
     kal = get_loglikelihood(m, data(observables), params; filter = :kalman,
                             presample_periods = 0, initial_covariance = :theoretical,
-                            measurement_error_std = me)
+                            measurement_error = me .^ 2)
     println("\n==== $name (N=$N) ====")
     println("Kalman+ME = ", round(kal, digits = 3))
 
@@ -56,7 +56,7 @@ function bench_model(name, m, data, observables, me; N = 20000, nseed = 8)
         t0 = time()
         lls = [get_loglikelihood(m, data(observables), params; filter = pf_filter,
                     algorithm = :first_order, presample_periods = 0, initial_covariance = :theoretical,
-                    measurement_error_std = me,
+                    measurement_error = me .^ 2,
                     n_particles = Nn, particle_rng = Random.Xoshiro(s)) for s in 1:nseed]
         println("MacroModelling ", rpad(String(pf_filter), 19), " N=$Nn  mean=", round(Statistics.mean(lls), digits = 2),
                 "  std=", round(Statistics.std(lls), digits = 2), "  time/run=", round((time() - t0) / nseed, digits = 3), "s")

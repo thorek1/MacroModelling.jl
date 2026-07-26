@@ -1845,12 +1845,12 @@ function rrule(::typeof(get_loglikelihood),
                 steady_state_function::SteadyStateFunctionType = missing,
                 algorithm::Symbol = DEFAULT_ALGORITHM,
                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
-                on_failure_loglikelihood::U = -Inf,
+                on_failure_loglikelihood::U = DEFAULT_ON_FAILURE_LOGLIKELIHOOD_SELECTOR(filter),
                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                 initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
-                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -1870,15 +1870,15 @@ function rrule(::typeof(get_loglikelihood),
     end
     # `:auto` means "no measurement error" for the non-particle filters, so it is
     # the one symbolic value that can reach here and is always differentiable.
-    me_active = if measurement_error_std isa Symbol
+    me_active = if measurement_error isa Symbol
         false
-    elseif measurement_error_std isa AbstractArray
-        any(x -> x != 0, measurement_error_std)
+    elseif measurement_error isa AbstractArray
+        any(x -> x != 0, measurement_error)
     else
-        measurement_error_std != 0
+        measurement_error != 0
     end
     if me_active
-        error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error_std`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
+        error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
     end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,

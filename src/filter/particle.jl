@@ -4,19 +4,35 @@
 #
 # The measurement equation is  yₜ = full_stateₜ[observables] + ηₜ,  ηₜ ~ N(0, H).
 #
-# H is taken to be diagonal here. Nothing in the algorithm requires that — the
-# filters only ever need H⁻¹ and log det H, so a full covariance would just mean
-# replacing the elementwise quadratic form below by a triangular solve against a
-# Cholesky factor of H (cached per missing-data pattern). It is kept diagonal
-# because that is what the elementwise inner loop is optimised for, and because
-# correlated measurement error in a DSGE is more naturally written into the model
-# itself: adding measurement-error processes to the observation equations makes
-# the correlation part of the state transition and leaves H diagonal again. The
-# Kalman filter, whose innovation covariance is formed as a matrix anyway, does
-# accept an arbitrary `measurement_error_covariance`. The structural shocks
-# are i.i.d. standard normal (their standard deviations are baked into the
-# solution matrices 𝐒), and the state transition is the perturbation solution's
-# `state_update` (first order through pruned third order).
+# H is a *covariance*, not a standard deviation: a vector argument is read as the
+# per-observable variances, a matrix as the full covariance. Both are supported.
+# The filters only ever need H⁻¹ and log det H, so the diagonal case is an
+# elementwise loop and the correlated case a triangular solve against a Cholesky
+# factor of H restricted to the rows observed in the period, cached per
+# missing-data pattern (see `DenseMeasurementError` below). Diagonal is the
+# default and the fast path, and is also the more natural modelling choice: a
+# persistent, correlated measurement error is usually better written into the
+# model itself as measurement-error processes in the observation equations, which
+# moves the correlation into the state transition and leaves H diagonal again.
+#
+# Why the *Kalman* filter needs H at all — it has no degeneracy problem the way a
+# particle filter does, and works fine with H = 0. Three reasons it is offered:
+#   (1) Stochastic singularity. With more observables than structural shocks, the
+#       model-implied observables lie on a lower-dimensional manifold, C P C' is
+#       singular, and the likelihood is undefined. H > 0 is the standard fix, and
+#       what lets a 7-observable model be estimated with fewer than 7 shocks.
+#   (2) Model misspecification / data revisions. Smets-Wouters-style estimations
+#       routinely put measurement error on a subset of observables so that series
+#       the model cannot hope to match exactly do not dominate the likelihood.
+#   (3) It is what makes the particle filters checkable. A particle filter needs
+#       H > 0, so validating one against the exact likelihood on a linear model
+#       requires the Kalman filter to score the *same* H. That comparison is the
+#       sharpest correctness test available and is what `test_particle_filter.jl`
+#       and `test_particle_filter_sw07.jl` do.
+#
+# The structural shocks are i.i.d. standard normal (their standard deviations are
+# baked into the solution matrices 𝐒), and the state transition is the
+# perturbation solution's `state_update` (first order through pruned third order).
 #
 # Three variants are provided, each selected by its own `filter` value:
 #   :bootstrap_particle — sequential importance resampling, i.e. the bootstrap
@@ -179,8 +195,22 @@ end
 # `:theoretical` (default) uses the first-order ergodic (unconditional) state
 # covariance Σ solving the discrete Lyapunov equation Σ = A Σ A' + B B' (built
 # from the cached first-order solution, the usual choice for a stationary model);
-# `:diagonal` uses 10·I; an
-# nVars×nVars matrix is used directly.
+# `:diagonal` uses 10·I; an nVars×nVars matrix is used directly.
+#
+# Σ is deliberately the *first-order* covariance at every perturbation order, and
+# does not follow `algorithm`. Elsewhere in the package `:theoretical` is only
+# ever reached from the Kalman filter (`get_initial_covariance` in kalman.jl),
+# which is first-order-only, so there is no precedent either way — the choice is
+# specific to this file. Order-consistent ergodic covariances do exist
+# (`calculate_second_order_moments_with_covariance` and the third-order routines
+# in moments.jl), but they are expensive, live in the augmented pruned-state basis
+# rather than the nVars basis the cloud needs, and buy very little: Σ only seeds
+# period 1, and the filter forgets it within a handful of periods (which is what
+# `presample_periods` is for). Higher-order terms also perturb the *mean* of the
+# ergodic distribution, not just its spread, and that shift is already carried by
+# `state` from `get_relevant_steady_state_and_state_update`. Pass an explicit
+# matrix, or widen the cloud with `particle_initial_state_scaling`, if the
+# first-order spread is too tight for a strongly nonlinear model.
 function particle_initial_state_covariance(𝓂::ℳ, T, opts::CalculationOptions,
                                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}})
     nVars = T.nVars
@@ -258,6 +288,93 @@ end
         q += v * v / me_var[r] + log2pi + log(me_var[r])
     end
     return -0.5 * q
+end
+
+
+# ── Non-diagonal measurement error ───────────────────────────────────────────
+# Everything above takes `me_var`, the diagonal of H, and reads it elementwise —
+# the fast path, and the default. A correlated H needs the same two quantities,
+# vᵀH⁻¹v and log det H, but restricted to the rows observed in the period. Both
+# come from one Cholesky factor of H[rows, rows], so we factorise once per
+# missing-data pattern and cache it; with complete data that is a single
+# factorisation for the whole sample. `DenseMeasurementError` is then accepted
+# anywhere `me_var` is, by dispatch, leaving the diagonal path untouched.
+struct DenseMeasurementError
+    H::Matrix{Float64}
+    factors::Dict{Vector{Int},Tuple{ℒ.Cholesky{Float64,Matrix{Float64}},Float64}}
+    buf::Vector{Float64}   # innovation scratch, sized to the number of observables
+end
+
+function DenseMeasurementError(H::AbstractMatrix{<:Real})
+    Hf = Matrix{Float64}(H)
+    return DenseMeasurementError(Hf,
+                                 Dict{Vector{Int},Tuple{ℒ.Cholesky{Float64,Matrix{Float64}},Float64}}(),
+                                 Vector{Float64}(undef, size(Hf, 1)))
+end
+
+# Cholesky of H[rows, rows] and log det H[rows, rows], memoised on the row pattern.
+@inline function me_factor(me::DenseMeasurementError, rows)
+    key = collect(Int, rows)
+    cached = get(me.factors, key, nothing)
+    cached === nothing || return cached
+    Hsub = me.H[key, key]
+    F = ℒ.cholesky(ℒ.Symmetric(Hsub))
+    ld = 2 * sum(log, ℒ.diag(F.U))
+    me.factors[key] = (F, ld)
+    return (F, ld)
+end
+
+# vᵀH⁻¹v over the observed rows. `Inf` on a non-finite prediction, matching the
+# diagonal version's contract (an impossible particle gets zero weight).
+@inline function particle_quadratic_form(full::AbstractVector, data_col, observables_index,
+                                         me::DenseMeasurementError, rows)
+    F, _ = me_factor(me, rows)
+    v = @view me.buf[1:length(rows)]
+    @inbounds for (k, r) in enumerate(rows)
+        f = full[observables_index[r]]
+        isfinite(f) || return Inf
+        v[k] = data_col[r] - f
+    end
+    ℒ.ldiv!(F.L, v)          # v ← L⁻¹v, so ‖v‖² = original vᵀH⁻¹v
+    return sum(abs2, v)
+end
+
+@inline function particle_measurement_logZ(me::DenseMeasurementError, rows, log2pi::Float64)
+    _, ld = me_factor(me, rows)
+    return -0.5 * (length(rows) * log2pi + ld)
+end
+
+@inline function particle_log_measurement_density(full::AbstractVector, data_col, observables_index,
+                                                  me::DenseMeasurementError, rows, log2pi::Float64)
+    q = particle_quadratic_form(full, data_col, observables_index, me, rows)
+    isfinite(q) || return -Inf
+    return particle_measurement_logZ(me, rows, log2pi) - 0.5 * q
+end
+
+# The diagonal of H: what the auxiliary filter's first-stage preview needs (it
+# only has to be a rough predictive variance — the second-stage reweighting is
+# exact whatever the preview used).
+me_diagonal(me_var::AbstractVector) = me_var
+me_diagonal(me::DenseMeasurementError) = ℒ.diag(me.H)
+
+# Elementwise reciprocals for the batched first-order path; the dense filter
+# keeps its factorisation instead and is passed through unchanged.
+me_inverse_diagonal(me_var::AbstractVector) = 1.0 ./ me_var
+me_inverse_diagonal(me::DenseMeasurementError) = me
+
+# Build the measurement-error representation the kernels take from whatever
+# `resolve_measurement_error` produced.
+build_particle_measurement_error(me::AbstractVector{<:Real}) = Float64.(me)
+build_particle_measurement_error(me::AbstractMatrix{<:Real}) = ℒ.isdiag(me) ? collect(Float64, ℒ.diag(me)) : DenseMeasurementError(me)
+
+# Positivity check shared by all kernels.
+function assert_positive_measurement_error(me::AbstractVector)
+    @assert all(x -> x > 0, me) "The particle filters require strictly positive measurement-error variances for every observable."
+    return nothing
+end
+function assert_positive_measurement_error(me::DenseMeasurementError)
+    @assert ℒ.isposdef(ℒ.Symmetric(me.H)) "The particle filters require a positive definite measurement-error covariance."
+    return nothing
 end
 
 
@@ -442,7 +559,7 @@ function run_particle_filter(::Val{algo},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -469,8 +586,8 @@ function run_particle_filter(::Val{algo},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
 
     past_idx = T.past_not_future_and_mixed_idx
     𝐒f = [Matrix{Float64}(S) for S in 𝐒]
@@ -660,7 +777,7 @@ function run_particle_filter(::Val{algo},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -687,8 +804,8 @@ function run_particle_filter(::Val{algo},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
 
     past_idx = T.past_not_future_and_mixed_idx
     𝐒f = [Matrix{Float64}(S) for S in 𝐒]
@@ -701,7 +818,7 @@ function run_particle_filter(::Val{algo},
     # shock-driven; inflating by the shock spread keeps the proxy well-conditioned.
     nPast = T.nPast_not_future_and_mixed
     S₁cache = 𝓂.caches.first_order_solution_matrix
-    pred_var = Float64[sum(abs2, @view S₁cache[observables_index[i], nPast+1:end]) for i in eachindex(observables_index)] .+ me_var
+    pred_var = Float64[sum(abs2, @view S₁cache[observables_index[i], nPast+1:end]) for i in eachindex(observables_index)] .+ me_diagonal(me_var)
 
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
@@ -858,7 +975,7 @@ function run_particle_filter(::Val{algo},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -885,8 +1002,8 @@ function run_particle_filter(::Val{algo},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
 
     r_star = Float64(tempering_target_ratio)
     c = Float64(tempering_mh_scale)
@@ -1176,6 +1293,21 @@ end
     return q
 end
 
+# Same, for a correlated H: gather the innovation, then one triangular solve.
+@inline function linear_quadform_col(X::Matrix{Float64}, p::Int, data_col, observables_index,
+                                     me::DenseMeasurementError, rows)
+    F, _ = me_factor(me, rows)
+    v = @view me.buf[1:length(rows)]
+    @inbounds for k in eachindex(rows)
+        r = rows[k]
+        f = X[observables_index[r], p]
+        isfinite(f) || return Inf
+        v[k] = data_col[r] - f
+    end
+    ℒ.ldiv!(F.L, v)
+    return sum(abs2, v)
+end
+
 # Copy column `src` of `X` into column `dst` of `Y` (contiguous, allocation-free).
 @inline function copy_col!(Y::Matrix{Float64}, dst::Int, X::Matrix{Float64}, src::Int)
     @inbounds for i in axes(X, 1)
@@ -1203,7 +1335,7 @@ function run_particle_filter(::Val{:first_order},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -1230,9 +1362,9 @@ function run_particle_filter(::Val{:first_order},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
-    inv_me_var = 1.0 ./ me_var
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
+    inv_me_var = me_inverse_diagonal(me_var)
 
     tr = build_linear_particle_transition(𝐒, T)
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
@@ -1309,7 +1441,7 @@ function run_particle_filter(::Val{:first_order},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -1336,16 +1468,17 @@ function run_particle_filter(::Val{:first_order},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
-    inv_me_var = 1.0 ./ me_var
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
+    inv_me_var = me_inverse_diagonal(me_var)
 
     tr = build_linear_particle_transition(𝐒, T)
 
     # Predictive variance of each observable (shock spread + measurement error).
+    me_diag = me_diagonal(me_var)
     pred_var = Vector{Float64}(undef, length(observables_index))
     @inbounds for i in eachindex(observables_index)
-        pred_var[i] = sum(abs2, @view tr.B[observables_index[i], :]) + me_var[i]
+        pred_var[i] = sum(abs2, @view tr.B[observables_index[i], :]) + me_diag[i]
     end
     inv_pred_var = 1.0 ./ pred_var
 
@@ -1443,7 +1576,7 @@ function run_particle_filter(::Val{:first_order},
                              constants::constants,
                              state,
                              𝓂::ℳ,
-                             measurement_error_variances::AbstractVector{<:Real},
+                             measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
@@ -1470,9 +1603,9 @@ function run_particle_filter(::Val{:first_order},
     presample_periods = normalize_presample_periods(presample_periods, nT)
     log2pi = log(2π)
 
-    me_var = Float64.(measurement_error_variances)
-    @assert all(x -> x > 0, me_var) "The particle filter requires strictly positive measurement-error variances for every observable."
-    inv_me_var = 1.0 ./ me_var
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
+    inv_me_var = me_inverse_diagonal(me_var)
 
     r_star = Float64(tempering_target_ratio)
     c = Float64(tempering_mh_scale)
@@ -1637,7 +1770,7 @@ end
     warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
     smooth::Bool = true,
-    measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+    measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
     n_particles::Int = DEFAULT_N_PARTICLES,
     particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
     particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -1662,16 +1795,10 @@ end
     obs_idx_per_t, has_missing = build_obs_index(dat)
     nT = size(dat, 2)
 
-    # measurement error: same `:auto` convention as the likelihood path
-    me_std = measurement_error_std === :auto ?
-        DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION .* vec(sqrt.(sum(abs2, dat .- sum(dat, dims = 2) ./ nT, dims = 2) ./ max(nT - 1, 1))) :
-        measurement_error_std
-    me_var = me_std isa AbstractVector ? collect(float.(me_std)) .^ 2 : fill(float(me_std)^2, length(observables))
-    @inbounds for i in eachindex(me_var)
-        if !(isfinite(me_var[i])) || me_var[i] <= 0
-            me_var[i] = (DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION)^2
-        end
-    end
+    # `measurement_error` arrives already resolved (a variance vector or a
+    # covariance matrix) — `:auto` is handled by the user-facing entry points.
+    me_var = build_particle_measurement_error(measurement_error)
+    assert_positive_measurement_error(me_var)
 
     # solution matrices and the initial state, exactly as the likelihood path builds them
     _, _, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algo), 𝓂.parameter_values, 𝓂, opts = opts)

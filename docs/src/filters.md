@@ -35,7 +35,7 @@ get_loglikelihood(model, data, parameters; filter = :kalman)
 A short decision rule:
 
 - **Linear model?** Use `:kalman`. It is exact, fast and differentiable, so gradient-based samplers (NUTS/HMC) work. There is no reason to use anything else.
-- **Nonlinear model, as many shocks as observables, no measurement error?** Use `:inversion` (the default at higher order). It is exact and differentiable.
+- **Nonlinear model, at least as many shocks as observables, no measurement error?** Use `:inversion` (the default at higher order). It is exact and differentiable.
 - **Nonlinear model with measurement error, or fewer shocks than observables?** Use a particle filter. Start with `:tempered_particle` if the observation is informative (small measurement error, many observables), otherwise `:bootstrap_particle`.
 - Particle-filter likelihoods are noisy and non-differentiable: pair them with gradient-free samplers such as slice sampling (Pigeons.jl) or nested sampling.
 
@@ -104,11 +104,13 @@ All variants share the same skeleton:
 
 The crucial property is that ``\widehat{p}(y_{1:T})`` is an **unbiased** estimator of the true likelihood, for any ``N``. That is what makes particle filters usable inside a sampler (pseudo-marginal MCMC targets the exact posterior despite the noise). Note the consequence for the *log* likelihood: by Jensen's inequality ``E[\log \widehat{p}] < \log p``, with a downward bias of roughly ``\mathrm{Var}(\log\widehat p)/2``. So a particle log-likelihood is systematically a little *below* the Kalman value on a linear model, and the gap shrinks as ``N`` grows — this is the expected behaviour, not a bug.
 
+Because the estimate is random, a repeated evaluation at the same parameters gives a different number unless you fix the stream: pass a seeded generator via `particle_rng` (e.g. `particle_rng = Random.Xoshiro(1)`). Inside a sampler, reuse the same seed across parameter draws only if you deliberately want common random numbers; otherwise let the sampler see fresh noise, which is what pseudo-marginal correctness assumes. Cost scales roughly linearly in `n_particles` and in the sample length, and the number of particles needed grows quickly with the number of observables.
+
 ### Why measurement error is required
 
 Without measurement error the observation equation is a deterministic function of the state. A particle would have to reproduce ``y_t`` *exactly* to get non-zero weight, which happens with probability zero — every weight collapses to zero and the filter dies. Measurement error smears the observation density and gives particles something to score against.
 
-`measurement_error_std = :auto` (the default) therefore resolves to 10% of each observable's sample standard deviation for the particle filters, and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable.
+`measurement_error` is the covariance ``H`` of ``\eta_t``, never a standard deviation: a scalar is the common variance of every observable, a vector the per-observable variances, and a matrix the full covariance. `measurement_error = :auto` (the default) resolves to a variance of ``(0.1 s_i)^2`` per observable, where ``s_i`` is that observable's sample standard deviation, for the particle filters — and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable.
 
 ### Bootstrap (`:bootstrap_particle`)
 
@@ -170,25 +172,6 @@ Resampling only happens when the effective sample size ``1/\sum_i W_i^2`` falls 
 - **Particle → Kalman.** On a *linear* model with Gaussian shocks, the particle filters estimate exactly the quantity the Kalman filter computes in closed form. As ``N \to \infty`` the particle log-likelihood converges to the Kalman log-likelihood (from below, by the Jensen bias above). This is the sharpest correctness check available and is exactly what the package's tests do, on both a small RBC model and Smets-Wouters (2007).
 - **Kalman → particle.** The Kalman filter is the special case where the transition and observation are linear and the noise Gaussian, so the "cloud" is fully described by its first two moments.
 - **Inversion → particle.** Both handle nonlinear models, but they make opposite trades. The inversion filter assumes measurement error is *zero* and recovers the shocks exactly; the particle filter assumes measurement error is *positive* and integrates the shocks out. As the measurement error goes to zero the particle filter degenerates towards the inversion filter's problem — and this is precisely where it needs the most particles.
-- **Correlated measurement error.** The Kalman filter accepts an arbitrary `measurement_error_covariance`. The particle filters require it to be diagonal, but this is not a real restriction: correlated measurement error can be written into the model itself as measurement-error processes in the observation equations, which moves the correlation into the state transition and makes ``H`` diagonal again. That reformulation works for every filter.
+- **Inversion → Kalman.** On a *first-order* solution with as many shocks as observables and no measurement error, the two agree. The Kalman filter's innovation covariance is then ``F_t = C P_t C'`` with ``P_t = BB'`` — the state is exactly identified by the data, so ``P_t`` never accumulates uncertainty and the update is a deterministic inversion. Both filters end up scoring the same shock path, the inversion filter directly as ``-\tfrac12(\varepsilon_t'\varepsilon_t + \log 2\pi)`` plus a Jacobian term, the Kalman filter through ``v_t'F_t^{-1}v_t + \log\det F_t``, and these are the same number written two ways. They part company as soon as either assumption breaks: with *more observables than shocks* the system is stochastically singular and only the Kalman filter (with measurement error) is defined; with *fewer* observables than shocks the state is no longer pinned down by the data, ``P_t`` is genuinely non-degenerate, and only the Kalman filter integrates over it. Add measurement error and the inversion filter is not defined at all. At higher order the inversion filter's per-period Newton solve has no Kalman counterpart, which is why it — not the Kalman filter — is the default for nonlinear algorithms.
+- **Correlated measurement error.** All filters that admit measurement error accept an arbitrary covariance: pass `measurement_error` a matrix instead of a vector of variances. The Kalman filter adds it to ``F_t`` directly; the particle filters factorise ``H`` once per missing-data pattern and score against the resulting triangular solve. The diagonal case is detected and takes a faster elementwise path, so there is no cost to the common case. A third option is to write the correlation into the model itself as measurement-error processes in the observation equations, which moves it into the state transition and makes ``H`` diagonal again — worth doing when the measurement errors are persistent rather than merely contemporaneously correlated.
 
-## Reproducibility and cost
-
-Particle-filter likelihoods are random. Pass a seeded generator via `particle_rng` to make an evaluation reproducible:
-
-```julia
-import Random
-get_loglikelihood(model, data, parameters;
-                  filter = :tempered_particle,
-                  algorithm = :pruned_second_order,
-                  n_particles = 20_000,
-                  measurement_error_std = 1e-3,
-                  particle_rng = Random.Xoshiro(1))
-```
-
-Two practical notes when using them inside a sampler:
-
-- Use the *same* seed across parameter draws only if you want a "common random numbers" scheme; otherwise let the sampler see fresh noise, which is what pseudo-marginal correctness assumes.
-- Set `on_failure_loglikelihood` to a large finite negative number so an occasional failed evaluation does not abort the chain.
-
-Cost scales roughly linearly in `n_particles` and in the sample length, and the number of particles needed grows quickly with the number of observables. The default of 10,000 particles keeps a Smets-Wouters-sized problem accurate to a couple of log-likelihood points; raise it when the estimates look noisy.

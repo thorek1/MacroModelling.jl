@@ -421,9 +421,26 @@ function normalize_filtering_options(filter::Symbol,
 
     # Smoothing is available for the Kalman filter (Durbin-Koopman smoother) and
     # for the particle filters (fixed-interval smoothing along the filter's
-    # genealogy). The inversion filter has no smoothing counterpart.
+    # genealogy).
+    #
+    # For the inversion filter there is nothing left to smooth. Given x₀ it solves
+    # yₜ = g(xₜ₋₁, εₜ)[observables] for εₜ exactly, so xₜ is a *deterministic*
+    # function of y₁..ₜ — the filtering distribution is a point mass. Conditioning
+    # on future data cannot sharpen a point mass, hence p(xₜ|y₁..T) = p(xₜ|y₁..ₜ)
+    # and a backward pass recovers exactly the shocks the forward pass already
+    # found. The filtered estimate *is* the smoothed estimate; `smooth` is a no-op
+    # rather than an unsupported option.
+    #
+    # Two caveats, neither of which a smoothing recursion would fix. The initial
+    # state x₀ is not identified by the data and is fixed at the (stochastic)
+    # steady state; refining it is a fixed-point problem over x₀, not a backward
+    # recursion. And with more shocks than observables the per-period solve picks
+    # the minimum-norm εₜ (at higher order, the root whose basin contains the
+    # origin — see `find_shocks`), which is a per-period choice a smoother could in
+    # principle redistribute across time; doing so would be a different estimator,
+    # not the inversion filter's smoother.
     if filter == :inversion && smooth
-        @info "The inversion filter does not support smoothing. Setting `smooth = false`." maxlog = maxlog
+        @info "The inversion filter identifies the state exactly, so its smoothed and filtered estimates coincide. Setting `smooth = false`." maxlog = maxlog
         smooth = false
     end
 

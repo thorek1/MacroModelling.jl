@@ -22,13 +22,26 @@ const PARTICLE_FILTER_VARIANT = Dict(:bootstrap_particle => :bootstrap,
                                      :tempered_particle  => :tempered)
 
 # ── Measurement error ────────────────────────────────────────────────────────
+# `measurement_error` is the covariance H of ηₜ ~ N(0, H) in yₜ = C xₜ + ηₜ. It is
+# *not* a standard deviation: a scalar is the common variance of every observable,
+# a vector the per-observable variances, and a matrix the full covariance.
 # `:auto` resolves per filter: no measurement error for the Kalman and inversion
 # filters (their historical behaviour), and a small data-driven value for the
 # particle filters, which are degenerate without it.
-const DEFAULT_MEASUREMENT_ERROR_STD = :auto
-# Auto measurement-error standard deviation as a fraction of each observable's
-# sample standard deviation.
+const DEFAULT_MEASUREMENT_ERROR = :auto
+# Auto measurement-error *standard deviation* as a fraction of each observable's
+# sample standard deviation (squared into a variance before it reaches a filter).
+# 0.1 puts ~1% of each observable's variance into measurement error: enough to
+# keep the particle weights well spread on a Smets-Wouters-sized problem, small
+# enough that the likelihood still reflects the model rather than the noise.
 const DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION = 0.1
+
+# `-Inf` is the right failure value for the deterministic filters: it tells a
+# sampler the draw is impossible. A particle filter, though, can fail for purely
+# stochastic reasons (every particle far off in one period), and an `-Inf` there
+# would permanently kill the chain state rather than just reject one proposal —
+# so it returns a large finite penalty instead.
+const DEFAULT_ON_FAILURE_LOGLIKELIHOOD_SELECTOR = filter -> get(PARTICLE_FILTER_ALIASES, filter, filter) ∈ PARTICLE_FILTERS ? -1e6 : -Inf
 
 # ── Particle filter defaults (see `src/filter/particle.jl`) ──────────────────
 # 10_000 particles keeps a Smets-Wouters-sized problem (7 observables, ~180

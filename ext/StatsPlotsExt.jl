@@ -707,7 +707,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
-                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR_STD,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -848,7 +848,7 @@ function plot_model_estimates(𝓂::ℳ,
     
     extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
     if filter ∈ MacroModelling.PARTICLE_FILTERS
-        extra_kw = merge(extra_kw, (; measurement_error_std, n_particles, particle_resampling,
+        extra_kw = merge(extra_kw, (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
                                       particle_rng))
     end
@@ -1373,7 +1373,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
-                                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR_STD,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -1502,7 +1502,7 @@ function plot_model_estimates!(𝓂::ℳ,
     x_axis = x_axis[periods]
     
     particle_kw = filter ∈ MacroModelling.PARTICLE_FILTERS ?
-        (; measurement_error_std, n_particles, particle_resampling, particle_resampling_threshold,
+        (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng) : NamedTuple()
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; particle_kw...)
