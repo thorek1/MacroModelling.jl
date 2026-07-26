@@ -39,11 +39,10 @@ using DelimitedFiles, AxisKeys
                             measurement_error_std = me)
     @test isfinite(kal)
 
-    for (pfa, N) in ((:bootstrap, 20_000), (:auxiliary, 20_000), (:tempered, 8_000))
-        lls = [get_loglikelihood(m, data(observables), p; filter = :particle, algorithm = :first_order,
+    for (pf_filter, N) in ((:bootstrap_particle, 20_000), (:auxiliary_particle, 20_000), (:tempered_particle, 8_000))
+        lls = [get_loglikelihood(m, data(observables), p; filter = pf_filter, algorithm = :first_order,
                                  presample_periods = 4, initial_covariance = :theoretical,
-                                 measurement_error_std = me, particle_filter_algorithm = pfa,
-                                 n_particles = N, rng = Random.Xoshiro(1000 + s)) for s in 1:6]
+                                 measurement_error_std = me, n_particles = N, particle_rng = Random.Xoshiro(1000 + s)) for s in 1:6]
         @test all(isfinite, lls)
         # the Monte-Carlo mean matches the Kalman value up to the (downward) Var/2 bias
         @test abs(kal - Statistics.mean(lls)) < 15

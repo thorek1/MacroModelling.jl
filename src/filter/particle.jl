@@ -20,13 +20,45 @@
 
 
 # ── Resampling schemes ───────────────────────────────────────────────────────
+#
+# Why resample at all? Reweighting alone degenerates: after a few periods almost
+# all of the weight sits on one particle and the cloud carries no information
+# about the state distribution. Resampling replaces the weighted cloud with an
+# equally weighted one — duplicating heavy particles, dropping light ones — so
+# the computational effort follows the probability mass.
+#
+# Every scheme below is unbiased (E[times particle i is picked] = N·Wᵢ), so the
+# likelihood estimate stays unbiased whichever one is used. They differ only in
+# the *variance* of the counts, i.e. how much extra Monte-Carlo noise resampling
+# itself injects. Ranked from lowest to highest added variance:
+#
+#   :systematic  — one uniform draw, then N equally spaced points through the
+#                  cumulative weights. Lowest variance and the cheapest (a single
+#                  random number, one pass); the sensible default. Its one caveat
+#                  is that the N draws are perfectly correlated, which can matter
+#                  for some theoretical guarantees but not for the likelihood.
+#   :stratified  — one independent uniform per stratum of width 1/N. Almost as
+#                  low variance as systematic but with independent draws, which
+#                  restores those guarantees; a safe, slightly noisier default.
+#   :residual    — deterministically assign ⌊N·Wᵢ⌋ copies, then draw only the
+#                  remainder multinomially. Removes the integer part of the noise
+#                  entirely; useful when a few particles dominate the weights.
+#   :multinomial — N independent draws from the weights. The textbook scheme and
+#                  the easiest to reason about, but the noisiest; kept mainly as
+#                  a reference implementation.
+#
 # Each returns a length-N vector of ancestor indices drawn from the normalised
-# weights `W` (which must sum to one). Systematic/stratified have lower variance
-# than multinomial and are the recommended defaults.
+# weights `W` (which must sum to one).
 
-# Effective sample size 1 / Σ Wᵢ².
+# Effective sample size, 1 / Σ Wᵢ². Equals N when the weights are uniform and 1
+# when a single particle holds all the mass, so it measures how many particles
+# are "really" contributing. The filters resample once it drops below a fraction
+# of N, which avoids paying the resampling noise in periods that do not need it.
 effective_sample_size(W::AbstractVector{<:Real}) = 1.0 / sum(abs2, W)
 
+# Walk N equally spaced points u₀, u₀+1/N, … through the cumulative weights, with
+# a single random offset u₀ ∈ [0, 1/N). A particle of weight Wᵢ spans Wᵢ·N spacings
+# so it is picked either ⌊N·Wᵢ⌋ or ⌈N·Wᵢ⌉ times — never far from its expectation.
 function systematic_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
     idxs = Vector{Int}(undef, N)
@@ -44,6 +76,9 @@ function systematic_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{
     return idxs
 end
 
+# Split [0,1) into N strata of width 1/N and draw one independent uniform inside
+# each. Guarantees at most one draw per stratum (so counts stay close to N·Wᵢ)
+# while keeping the draws independent, unlike the systematic scheme.
 function stratified_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
     idxs = Vector{Int}(undef, N)
@@ -60,6 +95,9 @@ function stratified_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{
     return idxs
 end
 
+# N independent draws from the categorical distribution defined by W, via binary
+# search on the cumulative weights. Simplest and noisiest: nothing prevents a
+# particle with weight 1/N from being drawn three times or not at all.
 function multinomial_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
     c = cumsum(W)
@@ -71,6 +109,10 @@ function multinomial_resample_indices(rng::Random.AbstractRNG, W::AbstractVector
     return idxs
 end
 
+# Deterministic part first: particle i gets ⌊N·Wᵢ⌋ guaranteed copies, which carry
+# no randomness at all. Only the leftover R = N - Σ⌊N·Wᵢ⌋ slots are drawn, from
+# the renormalised fractional weights. Cuts the variance of the integer part to
+# zero, which helps most when a handful of particles dominate.
 function residual_resample_indices(rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
     idxs = Vector{Int}(undef, N)
@@ -391,10 +433,10 @@ function run_particle_filter(::Val{algo},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -404,6 +446,10 @@ function run_particle_filter(::Val{algo},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)
@@ -428,6 +474,32 @@ function run_particle_filter(::Val{algo},
                                  resampling, resampling_threshold, rng, on_failure_loglikelihood, log2pi)
 end
 
+# The bootstrap recursion, period by period. One iteration of the loop below is
+# the textbook predict / weight / resample cycle:
+#
+#   1. PREDICT  draw a fresh shock for every particle and push it through the
+#               model's state transition. The cloud now represents p(xₜ | y₁..ₜ₋₁).
+#   2. WEIGHT   score each particle by how well it explains today's observation,
+#               p(yₜ | xₜ). Averaging those scores over the (weighted) cloud is an
+#               unbiased estimate of the period's likelihood contribution, which
+#               is what gets accumulated into `loglik`.
+#   3. RESAMPLE if the weights have become too uneven, replace the weighted cloud
+#               by an equally weighted one so the next predict step spends its
+#               particles where the probability mass actually is.
+#
+# Arguments (the ones that are not self-evident):
+#   particles / particles2  two pools of the same shape, used as a double buffer:
+#                           we always write the propagated cloud into the spare
+#                           pool and then swap, which avoids allocating per period.
+#   𝐒f                      perturbation solution matrices, already densified.
+#   scr                     preallocated kron/augmented-state scratch for the
+#                           nonlinear transition (see `build_higher_scratch`).
+#   past_idx                positions of the predetermined states inside a state
+#                           vector — what the transition actually reads.
+#   me_var                  per-observable measurement-error variances.
+#   rows                    which observables are actually observed this period
+#                           (all of them unless the data has holes).
+#
 # Function barrier: `particles`/`particles2` arrive with a concrete element type,
 # so the hot loop specialises and runs allocation-free (the enclosing kwarg method
 # body is too large for inference to keep the pool types).
@@ -436,13 +508,13 @@ function bootstrap_higher_loop(::Val{algo}, particles, particles2, 𝐒f, scr, p
                                data_in_deviations, obs_idx_per_t, has_missing, me_var,
                                resampling, resampling_threshold, rng, on_failure_loglikelihood, log2pi) where {algo}
     n_particles = length(particles)
-    shock = Vector{Float64}(undef, nExo)
-    full_buf = Vector{Float64}(undef, nVars)
-    W = fill(1.0 / n_particles, n_particles)
-    logdens = Vector{Float64}(undef, n_particles)
-    idx  = Vector{Int}(undef, n_particles)
-    bins = Vector{Float64}(undef, n_particles)
-    loglik = 0.0
+    shock    = Vector{Float64}(undef, nExo)     # one draw of structural shocks, reused
+    full_buf = Vector{Float64}(undef, nVars)    # summed state of a pruned particle
+    W        = fill(1.0 / n_particles, n_particles)  # normalised importance weights
+    logdens  = Vector{Float64}(undef, n_particles)   # log p(yₜ | xₜ) per particle
+    idx      = Vector{Int}(undef, n_particles)       # ancestor indices from resampling
+    bins     = Vector{Float64}(undef, n_particles)   # cumulative-weight scratch
+    loglik   = 0.0
 
     for t in 1:nT
         rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
@@ -458,16 +530,23 @@ function bootstrap_higher_loop(::Val{algo}, particles, particles2, 𝐒f, scr, p
             continue
         end
 
+        # 1. PREDICT + 2. SCORE, fused into one pass over the cloud: draw this
+        #    particle's shocks, push it one period forward, and evaluate how well
+        #    the resulting state explains today's observation.
         @inbounds for p in 1:n_particles
             Random.randn!(rng, shock)
             higher_propagate!(Val(algo), particles2[p], particles[p], shock, past_idx, 𝐒f, scr)
             full = measurement_full(particles2[p], full_buf)
             logdens[p] = particle_log_measurement_density(full, data_col, observables_index, me_var, rows, log2pi)
         end
-        particles, particles2 = particles2, particles
+        particles, particles2 = particles2, particles   # propagated cloud becomes current
 
+        # The period's likelihood contribution is log Σₚ Wₚ·p(yₜ|xₜᵖ). Factor out
+        # the largest log-density first (log-sum-exp) so the exponentials cannot
+        # underflow to zero when every particle fits the data poorly.
         m = maximum(logdens)
         if !isfinite(m)
+            # every particle is impossible (or the model blew up): give up cleanly
             return Float64(on_failure_loglikelihood)
         end
 
@@ -480,21 +559,25 @@ function bootstrap_higher_loop(::Val{algo}, particles, particles2, 𝐒f, scr, p
         end
 
         ll_t = m + log(s)
-        if t > presample_periods
+        if t > presample_periods            # presample periods only warm the cloud up
             loglik += ll_t
         end
 
+        # Bayes update of the weights: Wₚ ∝ Wₚ · p(yₜ|xₜᵖ), normalised by `s`.
         @inbounds for p in 1:n_particles
             W[p] = W[p] * exp(logdens[p] - m) / s
         end
 
+        # 3. RESAMPLE, but only once the cloud has actually degenerated. Doing it
+        #    every period would add resampling noise for nothing; doing it never
+        #    would leave all the weight on a single particle within a few periods.
         if effective_sample_size(W) < resampling_threshold * n_particles
             particle_resample_indices!(idx, bins, rng, W, resampling)
             @inbounds for j in 1:n_particles
                 copy_particle!(particles2[j], particles[idx[j]])
             end
             particles, particles2 = particles2, particles
-            fill!(W, 1.0 / n_particles)
+            fill!(W, 1.0 / n_particles)     # survivors are equally likely again
         end
     end
 
@@ -529,9 +612,32 @@ end
 
 
 # ── Auxiliary particle filter (Pitt & Shephard, 1999) ────────────────────────
-# A look-ahead stage reweights ancestors by the predictive likelihood evaluated
-# at the transition mean (zero shock) before propagating, reducing variance when
-# the signal is informative. The likelihood estimate remains unbiased.
+#
+# The problem it fixes. The bootstrap filter propagates every particle blindly —
+# it draws shocks from the prior, *then* looks at the observation. Particles that
+# were already heading somewhere the data rules out are propagated anyway and
+# then killed by a near-zero weight, so a large part of the cloud is wasted. The
+# more informative the observation (small measurement error, many observables),
+# the more wasteful this is.
+#
+# The idea. Peek at the observation *before* choosing which ancestors to
+# propagate. For each ancestor compute a cheap preview of how plausible it is
+# going to look next period — here the measurement density at its transition
+# mean (the zero-shock prediction), inflated by the shock-induced predictive
+# variance so the preview is not artificially sharp. Resample ancestors in
+# proportion to weight × preview, so parents likely to produce good children get
+# more offspring, and only then draw shocks and propagate.
+#
+# Keeping it honest. Selecting ancestors with a preview biases the cloud, so the
+# second stage divides it back out: each child's weight is the true measurement
+# density divided by the preview used to pick its parent. The preview cancels
+# exactly, leaving an unbiased likelihood estimate whatever preview is used — a
+# bad preview costs efficiency, never correctness.
+#
+# When it helps. Most when the observation is informative but the one-step-ahead
+# state is well predicted by its mean. It costs roughly one extra transition
+# evaluation per particle per period, so with a weak signal (large measurement
+# error) the plain bootstrap filter is the better trade.
 
 function run_particle_filter(::Val{algo},
                              ::Val{:auxiliary},
@@ -545,10 +651,10 @@ function run_particle_filter(::Val{algo},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -558,6 +664,10 @@ function run_particle_filter(::Val{algo},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)
@@ -739,10 +849,10 @@ function run_particle_filter(::Val{algo},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -752,6 +862,10 @@ function run_particle_filter(::Val{algo},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)
@@ -1080,10 +1194,10 @@ function run_particle_filter(::Val{:first_order},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -1093,6 +1207,10 @@ function run_particle_filter(::Val{:first_order},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)
@@ -1182,10 +1300,10 @@ function run_particle_filter(::Val{:first_order},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -1195,6 +1313,10 @@ function run_particle_filter(::Val{:first_order},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)
@@ -1312,10 +1434,10 @@ function run_particle_filter(::Val{:first_order},
                              obs_idx_per_t::Vector{Vector{Int}},
                              has_missing::Bool;
                              n_particles::Int = DEFAULT_N_PARTICLES,
-                             resampling::Symbol = DEFAULT_RESAMPLING,
-                             resampling_threshold::Real = DEFAULT_RESAMPLING_THRESHOLD,
-                             initial_state_prior_scaling_factor::Real = DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR,
-                             rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
@@ -1325,6 +1447,10 @@ function run_particle_filter(::Val{:first_order},
                              tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64
     T = constants.post_model_macro
+    rng = particle_rng
+    resampling = particle_resampling
+    resampling_threshold = particle_resampling_threshold
+    initial_state_prior_scaling_factor = particle_initial_state_scaling
     nVars = T.nVars
     nExo  = T.nExo
     nT    = size(data_in_deviations, 2)

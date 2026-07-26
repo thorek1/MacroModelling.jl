@@ -8,14 +8,36 @@ const DEFAULT_SHOCK_DECOMPOSITION_SELECTOR = algorithm -> algorithm ∉ (:second
 const DEFAULT_SMOOTH_SELECTOR = filter -> filter == :kalman
 const DEFAULT_WARMUP_ITERATIONS = 0
 const DEFAULT_PRESAMPLE_PERIODS = 0
-const DEFAULT_MEASUREMENT_ERROR_STD = 0.0
 
-# Particle filter defaults (see `src/filter/particle.jl`)
-const DEFAULT_N_PARTICLES = 1000
-const DEFAULT_PARTICLE_FILTER_ALGORITHM = :bootstrap
-const DEFAULT_RESAMPLING = :systematic
-const DEFAULT_RESAMPLING_THRESHOLD = 0.5
-const DEFAULT_INITIAL_STATE_PRIOR_SCALING_FACTOR = 1.0
+# ── Filter registry ──────────────────────────────────────────────────────────
+# Each particle-filter variant is its own `filter` value, so the filter is fully
+# identified by a single symbol (no separate "which particle filter" argument).
+const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle)
+const SUPPORTED_FILTERS = (:kalman, :inversion, PARTICLE_FILTERS...)
+# `:particle` is accepted as a convenience alias for the bootstrap filter.
+const PARTICLE_FILTER_ALIASES = Dict(:particle => :bootstrap_particle)
+# Maps a filter symbol onto the internal variant tag used for dispatch.
+const PARTICLE_FILTER_VARIANT = Dict(:bootstrap_particle => :bootstrap,
+                                     :auxiliary_particle => :auxiliary,
+                                     :tempered_particle  => :tempered)
+
+# ── Measurement error ────────────────────────────────────────────────────────
+# `:auto` resolves per filter: no measurement error for the Kalman and inversion
+# filters (their historical behaviour), and a small data-driven value for the
+# particle filters, which are degenerate without it.
+const DEFAULT_MEASUREMENT_ERROR_STD = :auto
+# Auto measurement-error standard deviation as a fraction of each observable's
+# sample standard deviation.
+const DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION = 0.1
+
+# ── Particle filter defaults (see `src/filter/particle.jl`) ──────────────────
+# 10_000 particles keeps a Smets-Wouters-sized problem (7 observables, ~180
+# periods) accurate to a couple of log-likelihood points in well under a second
+# per evaluation; raise it when the likelihood is used inside a sampler.
+const DEFAULT_N_PARTICLES = 10_000
+const DEFAULT_PARTICLE_RESAMPLING = :systematic
+const DEFAULT_PARTICLE_RESAMPLING_THRESHOLD = 0.5
+const DEFAULT_PARTICLE_INITIAL_STATE_SCALING = 1.0
 # Tempered particle filter (Herbst & Schorfheide, 2019) controls
 const DEFAULT_TEMPERING_TARGET_RATIO = 2.0
 const DEFAULT_TEMPERING_MH_STEPS = 1

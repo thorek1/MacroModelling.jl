@@ -1850,7 +1850,7 @@ function rrule(::typeof(get_loglikelihood),
                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                 initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
-                measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
+                measurement_error_std::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR_STD,
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -1865,10 +1865,19 @@ function rrule(::typeof(get_loglikelihood),
     # The particle filter is a stochastic, non-differentiable estimator and the
     # Kalman likelihood with measurement error does not yet ship an analytical
     # reverse-mode rule. Fail loudly rather than return an incorrect gradient.
-    if filter == :particle
-        error("The particle filter (`filter = :particle`) is not differentiable and cannot be used with reverse-mode automatic differentiation (Zygote/Mooncake). Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
+    if filter ∈ PARTICLE_FILTERS
+        error("The particle filters (`filter = :$(filter)`) are not differentiable and cannot be used with reverse-mode automatic differentiation (Zygote/Mooncake). Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
     end
-    if measurement_error_std isa AbstractArray ? any(x -> x != 0, measurement_error_std) : measurement_error_std != 0
+    # `:auto` means "no measurement error" for the non-particle filters, so it is
+    # the one symbolic value that can reach here and is always differentiable.
+    me_active = if measurement_error_std isa Symbol
+        false
+    elseif measurement_error_std isa AbstractArray
+        any(x -> x != 0, measurement_error_std)
+    else
+        measurement_error_std != 0
+    end
+    if me_active
         error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error_std`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
     end
 

@@ -23,19 +23,13 @@ using Distributions
 using Random, DelimitedFiles, AxisKeys
 import Statistics
 import LinearAlgebra as ℒ
-import MacroModelling: get_relevant_steady_state_and_state_update
-
-discrete_lyap(A, Q) = begin           # X = A X Aᵀ + Q via squaring/doubling
-    X = copy(Q); Ak = copy(A)
-    for _ in 1:80
-        X = X + Ak * X * Ak'
-        Ak = Ak * Ak
-        maximum(abs, Ak) < 1e-15 && break
-    end
-    X
-end
+import MacroModelling: get_relevant_steady_state_and_state_update,
+                       particle_initial_state_covariance, merge_calculation_options
 
 # Pull the exact first-order state space (deviation form) the package filter uses.
+# The initial-state covariance comes from the package's own Lyapunov solver via
+# `particle_initial_state_covariance`, i.e. the very routine the particle filter
+# uses to spread its initial cloud, so both filters start from the same prior.
 function extract_linear(m, data_levels, observables, params)
     constants, SS_and_pars, 𝐒, _, _ = get_relevant_steady_state_and_state_update(Val(:first_order), params, m)
     T = constants.post_model_macro
@@ -45,7 +39,8 @@ function extract_linear(m, data_levels, observables, params)
     A = zeros(nVars, nVars); A[:, T.past_not_future_and_mixed_idx] .= 𝐒[:, 1:nPast]
     B = Matrix(𝐒[:, nPast+1:end])
     dev = collect(data_levels) .- SS_and_pars[obs_idx]
-    return A, B, obs_idx, discrete_lyap(A, B * B'), dev, nVars
+    Σ, _ = particle_initial_state_covariance(m, T, merge_calculation_options(), :theoretical)
+    return A, B, obs_idx, Σ, dev, nVars
 end
 
 function bench_model(name, m, data, observables, me; N = 20000, nseed = 8)
@@ -56,14 +51,14 @@ function bench_model(name, m, data, observables, me; N = 20000, nseed = 8)
     println("\n==== $name (N=$N) ====")
     println("Kalman+ME = ", round(kal, digits = 3))
 
-    for pfa in (:bootstrap, :tempered)
-        Nn = pfa == :tempered ? N ÷ 3 : N
+    for pf_filter in (:bootstrap_particle, :tempered_particle)
+        Nn = pf_filter == :tempered_particle ? N ÷ 3 : N
         t0 = time()
-        lls = [get_loglikelihood(m, data(observables), params; filter = :particle,
+        lls = [get_loglikelihood(m, data(observables), params; filter = pf_filter,
                     algorithm = :first_order, presample_periods = 0, initial_covariance = :theoretical,
-                    measurement_error_std = me, particle_filter_algorithm = pfa,
-                    n_particles = Nn, rng = Random.Xoshiro(s)) for s in 1:nseed]
-        println("MacroModelling ", rpad(String(pfa), 10), " N=$Nn  mean=", round(Statistics.mean(lls), digits = 2),
+                    measurement_error_std = me,
+                    n_particles = Nn, particle_rng = Random.Xoshiro(s)) for s in 1:nseed]
+        println("MacroModelling ", rpad(String(pf_filter), 19), " N=$Nn  mean=", round(Statistics.mean(lls), digits = 2),
                 "  std=", round(Statistics.std(lls), digits = 2), "  time/run=", round((time() - t0) / nseed, digits = 3), "s")
     end
 

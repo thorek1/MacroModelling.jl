@@ -58,8 +58,8 @@ threw(f) = try; f(); false; catch; true; end
         # The bootstrap particle-filter likelihood estimator is unbiased for the
         # true likelihood, so log L̂ is downward biased by ≈ Var(log L̂)/2 and both
         # the bias and the variance shrink with the number of particles.
-        pf(N, s) = get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,
-                                     measurement_error_std = me, n_particles = N, rng = Random.Xoshiro(s))
+        pf(N, s) = get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                     measurement_error_std = me, n_particles = N, particle_rng = Random.Xoshiro(s))
         nseeds = 24
         ll_small = [pf(2_000, 100 + s) for s in 1:nseeds]
         ll_large = [pf(16_000, 200 + s) for s in 1:nseeds]
@@ -78,13 +78,13 @@ threw(f) = try; f(); false; catch; true; end
     end
 
     @testset "Variants: correct and ordered by efficiency" begin
-        variant(pfa, N, s) = get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,
-                                               particle_filter_algorithm = pfa, measurement_error_std = me,
-                                               n_particles = N, rng = Random.Xoshiro(s))
+        variant(pf_filter, N, s) = get_loglikelihood(RBC_pf, data, p; filter = pf_filter, algorithm = :first_order,
+                                                     measurement_error_std = me,
+                                                     n_particles = N, particle_rng = Random.Xoshiro(s))
         nseeds = 16
-        boot = [variant(:bootstrap, 3_000, 300 + s) for s in 1:nseeds]
-        aux  = [variant(:auxiliary, 3_000, 300 + s) for s in 1:nseeds]
-        temp = [variant(:tempered, 3_000, 300 + s) for s in 1:nseeds]
+        boot = [variant(:bootstrap_particle, 3_000, 300 + s) for s in 1:nseeds]
+        aux  = [variant(:auxiliary_particle, 3_000, 300 + s) for s in 1:nseeds]
+        temp = [variant(:tempered_particle, 3_000, 300 + s) for s in 1:nseeds]
 
         for v in (boot, aux, temp)
             @test all(isfinite, v)
@@ -113,15 +113,15 @@ threw(f) = try; f(); false; catch; true; end
 
     @testset "Higher-order algorithms run" begin
         for algo in (:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order)
-            llh = get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = algo,
-                                    measurement_error_std = me, n_particles = 3_000, rng = Random.Xoshiro(7))
+            llh = get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = algo,
+                                    measurement_error_std = me, n_particles = 3_000, particle_rng = Random.Xoshiro(7))
             @test isfinite(llh)
         end
         # every variant runs at a pruned nonlinear order
-        for pfa in (:bootstrap, :auxiliary, :tempered)
-            llh = get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :pruned_second_order,
-                                    particle_filter_algorithm = pfa, measurement_error_std = me,
-                                    n_particles = 3_000, rng = Random.Xoshiro(7))
+        for pf_filter in (:bootstrap_particle, :auxiliary_particle, :tempered_particle)
+            llh = get_loglikelihood(RBC_pf, data, p; filter = pf_filter, algorithm = :pruned_second_order,
+                                    measurement_error_std = me,
+                                    n_particles = 3_000, particle_rng = Random.Xoshiro(7))
             @test isfinite(llh)
         end
     end
@@ -132,25 +132,42 @@ threw(f) = try; f(); false; catch; true; end
         raw[2, 20] = missing
         datam = KeyedArray(raw, Variable = [:c, :q], Time = 1:size(raw, 2))
         kal_m = get_loglikelihood(RBC_pf, datam, p; filter = :kalman, measurement_error_std = me)
-        pf_m = get_loglikelihood(RBC_pf, datam, p; filter = :particle, algorithm = :first_order,
-                                 measurement_error_std = me, n_particles = 16_000, rng = Random.Xoshiro(9))
+        pf_m = get_loglikelihood(RBC_pf, datam, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                 measurement_error_std = me, n_particles = 16_000, particle_rng = Random.Xoshiro(9))
         @test isfinite(kal_m)
         @test isfinite(pf_m)
         @test abs(kal_m - pf_m) < 3.0
+    end
+
+    @testset "Filter selection and automatic measurement error" begin
+        # `:particle` is an alias for the bootstrap filter: same RNG ⇒ same value
+        @test get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,
+                                measurement_error_std = me, n_particles = 2_000, particle_rng = Random.Xoshiro(5)) ==
+              get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                measurement_error_std = me, n_particles = 2_000, particle_rng = Random.Xoshiro(5))
+        # `:auto` leaves the Kalman filter without measurement error
+        @test get_loglikelihood(RBC_pf, data, p; filter = :kalman) ==
+              get_loglikelihood(RBC_pf, data, p; filter = :kalman, measurement_error_std = :auto)
+        # `:auto` gives the particle filters a workable measurement error
+        @test isfinite(get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                         n_particles = 2_000, particle_rng = Random.Xoshiro(5)))
+        # an unknown filter name is rejected
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :not_a_filter))
     end
 
     @testset "Error guards" begin
         # measurement error is not available for the inversion filter
         @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :inversion, measurement_error_std = me))
         # the particle filter requires measurement error
-        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order))
+        @test threw(() -> get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                                            measurement_error_std = 0.0))
         # the particle filter is not differentiable (forward or reverse mode)
-        @test threw(() -> ForwardDiff.gradient(x -> get_loglikelihood(RBC_pf, data, x; filter = :particle,
+        @test threw(() -> ForwardDiff.gradient(x -> get_loglikelihood(RBC_pf, data, x; filter = :bootstrap_particle,
                           algorithm = :first_order, measurement_error_std = me, n_particles = 500,
-                          rng = Random.Xoshiro(1)), p))
-        @test threw(() -> Zygote.gradient(x -> get_loglikelihood(RBC_pf, data, x; filter = :particle,
+                          particle_rng = Random.Xoshiro(1)), p))
+        @test threw(() -> Zygote.gradient(x -> get_loglikelihood(RBC_pf, data, x; filter = :bootstrap_particle,
                           algorithm = :first_order, measurement_error_std = me, n_particles = 500,
-                          rng = Random.Xoshiro(1)), p))
+                          particle_rng = Random.Xoshiro(1)), p))
         # reverse-mode AD of the Kalman likelihood with measurement error is guarded
         @test threw(() -> Zygote.gradient(x -> get_loglikelihood(RBC_pf, data, x; filter = :kalman,
                           measurement_error_std = me), p))

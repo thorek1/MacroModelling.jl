@@ -397,7 +397,12 @@ function normalize_filtering_options(filter::Symbol,
                                       shock_decomposition::Bool,
                                       warmup_iterations::Int;
                                       maxlog::Int = DEFAULT_MAXLOG)
-    @assert filter ∈ [:kalman, :inversion, :particle] "Currently only the Kalman filter (:kalman) for linear models, the inversion filter (:inversion) for linear and nonlinear models, and the particle filter (:particle) for linear and nonlinear models are supported."
+    # `:particle` is a convenience alias for the bootstrap particle filter.
+    filter = get(PARTICLE_FILTER_ALIASES, filter, filter)
+
+    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
+
+    is_particle = filter ∈ PARTICLE_FILTERS
 
     pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
 
@@ -407,10 +412,11 @@ function normalize_filtering_options(filter::Symbol,
     end
 
     # Higher-order solutions are handled by the inversion filter by default, but
-    # the particle filter (`:particle`) is explicitly valid at every order too.
-    if algorithm != :first_order && filter ∉ (:inversion, :particle)
+    # the particle filters are explicitly valid at every order too.
+    if algorithm != :first_order && filter != :inversion && !is_particle
         @info "Higher order solution algorithms only support the inversion and particle filters. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
+        is_particle = false
     end
 
     if filter != :kalman && smooth
@@ -419,7 +425,7 @@ function normalize_filtering_options(filter::Symbol,
     end
 
     if warmup_iterations > 0
-        if filter ∈ (:kalman, :particle)
+        if filter == :kalman || is_particle
             @info "`warmup_iterations` is not a valid argument for the $(filter == :kalman ? "Kalman" : "particle") filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
             warmup_iterations = 0
         end
