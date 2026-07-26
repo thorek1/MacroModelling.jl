@@ -819,7 +819,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # end # timeit_debug
     # end # timeit_debug
 
-    return -(logabsdets + shocks² + (length(observables_index) * (n_obs - presample_periods) + hidden_warmup_shock_dimension(T.nExo, warmup_iterations)) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (length(observables_index) * (n_obs - presample_periods) + hidden_warmup_shock_dimension(T.nExo, warmup_iterations)) * log(2π)) / 2
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2π)) / 2
 end
 
@@ -1137,7 +1137,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf and Fair and Taylor (1983)
-    return -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 
@@ -1418,7 +1418,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 function calculate_loglikelihood(::Val{:inversion},
@@ -1921,7 +1921,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 
@@ -2306,7 +2306,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    return -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 @unstable function filter_data_with_model(𝓂::ℳ,
@@ -4959,7 +4959,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:first_or
         ℒ.mul!(state, 𝐒past, state_concat)
     end
 
-    return -(logabsdets + shocks² + (n_hidden_warmup_shock_dims + n_obs_total) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (n_hidden_warmup_shock_dims + n_obs_total) * log(2π)) / 2
 end
 
 
@@ -5150,7 +5150,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
         ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
     end
 
-    return -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 
@@ -5323,7 +5323,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
         ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
     end
 
-    return -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 
@@ -5589,7 +5589,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
         ℒ.mul!(st3, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
     end
 
-    return -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 
@@ -5807,7 +5807,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
         ℒ.mul!(st, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
     end
 
-    return -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    return -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 end
 
 end # @stable

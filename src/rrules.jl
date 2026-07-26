@@ -8848,7 +8848,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         ℒ.mul!(state_seq[t+1], 𝐒, concat_buf)
     end
 
-    llh = -(logabsdets + shocks² + (n_hidden_warmup_shock_dims + n_obs_total) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (n_hidden_warmup_shock_dims + n_obs_total) * log(2π)) / 2
     if llh < -1e12 || !isfinite(llh)
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
@@ -8937,15 +8937,15 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 end
 
                 if t > presample_periods
-                    # logabsdet[t] term: ∂jac_v += -∂llh/2 * pinv(jac_v)'
+                    # logabsdet[t] term: ∂jac_v += -∂llh * pinv(jac_v)'
                     if m == n_exo
                         invjac_v = invjac_v_seq[t]
-                        ∂jac_v = ∂jac_v .+ (-∂llh / 2) .* invjac_v'
+                        ∂jac_v = ∂jac_v .+ (-∂llh) .* invjac_v'
                     else
                         G = G_seq[t]
                         jac_v = jac_full[idx, :]
                         pinvA_T = G * jac_v
-                        ∂jac_v = ∂jac_v .+ (-∂llh / 2) .* pinvA_T
+                        ∂jac_v = ∂jac_v .+ (-∂llh) .* pinvA_T
                     end
                 end
 
@@ -9328,7 +9328,7 @@ function rrule(::typeof(calculate_loglikelihood),
         # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])  (only t⁻ rows are ever read)
     end
 
-    llh = -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + hidden_warmup_shock_dimension(T.nExo, warmup_iterations)) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + hidden_warmup_shock_dimension(T.nExo, warmup_iterations)) * log(2π)) / 2
     
     if llh < -1e12
         return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -9394,9 +9394,9 @@ function rrule(::typeof(calculate_loglikelihood),
         col_off = n_cols - T.nExo
 
         # Constant-jac logabsdet contribution (scales with Tt - presample).
-        # Square: ∂jac += -(Tt - p)/2 * invjac'
-        # Fat   : ∂jac += -(Tt - p)/2 * (G * jac)    (since d log|det(JJt)|/2 / d jac = G * jac)
-        factor = -(Tt - presample_periods) / 2
+        # Square: ∂jac += -(Tt - p) * invjac'
+        # Fat   : ∂jac += -(Tt - p) * (G * jac)    (since d log|det(JJt)|/2 / d jac = G * jac)
+        factor = -(Tt - presample_periods)
         if T.nExo == n_obs_loc
             invjac_T = invjac'
             for j in 1:T.nExo
@@ -9695,7 +9695,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         copyto!(state₂_seq[t+1], state₂)
     end
 
-    llh = -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     if !isfinite(llh) || llh < -1e12
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -9802,13 +9802,13 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 @inbounds for k in 1:n_exo
                     ∂x[k] += -x[k]
                 end
-                # logabsdet pullback: ∂jac_v += -1/2 * pinv(jac_v)'
+                # logabsdet pullback: ∂jac_v += -1 * pinv(jac_v)'
                 if m == n_exo
                     invjac_v = inv(jac_v_local)
-                    ∂jac_v .+= (-0.5) .* invjac_v'
+                    ∂jac_v .+= (-1.0) .* invjac_v'
                 else
                     G = inv(jac_v_local * jac_v_local')
-                    ∂jac_v .+= (-0.5) .* (G * jac_v_local)
+                    ∂jac_v .+= (-1.0) .* (G * jac_v_local)
                 end
                 # Add ∂jac_v's contribution to ∂x via the (I⊗x) term in jac_v.
                 # d jac_v[i,r] / d x_l = 2 𝐒ⁱ²ᵉ_v[i, (r-1)n_exo + l]
@@ -11878,10 +11878,10 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    copyto!(∂jacc_buf, 2 .* inv(jacc_lu)')
                     ∂jacc = ∂jacc_buf
                 else
-                    ∂jacc = ℒ.pinv(jacc[i])'
+                    ∂jacc = 2 .* ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
@@ -12090,7 +12090,7 @@ function rrule(::typeof(calculate_loglikelihood),
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     return llh, inversion_filter_loglikelihood_pullback
 end
@@ -12277,7 +12277,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         copyto!(st_seq[t+1], st)
     end
 
-    llh = -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     if !isfinite(llh) || llh < -1e12
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -12361,10 +12361,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 end
                 if m == n_exo
                     invjac_v = inv(jac_v_local)
-                    ∂jac_v .+= (-0.5) .* invjac_v'
+                    ∂jac_v .+= (-1.0) .* invjac_v'
                 else
                     G = inv(jac_v_local * jac_v_local')
-                    ∂jac_v .+= (-0.5) .* (G * jac_v_local)
+                    ∂jac_v .+= (-1.0) .* (G * jac_v_local)
                 end
                 # Indirect channel: ∂jac_v → x via the (I⊗x) term in jac_v.
                 # d jac_v[i,r] / d x_l = 2 𝐒ⁱ²ᵉ_v[i, (r-1)n_exo + l]
@@ -12984,10 +12984,10 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    copyto!(∂jacc_buf, 2 .* inv(jacc_lu)')
                     ∂jacc = ∂jacc_buf
                 else
-                    ∂jacc = ℒ.pinv(jacc[i])'
+                    ∂jacc = 2 .* ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
@@ -13169,7 +13169,7 @@ function rrule(::typeof(calculate_loglikelihood),
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     return llh, inversion_filter_loglikelihood_pullback
 end
@@ -13460,7 +13460,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         copyto!(state₃_seq[t+1], state₃)
     end
 
-    llh = -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     if !isfinite(llh) || llh < -1e12
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -13606,10 +13606,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 end
                 if m == n_exo
                     invjac_v = inv(jac_v_local)
-                    ∂jac_v .+= (-0.5) .* invjac_v'
+                    ∂jac_v .+= (-1.0) .* invjac_v'
                 else
                     G = inv(jac_v_local * jac_v_local')
-                    ∂jac_v .+= (-0.5) .* (G * jac_v_local)
+                    ∂jac_v .+= (-1.0) .* (G * jac_v_local)
                 end
                 # Indirect channel: ∂jac_v → ∂x via the (J⊗x) and (J⊗ kron(x,x)) terms in jac_v.
                 # d jac_v[i,r]/dx_l = 2 𝐒ⁱ²ᵉ_v[i,(r-1)n+l] + 3 (Σ_q 𝐒ⁱ³ᵉ_v[i,(r-1)n²+(l-1)n+q] x_q + Σ_p 𝐒ⁱ³ᵉ_v[i,(r-1)n²+(p-1)n+l] x_p)
@@ -14309,7 +14309,7 @@ function rrule(::typeof(calculate_loglikelihood),
     # end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
 
     ∂𝐒 = [zero(𝐒[1]), zero(𝐒[2]), zero(𝐒[3])]
@@ -14488,10 +14488,10 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    copyto!(∂jacc_buf, 2 .* inv(jacc_lu)')
                     ∂jacc = ∂jacc_buf
                 else
-                    ∂jacc = ℒ.pinv(jacc[i])'
+                    ∂jacc = 2 .* ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
@@ -14999,7 +14999,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         copyto!(st_seq[t+1], st)
     end
 
-    llh = -(logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (n_obs_total + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     if !isfinite(llh) || llh < -1e12
         return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -15103,10 +15103,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 end
                 if m == n_exo
                     invjac_v = inv(jac_v_local)
-                    ∂jac_v .+= (-0.5) .* invjac_v'
+                    ∂jac_v .+= (-1.0) .* invjac_v'
                 else
                     G = inv(jac_v_local * jac_v_local')
-                    ∂jac_v .+= (-0.5) .* (G * jac_v_local)
+                    ∂jac_v .+= (-1.0) .* (G * jac_v_local)
                 end
                 # Indirect channel: ∂jac_v → ∂x
                 @inbounds for l in 1:n_exo
@@ -16403,7 +16403,7 @@ function rrule(::typeof(calculate_loglikelihood),
     end
     
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
-    llh = -(logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
+    llh = -(2 * logabsdets + shocks² + (length(observables_index) * n_effective_obs + n_hidden_warmup_shock_dims) * log(2π)) / 2
 
     # end # timeit_debug
     # end # timeit_debug
@@ -16540,10 +16540,10 @@ function rrule(::typeof(calculate_loglikelihood),
                     if !ℒ.issuccess(jacc_lu)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
-                    copyto!(∂jacc_buf, inv(jacc_lu)')
+                    copyto!(∂jacc_buf, 2 .* inv(jacc_lu)')
                     ∂jacc = ∂jacc_buf
                 else
-                    ∂jacc = ℒ.pinv(jacc[i])'
+                    ∂jacc = 2 .* ℒ.pinv(jacc[i])'
                     if !all(isfinite, ∂jacc)
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
                     end
