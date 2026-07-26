@@ -1264,6 +1264,67 @@ function grow_mat_seq_undef!(seq::Vector{Matrix{T}}, Tt::Int) where T
 end
 
 """
+    Particle_workspace(::Type{TT} = Float64)
+
+Create a workspace for the particle filters with lazy buffer allocation. All
+buffers start empty and are sized on demand by `ensure_particle_workspace!`.
+"""
+function Particle_workspace(::Type{TT} = Float64) where {TT <: Real}
+    particle_workspace{TT}(
+        0, 0, 0,                                             # nVars, nExo, n_particles
+        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # X, X2, Anc
+        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # Anc2, St, St2
+        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # E, E2, Eprop
+        zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # W, Wn, logdens
+        zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # logw, lam, dv
+        zeros(TT, 0), zeros(TT, 0),                          # dv2, bins
+        Int[])                                               # idx
+end
+
+"""
+    ensure_particle_workspace!(workspaces, nVars, nExo, n_particles)
+
+Size the particle-filter buffers for the requested dimensions, reallocating only
+when they change. Returns the workspace. Contents are undefined on entry — every
+kernel writes each buffer before reading it.
+"""
+function ensure_particle_workspace!(workspaces::workspaces, nVars::Int, nExo::Int, n_particles::Int)
+    ws = workspaces.particle
+
+    if ws.nVars != nVars || ws.n_particles != n_particles
+        ws.X    = Matrix{Float64}(undef, nVars, n_particles)
+        ws.X2   = Matrix{Float64}(undef, nVars, n_particles)
+        ws.Anc  = Matrix{Float64}(undef, nVars, n_particles)
+        ws.Anc2 = Matrix{Float64}(undef, nVars, n_particles)
+        ws.St   = Matrix{Float64}(undef, nVars, n_particles)
+        ws.St2  = Matrix{Float64}(undef, nVars, n_particles)
+        ws.nVars = nVars
+    end
+
+    if ws.nExo != nExo || ws.n_particles != n_particles
+        ws.E     = Matrix{Float64}(undef, nExo, n_particles)
+        ws.E2    = Matrix{Float64}(undef, nExo, n_particles)
+        ws.Eprop = Matrix{Float64}(undef, nExo, n_particles)
+        ws.nExo = nExo
+    end
+
+    if ws.n_particles != n_particles
+        ws.W       = Vector{Float64}(undef, n_particles)
+        ws.Wn      = Vector{Float64}(undef, n_particles)
+        ws.logdens = Vector{Float64}(undef, n_particles)
+        ws.logw    = Vector{Float64}(undef, n_particles)
+        ws.lam     = Vector{Float64}(undef, n_particles)
+        ws.dv      = Vector{Float64}(undef, n_particles)
+        ws.dv2     = Vector{Float64}(undef, n_particles)
+        ws.bins    = Vector{Float64}(undef, n_particles)
+        ws.idx     = Vector{Int}(undef, n_particles)
+        ws.n_particles = n_particles
+    end
+
+    return ws
+end
+
+"""
     Kalman_workspace(::Type{TT} = Float64)
 
 Create a workspace for Kalman filter computations with lazy buffer allocation.
@@ -1389,6 +1450,7 @@ function Workspaces(::Type{T} = Float64, ::Type{S} = Float64) where {T <: Real, 
                 Find_shocks_workspace(T),  # conditional forecast - will be resized
                 Inversion_workspace(T),  # inversion filter - will be resized
                 Kalman_workspace(T),  # Kalman filter - will be resized
+                Particle_workspace(T),  # particle filters - will be resized
                 NSSSSolverWorkspace())  # NSSS solver scratch buffers
 end
 

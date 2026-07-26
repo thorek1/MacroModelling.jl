@@ -1370,14 +1370,13 @@ function run_particle_filter(::Val{:first_order},
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
 
-    X  = Matrix{Float64}(undef, nVars, n_particles)
-    X2 = Matrix{Float64}(undef, nVars, n_particles)
-    E  = Matrix{Float64}(undef, nExo, n_particles)
-    Z  = Matrix{Float64}(undef, nVars, n_particles)
-    W = fill(1.0 / n_particles, n_particles)
-    logdens = Vector{Float64}(undef, n_particles)
-    idx  = Vector{Int}(undef, n_particles)
-    bins = Vector{Float64}(undef, n_particles)
+    # Cloud and scratch come from the model's workspace, so a sampler that calls
+    # this thousands of times pays for them once (see `ensure_particle_workspace!`).
+    pws = ensure_particle_workspace!(𝓂.workspaces, nVars, nExo, n_particles)
+    X, X2, Z = pws.X, pws.X2, pws.Anc
+    E = pws.E
+    W, logdens, idx, bins = pws.W, pws.logdens, pws.idx, pws.bins
+    fill!(W, 1.0 / n_particles)
 
     mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
     init_linear_particles!(X, rng, mean0, L, Z)
@@ -1485,16 +1484,12 @@ function run_particle_filter(::Val{:first_order},
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
 
-    X    = Matrix{Float64}(undef, nVars, n_particles)
-    X2   = Matrix{Float64}(undef, nVars, n_particles)
-    AncX = Matrix{Float64}(undef, nVars, n_particles)
-    E    = Matrix{Float64}(undef, nExo,  n_particles)
-    W = fill(1.0 / n_particles, n_particles)
-    logg̃ = Vector{Float64}(undef, n_particles)
-    logw = Vector{Float64}(undef, n_particles)
-    lam  = Vector{Float64}(undef, n_particles)
-    idx  = Vector{Int}(undef, n_particles)
-    bins = Vector{Float64}(undef, n_particles)
+    pws = ensure_particle_workspace!(𝓂.workspaces, nVars, nExo, n_particles)
+    X, X2, AncX = pws.X, pws.X2, pws.Anc
+    E = pws.E
+    W, logg̃, logw = pws.W, pws.logdens, pws.logw
+    lam, idx, bins = pws.lam, pws.idx, pws.bins
+    fill!(W, 1.0 / n_particles)
 
     mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
     init_linear_particles!(X, rng, mean0, L, AncX)
@@ -1616,23 +1611,23 @@ function run_particle_filter(::Val{:first_order},
     Σ, _ = particle_initial_state_covariance(𝓂, T, opts, initial_covariance)
     L = particle_initial_cloud_factor(Σ, Float64(initial_state_prior_scaling_factor))
 
-    # Double-buffered particle pools (columns are particles).
-    Anc  = Matrix{Float64}(undef, nVars, n_particles)
-    Anc2 = Matrix{Float64}(undef, nVars, n_particles)
-    Sh   = Matrix{Float64}(undef, nExo,  n_particles)
-    Sh2  = Matrix{Float64}(undef, nExo,  n_particles)
-    St   = Matrix{Float64}(undef, nVars, n_particles)
-    St2  = Matrix{Float64}(undef, nVars, n_particles)
-    dv   = Vector{Float64}(undef, n_particles)
-    dv2  = Vector{Float64}(undef, n_particles)
+    # Double-buffered particle pools (columns are particles), taken from the
+    # model's workspace. The locals below are swapped in place of copying, which
+    # leaves the workspace fields pointing at whichever buffer ends up where —
+    # harmless, since every buffer is written before it is read.
+    pws = ensure_particle_workspace!(𝓂.workspaces, nVars, nExo, n_particles)
+    Anc, Anc2 = pws.Anc, pws.Anc2
+    Sh,  Sh2  = pws.E,   pws.E2
+    St,  St2  = pws.St,  pws.St2
+    dv,  dv2  = pws.dv,  pws.dv2
 
-    Base  = Matrix{Float64}(undef, nVars, n_particles)
-    Sprop = Matrix{Float64}(undef, nVars, n_particles)
-    Eprop = Matrix{Float64}(undef, nExo,  n_particles)
-    logw  = Vector{Float64}(undef, n_particles)
-    Wn    = Vector{Float64}(undef, n_particles)
-    idx   = Vector{Int}(undef, n_particles)
-    bins  = Vector{Float64}(undef, n_particles)
+    Base  = pws.X
+    Sprop = pws.X2
+    Eprop = pws.Eprop
+    logw  = pws.logw
+    Wn    = pws.Wn
+    idx   = pws.idx
+    bins  = pws.bins
 
     mean0 = state isa AbstractVector{<:AbstractVector} ? Vector{Float64}(state[1]) : Vector{Float64}(state)
     init_linear_particles!(St, rng, mean0, L, Anc2)

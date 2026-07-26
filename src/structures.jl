@@ -1187,7 +1187,53 @@ mutable struct inversion_workspace{T <: Real}
 end
 
 
-"""  
+"""
+Workspace for particle filter computations.
+
+Holds the particle cloud and the per-particle scratch the filters in
+`src/filter/particle.jl` reuse every period. Sized by `(nVars, nExo, n_particles)`
+and lazily (re)allocated by `ensure_particle_workspace!` — inside a sampler the
+likelihood is evaluated thousands of times at the same dimensions, so these
+buffers are allocated once for the whole run rather than once per evaluation.
+
+Six `nVars × n_particles` and three `nExo × n_particles` matrices cover the
+simultaneous needs of every variant: the bootstrap filter uses the fewest, the
+tempered filter the most (ancestors, states, Metropolis proposals, and the
+swap partners for each).
+"""
+mutable struct particle_workspace{T <: Real}
+    # Dimensions (for reallocation checks)
+    nVars::Int
+    nExo::Int
+    n_particles::Int
+
+    # nVars × n_particles state clouds
+    X::Matrix{T}
+    X2::Matrix{T}
+    Anc::Matrix{T}
+    Anc2::Matrix{T}
+    St::Matrix{T}
+    St2::Matrix{T}
+
+    # nExo × n_particles shock clouds
+    E::Matrix{T}
+    E2::Matrix{T}
+    Eprop::Matrix{T}
+
+    # per-particle scratch
+    W::Vector{T}          # normalised importance weights
+    Wn::Vector{T}         # stage weights (tempered)
+    logdens::Vector{T}    # log measurement density
+    logw::Vector{T}       # log weights
+    lam::Vector{T}        # first-stage weights (auxiliary)
+    dv::Vector{T}         # quadratic forms (tempered)
+    dv2::Vector{T}        # swap partner for dv
+    bins::Vector{T}       # cumulative-weight scratch for resampling
+    idx::Vector{Int}      # ancestor indices from resampling
+end
+
+
+"""
 Workspace for Kalman filter computations.
 Contains pre-allocated buffers for state estimates, covariances, and matrix operations.
 Buffers are lazily allocated and resized as needed via ensure_kalman_workspaces!.
@@ -1359,6 +1405,7 @@ mutable struct workspaces
     find_shocks::find_shocks_workspace{Float64}  # Conditional forecast shock finding
     inversion::inversion_workspace{Float64}      # Inversion filter
     kalman::kalman_workspace{Float64}            # Kalman filter
+    particle::particle_workspace{Float64}        # Particle filters
     # NSSS solver shared scratch buffers
     nsss_solver::NSSSSolverWorkspace
 end
