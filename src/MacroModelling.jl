@@ -2756,6 +2756,37 @@ end # dispatch_doctor
             δ = 0.02
             α = 0.5
         end
+
+        # Warm the standard first-order workflow used by a simple IRF script.
+        get_steady_state(
+            RBC_for_precompile;
+            derivatives = false,
+            stochastic = false,
+            return_variables_only = true,
+            silent = true,
+        )
+        get_irf(
+            RBC_for_precompile;
+            algorithm = :first_order,
+            periods = 40,
+            variables = :all,
+            shocks = :all,
+            verbose = false,
+        )
+        get_moments(
+            RBC_for_precompile;
+            algorithm = :first_order,
+            variables = :all,
+            non_stochastic_steady_state = true,
+            mean = true,
+            standard_deviation = true,
+            variance = true,
+            covariance = true,
+            correlation = true,
+            derivatives = false,
+            silent = true,
+            verbose = false,
+        )
     end
 end
 #     # Putting some things in `setup` can reduce the size of the

@@ -1508,7 +1508,9 @@ function get_irf(𝓂::ℳ,
     init_state = irf_initial_state(val_alg, state, SS_and_pars, initial_state, nVars, S)
 
     Y_all = zeros(S, nVars, periods, nShocks)
-    states_store = Array{Any}(undef, nShocks, periods + 1)
+    # Every simulated state has the same element type as `init_state`; keeping
+    # this container concrete avoids dynamic dispatch in the forward recursion.
+    states_store = Array{Vector{S}}(undef, nShocks, periods + 1)
     shocks_store = Array{Vector{S}}(undef, nShocks, periods)
 
     irf_forward_simulate!(val_alg, Y_all, states_store, shocks_store,
