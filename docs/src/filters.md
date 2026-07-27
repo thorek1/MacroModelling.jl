@@ -22,6 +22,8 @@ Select a filter with the `filter` keyword:
 get_loglikelihood(model, data, parameters; filter = :kalman)
 ```
 
+Two inputs cut across all of them and are covered separately below: `measurement_error`, the noise on the observation, and `initial_covariance`, the prior on the state at the start of the sample. There is also a [filter-free likelihood](@ref "The filter-free likelihood") that does not integrate the shocks out at all, but treats them as parameters to be sampled.
+
 ## Choosing a filter
 
 | filter | models | likelihood | differentiable | measurement error | smoothing | relative cost |
@@ -89,6 +91,33 @@ In exchange it is exact for nonlinear models, deterministic, and differentiable,
 
 **References:** Fair & Taylor (1983); Cuba-Borda, Guerrieri, Iacoviello & Zhong (2019).
 
+### More shocks than observables
+
+The inversion filter still runs when there are more shocks than observables: the per-period system ``y_t = CAx_{t-1} + Z\varepsilon_t`` (with ``Z = CB``) is then under-determined, and it returns the **minimum-norm** solution ``\varepsilon_t = Z^{+}v_t``, ``Z^{+} = Z'(ZZ')^{-1}``. Two things are worth being explicit about, because neither is visible from the output.
+
+First, the good news: minimum norm is not an arbitrary tie-break. For Gaussian shocks ``Z^{+}v = E[\varepsilon \mid v]`` is the conditional mean, and ``\|Z^{+}v\|^2 = v'(ZZ')^{-1}v``, so the score remains a proper Gaussian density ``\log N(v_t; 0, ZZ')`` — exactly the same expression as in the square case.
+
+Second, the **implicit assumption**. That expression is the Kalman contribution with the posterior state covariance *clamped to zero*. The filter propagates a single point ``\hat x_t`` and, at the next period, treats it as if it were known exactly. That is self-consistent only when the observation actually pins the state down, i.e. when
+
+```math
+P_{t|t} = P - PC'(CPC')^{-1}CP = 0 \quad\Longleftrightarrow\quad \mathrm{rank}(CB) = n_\varepsilon,
+```
+
+which requires **at least as many observables as shocks**. With more shocks than observables the rank condition fails, ``P_{t|t} > 0`` necessarily, and the assumption is simply false. The consequence is that
+
+```math
+F^{\text{kal}}_t = ZZ' + CA\,P_{t|t}\,A'C' \;\supsetneq\; ZZ' = F^{\text{inv}},
+```
+
+so the inversion filter **understates the innovation covariance**: it treats innovations as more surprising than they are, because it is pretending to know a state it cannot know. Its likelihood is a certainty-equivalent approximation, not ``p(y_{1:T})``.
+
+How wrong it is depends on ``\|CA P_{t|t} A'C'\|`` relative to ``\|ZZ'\|`` — how much of the *unidentified* subspace propagates into the next period's observables — rather than on the shock/observable counts as such. That ratio is computable from a cheap first-order Kalman recursion even when the model is being filtered at third order, and is the right thing to look at before trusting an under-identified inversion likelihood. On the package's small RBC example with one observable and two shocks it is ``\approx 0.008``, which is why the two filters nearly agree there despite the state being genuinely unidentified; in a model whose unidentified directions propagate strongly the gap would be large.
+
+There is a second, separate approximation: the minimum-norm choice is made **greedily**, period by period, minimising ``\|\varepsilon_t\|`` given ``\hat x_{t-1}`` without regard for the fact that the null-space component moves ``x_t`` and hence the cost of matching later observations. The Kalman disturbance smoother solves the same minimum-norm problem *globally* over the whole path. The two coincide only when there is no null space to redistribute over, i.e. ``n_y = n_\varepsilon``.
+
+If the ratio above is large, the options are to rebalance the model so that ``n_y = n_\varepsilon`` (what most applied work does — Smets-Wouters has seven of each), or to use a particle filter, which represents the whole posterior instead of a point and handles the under-identified case natively.
+
+
 ## Particle filters
 
 When the model is nonlinear *and* there is measurement error, the filtering distribution is no longer Gaussian and no longer invertible. Particle filters represent it by a cloud of ``N`` weighted draws ("particles") and update the cloud each period. They are the general-purpose fallback: they work for any transition, any number of shocks, and any measurement error.
@@ -110,7 +139,7 @@ Because the estimate is random, a repeated evaluation at the same parameters giv
 
 Without measurement error the observation equation is a deterministic function of the state. A particle would have to reproduce ``y_t`` *exactly* to get non-zero weight, which happens with probability zero — every weight collapses to zero and the filter dies. Measurement error smears the observation density and gives particles something to score against.
 
-`measurement_error` is the covariance ``H`` of ``\eta_t``, never a standard deviation: a scalar is the common variance of every observable, a vector the per-observable variances, and a matrix the full covariance. `measurement_error = :auto` (the default) resolves to a variance of ``(0.1 s_i)^2`` per observable, where ``s_i`` is that observable's sample standard deviation, for the particle filters — and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable.
+`measurement_error = :auto` (the default) therefore resolves, for the particle filters, to a variance of ``(0.1 s_i)^2`` per observable, ``s_i`` being that observable's sample standard deviation — and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable. See [Measurement error and the initial covariance](@ref) for what ``H`` is and the other jobs it does.
 
 ### Bootstrap (`:bootstrap_particle`)
 
@@ -169,6 +198,62 @@ Resampling only happens when the effective sample size ``1/\sum_i W_i^2`` falls 
 
 **References:** Kitagawa (1996); Douc & Cappé (2005).
 
+## Measurement error and the initial covariance
+
+Two inputs are not part of the model's economics but change every likelihood, and they are easy to conflate because both are called "uncertainty". They are about different objects and act on different timescales.
+
+| | `measurement_error` ``H`` | `initial_covariance` ``P_1`` |
+|---|---|---|
+| uncertainty about | the **observation** ``y_t`` | the latent **state** ``x_1`` |
+| acts | every period, forever | once, at ``t = 1`` |
+| enters | ``F_t = CP_tC' + H`` | seeds the Riccati recursion |
+| over time | **permanent** | **decays**, at the filter's own error-dynamics rate |
+| encodes | distrust of the data; misspecification; a singularity fix | ignorance about where the economy started |
+| changes the model? | yes — adds a noise term to the observation equation | no — it is a prior on initial conditions |
+
+### Measurement error
+
+``H`` is the covariance of ``\eta_t``, **never a standard deviation**: a scalar is the common variance of every observable, a vector the per-observable variances, and a matrix the full covariance. It does three quite different jobs, which are worth keeping separate:
+
+1. **Genuine measurement error** — hours from the establishment survey is not the model's ``n_t``; GDP gets revised for years. The literal reading, and the least common reason it is used.
+2. **Stochastic singularity** — a model with ``n_\varepsilon`` shocks generates observables on an ``n_\varepsilon``-dimensional manifold. Observe more series than that and the model implies exact deterministic relationships among them; ``CP_tC'`` is rank-deficient and the likelihood is not small but *undefined*. ``H > 0`` is the standard fix, and the alternative — adding shocks — is a genuine modelling choice, not a technicality (see below).
+3. **Misspecification you would rather quarantine** — giving a series the model cannot match a noise term so it does not dominate the likelihood.
+
+Mechanically it is the denominator of the Kalman gain ``K_t = P_tC'(CP_tC' + H)^{-1}``: large ``H`` means a small gain and a filter that trusts its own prediction; ``H \to 0`` means a filter that takes the data at face value. So ``H`` is a dial between *trust the model* and *trust the data*, and it is the same dial that decides whether a surprise in the data becomes an inferred structural shock or is written off as noise.
+
+The distinction between a shock and measurement error is worth stating plainly, because both add a dimension of randomness and both cure a singularity: **a shock is variation the model transmits; measurement error is variation the model refuses to transmit.** A technology shock moves consumption, investment and hours through the model's propagation; a measurement error in output moves output's *observation* and nothing else.
+
+For the particle filters there is a fourth, purely computational reason: without ``H > 0`` the observation density is a Dirac, no particle ever reproduces ``y_t`` exactly, every weight is zero and the filter dies. That has nothing to do with whether you believe in measurement error — it is why `:auto` picks a *small* data-driven value rather than an economically motivated one.
+
+### The initial covariance
+
+``P_1`` is the prior on the state at the start of the sample: where the economy was before the first observation. It seeds
+
+```math
+P_{t+1} = A(P_t - K_tCP_t)A' + BB',
+```
+
+which contracts to a fixed point that does **not** depend on ``P_1``. So the choice eventually stops mattering — but the *rate* is the filter's own error dynamics, which can be slow. On Smets-Wouters (2007) the ergodic prior and ``P_1 = BB'`` still differ by nearly 500 log points over 184 observations. This is what `presample_periods` is for: discard the periods in which ``P_1`` is still being felt.
+
+The options are `:theoretical` (the ergodic covariance solving ``\Sigma = A\Sigma A' + BB'`` — right if the sample is a draw from the stationary distribution), `:diagonal` (``10I``, deliberately over-dispersed), or an explicit matrix.
+
+!!! warning "Timing convention differs between filters"
+    The particle filters' `initial_covariance` is ``\mathrm{Var}(x_0)`` — the cloud is drawn around the initial state and *then* propagated — whereas the Kalman filter's is ``P_1 = \mathrm{Var}(x_1)``, the first *predicted* state. They correspond as ``P_1 = A\,\mathrm{Var}(x_0)\,A' + BB'``. This is invisible at the `:theoretical` default, because the ergodic covariance is the fixed point of exactly that map and so is carried to itself — which is why passing `:theoretical` to both lines them up. It matters as soon as you supply a matrix: to reproduce a Kalman run with ``P_1 = BB'`` you must pass a **zero** matrix to the particle filter, not ``BB'``.
+
+### How the two interact
+
+They are not independent. With ``H > 0`` the gain shrinks, so ``P`` decays to its fixed point more slowly *and* that fixed point is strictly positive even when the state would otherwise be exactly identified:
+
+| ``H`` | ``\lVert P_\infty^{\text{post}} \rVert`` |
+|---|---|
+| ``0`` | ``0`` exactly |
+| ``10^{-8}`` | ``5.4\times10^{-7}`` |
+| ``10^{-6}`` | ``4.6\times10^{-5}`` |
+| ``10^{-4}`` | ``7.3\times10^{-4}`` |
+
+Measurement error means you can never learn the state exactly. That is the real reason the inversion filter does not accept it: the inversion filter's ``P \equiv 0`` and ``H > 0`` are **contradictory assumptions**, not merely a missing feature.
+
+
 ## How the filters relate
 
 - **Particle → Kalman.** On a *linear* model with Gaussian shocks, the particle filters estimate exactly the quantity the Kalman filter computes in closed form. As ``N \to \infty`` the particle log-likelihood converges to the Kalman log-likelihood (from below, by the Jensen bias above). This is the sharpest correctness check available and is exactly what the package's tests do, on both a small RBC model and Smets-Wouters (2007).
@@ -177,3 +262,38 @@ Resampling only happens when the effective sample size ``1/\sum_i W_i^2`` falls 
 - **Inversion → Kalman.** The relationship is exact and worth stating precisely. Writing ``Z = CB``, the inversion filter's per-period score is ``\log N(v_t; 0, ZZ')`` with ``v_t = y_t - CA\hat x_{t-1}`` — in *both* the square case (``Z^{-1}``) and the under-determined case (minimum norm, ``Z^{+} = Z'(ZZ')^{-1}``), since ``\|Z^{+}v\|^2 = v'(ZZ')^{-1}v``. The minimum-norm choice is not an arbitrary tie-break: for Gaussian shocks ``Z^{+}v = E[\varepsilon \mid v]``, the conditional mean. That expression is exactly the Kalman contribution with the posterior state covariance **clamped to zero** (``P_{t|t-1} = BB'``), and correspondingly the gains coincide: the inversion filter's is ``BZ^{+}``, the Kalman's is ``P_tC'F_t^{-1}``, equal iff ``P_{t|t-1} = BB'``. So: *the inversion filter is the Kalman filter that assumes the state is known exactly.* Whether that is legitimate is precisely whether ``P_{t|t} = P - PC'(CPC')^{-1}CP`` really vanishes, which needs ``\mathrm{rank}(CB) = n_\varepsilon`` — **at least as many observables as shocks**. With *more observables than shocks* the system is stochastically singular and only the Kalman filter (with measurement error) is defined. With *more shocks than observables* the clamp is simply false: ``P_{t|t} > 0`` necessarily, so ``F_t^{\text{kal}} = ZZ' + CAP_{t|t}A'C' \supsetneq ZZ' = F^{\text{inv}}`` and the inversion filter understates the innovation covariance — it treats innovations as more surprising than they are, because it pretends to know a state it cannot know. The size of the discrepancy is governed not by the shock/observable counts as such but by how much of the *unidentified* subspace propagates into the next period's observables, ``\|CAP_{t|t}A'C'\|`` relative to ``\|ZZ'\|``; when the unidentified directions barely propagate the two nearly agree anyway. There is a second, related gap: the inversion filter minimises ``\|\varepsilon_t\|`` *greedily*, period by period, ignoring that the null-space component moves ``x_t`` and hence the cost of matching later observations, whereas the Kalman disturbance smoother solves the same minimum-norm problem globally over the whole path. Finally, even when ``n_y = n_\varepsilon`` the agreement is only asymptotic: the state-estimate error obeys ``\delta_t = (I - BZ^{-1}C)A\,\delta_{t-1}``, whose spectral radius is the invertibility (fundamentalness) condition, so a near-unit-root inverse system takes many periods to forget the initial condition. Add measurement error and the inversion filter is not defined at all. At higher order its per-period Newton solve has no Kalman counterpart, which is why it — not the Kalman filter — is the default for nonlinear algorithms.
 - **Correlated measurement error.** All filters that admit measurement error accept an arbitrary covariance: pass `measurement_error` a matrix instead of a vector of variances. The Kalman filter adds it to ``F_t`` directly; the particle filters factorise ``H`` once per missing-data pattern and score against the resulting triangular solve. The diagonal case is detected and takes a faster elementwise path, so there is no cost to the common case. A third option is to write the correlation into the model itself as measurement-error processes in the observation equations, which moves it into the state transition and makes ``H`` diagonal again — worth doing when the measurement errors are persistent rather than merely contemporaneously correlated.
 
+### When are they the same filter?
+
+The differences above are not vague family resemblances — on a linear model the three filters coincide exactly, under stated conditions, and the conditions are all about ``H`` and ``P_1``.
+
+| pair | equivalent when | how exact |
+|---|---|---|
+| inversion ``\equiv`` Kalman | ``n_y \ge n_\varepsilon``, ``H = 0``, and the Kalman filter is started at ``P_1 = BB'`` | **exact, period by period** |
+| inversion ``\approx`` Kalman | same but with the ergodic ``P_1`` | only asymptotically, at the rate of the inverse-system dynamics |
+| particle ``\to`` Kalman | linear model, same ``H``, matching initial covariance, ``N \to \infty`` | up to Monte-Carlo error, from below (Jensen) |
+
+The first row is the sharp statement, and it is the one to remember: **the inversion filter *is* the Kalman filter that assumes the state is known exactly.** It fixes ``x_0`` at the steady state, so the only uncertainty about ``x_1`` is that period's shocks, ``\mathrm{Var}(x_1) = BB'``; given ``n_y \ge n_\varepsilon`` the update then drives the posterior covariance to exactly zero and it stays there. Hand the Kalman filter that same prior and the two agree to machine precision — verified in the test suite on a small RBC and on Smets-Wouters (2007) with seven shocks, seven observables and 184 periods.
+
+The second row is why the two filters normally *disagree* even on a square system: the default ergodic prior is a genuinely different starting point, and the error decays as ``\delta_t = (I - BZ^{-1}C)A\,\delta_{t-1}``. The spectral radius of that matrix is the **invertibility** (fundamentalness) condition — the "poor man's invertibility condition" of Fernández-Villaverde, Rubio-Ramírez, Sargent & Watson. If it exceeds one the inversion filter's state estimate never converges and its likelihood is wrong at any sample length; if it is close to one (0.98 in the RBC example) convergence is real but slow.
+
+The third row is the particle filters' correctness check, and is exactly what the package's tests do: on a linear model the particle log-likelihood must approach the Kalman value as ``N`` grows, approaching it *from below* because of the Jensen bias.
+
+## The filter-free likelihood
+
+There is a fourth option that is not a `filter` value at all, because it does not filter: instead of integrating the shocks out, it treats them as **parameters** and asks you to supply them.
+
+```julia
+get_loglikelihood(model, data, parameters, shocks, measurement_error_std;
+                  algorithm = :pruned_second_order)
+```
+
+Given a full path of structural shocks it forward-simulates the model, compares the implied observable path to the data under a Gaussian measurement-error model, and returns the *measurement* part of the joint log-likelihood. The priors on the shocks (typically standard normal) and on the measurement-error scale are yours to declare in the probabilistic-programming model — this function is the building block, not the whole posterior.
+
+Why bother, when a filter integrates the shocks out for you? Because the resulting object is **smooth and differentiable at every perturbation order**, with no resampling and no per-period nonlinear solve. That makes gradient-based samplers (NUTS/HMC) usable on genuinely nonlinear models, at the cost of a much larger parameter space — ``T \times n_\varepsilon`` extra latent variables. This is the approach of Childers, Fernández-Villaverde, Perla, Rackauckas & Wu (2025).
+
+Two things to note, both of which follow from there being no filtering distribution to track:
+
+- **There is no initial covariance.** `initial_state` is a fixed input, not a distribution; the sampler explores the shocks, not a state posterior.
+- **Measurement error carries all the noise, and is mandatory.** Given the shocks, the model path is deterministic, so without measurement error the density is degenerate. This is the opposite extreme from the inversion filter, where measurement error must be *zero*.
+
+One naming wrinkle worth flagging: on this signature the argument is `measurement_error_std` and is a **standard deviation** (a matrix means per-period standard deviations, ``n_{obs} \times T``), whereas the filter-based `measurement_error` is a variance/covariance (a matrix means a full covariance, ``n_{obs} \times n_{obs}``). The names differ deliberately, because a matrix means different things in the two.
