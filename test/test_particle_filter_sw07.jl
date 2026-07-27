@@ -141,6 +141,47 @@ end
     @test all(isfinite, pf_0)
     @test abs(kal_BB - Statistics.mean(pf_0)) < 8
 
+    # ---- does the equivalence carry to the states and shocks? ----
+    # Theory: with P₁ = BB' the Kalman gain is P C'F⁻¹ = BB'C'(CBB'C')⁻¹ = B Z⁺,
+    # which is exactly the inversion filter's state recursion, so the two must
+    # track the same path. The estimates path works in the full nVars basis
+    # (unlike the likelihood path, which uses union(past, observables)), so the
+    # prior has to be built there.
+    Bf = S1[:, nP+1:end]
+    P1_est = Bf * Bf'
+
+    inv_v = collect(get_estimated_variables(m, data; filter = :inversion))
+    kal_v = collect(get_estimated_variables(m, data; filter = :kalman, smooth = true,
+                                            initial_covariance = P1_est))
+    inv_s = collect(get_estimated_shocks(m, data; filter = :inversion))
+    kal_s = collect(get_estimated_shocks(m, data; filter = :kalman, smooth = true,
+                                         initial_covariance = P1_est))
+
+    reldev(a, b) = maximum(abs, a .- b) / max(maximum(abs, b), eps())
+
+    # states and shocks agree to machine precision — a far sharper check on the
+    # inversion filter's implementation than any likelihood comparison, since it
+    # pins the whole path rather than one scalar
+    @test reldev(inv_v, kal_v) < 1e-8
+    @test reldev(inv_s, kal_s) < 1e-8
+
+    # the shocks also match the Kalman filter's *filtered* estimates; the states
+    # do not, because a single period's seven observations do not pin all forty
+    # variables contemporaneously even though the full sample does
+    @test reldev(inv_s, collect(get_estimated_shocks(m, data; filter = :kalman, smooth = false,
+                                                     initial_covariance = P1_est))) < 1e-8
+
+    # ... and "the full sample pins the state exactly" is directly checkable:
+    # under P₁ = BB' the smoothed dispersion collapses, which is precisely the
+    # assumption the inversion filter makes.
+    sd_sm = collect(get_estimated_variable_standard_deviations(m, data; filter = :kalman,
+                                                               smooth = true, initial_covariance = P1_est))
+    @test maximum(sd_sm) < 1e-3
+
+    # with the ergodic prior the two are far apart, so the agreement above is not
+    # an artefact of every initial covariance giving the same answer
+    @test reldev(inv_v, collect(get_estimated_variables(m, data; filter = :kalman, smooth = true))) > 0.1
+
     # Var(x₀) = BB'  ⇒  P₁ = A BB' A' + BB'
     Bfull = S1[:, nP+1:end]
     kal_shift = get_loglikelihood(m, data, p; filter = :kalman,

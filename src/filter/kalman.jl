@@ -464,13 +464,14 @@ end
     ::Val{:kalman}; # filter,
     warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
+    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
     smooth::Bool = true)
 
     obs_axis = collect(axiskeys(data_in_deviations,1))
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts, initial_covariance = initial_covariance)
 
     variables           = filtered_and_smoothed[smooth ? 1 : 5]
     standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
@@ -485,6 +486,7 @@ end
 function filter_and_smooth(𝓂::ℳ, 
                             data_in_deviations::AbstractArray, 
                             observables::Vector{Symbol};
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             opts::CalculationOptions = merge_calculation_options())
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
@@ -526,7 +528,17 @@ function filter_and_smooth(𝓂::ℳ,
 
     𝐁 = B * B'
 
-    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)[1]
+    # Prior on the state at the start of the sample. `:theoretical` is the ergodic
+    # covariance (the historical behaviour and the default); `:diagonal` starts
+    # diffuse; a matrix is used as given. Supplying B B' reproduces the inversion
+    # filter's implicit prior — see the Filters page.
+    P̄ = if initial_covariance isa AbstractMatrix
+        Matrix{Float64}(initial_covariance)
+    elseif initial_covariance == :diagonal
+        Matrix{Float64}(10.0 * ℒ.I(size(A, 1)))
+    else
+        calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)[1]
+    end
 
     n_obs = size(data_in_deviations,2)
 

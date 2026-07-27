@@ -298,6 +298,7 @@ And data, 4×2×40 Array{Float64, 3}:
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                 measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -354,7 +355,16 @@ And data, 4×2×40 Array{Float64, 3}:
     if filter ∈ PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
-                                      particle_rng))
+                                      particle_rng, tempering_target_ratio, tempering_mh_steps,
+                                      tempering_max_stages, tempering_mh_scale))
+    end
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none, so only forward it where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; initial_covariance))
     end
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
@@ -460,6 +470,7 @@ And data, 1×40 Matrix{Float64}:
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                             n_particles::Int = DEFAULT_N_PARTICLES,
                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -520,6 +531,16 @@ And data, 1×40 Matrix{Float64}:
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
            tempering_max_stages, tempering_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
@@ -606,6 +627,7 @@ And data, 4×40 Matrix{Float64}:
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                 measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -667,6 +689,16 @@ And data, 4×40 Matrix{Float64}:
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
            tempering_max_stages, tempering_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
@@ -756,6 +788,7 @@ And data, 5×40 Matrix{Float64}:
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                              n_particles::Int = DEFAULT_N_PARTICLES,
                              particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -891,6 +924,7 @@ And data, 4×40 Matrix{Float64}:
                                                     steady_state_function::SteadyStateFunctionType = missing,
                                                     algorithm::Symbol = DEFAULT_ALGORITHM,
                                                     filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                                    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                                     measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
                                                     n_particles::Int = DEFAULT_N_PARTICLES,
                                                     particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -957,6 +991,16 @@ And data, 4×40 Matrix{Float64}:
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
            tempering_max_stages, tempering_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     smooth = smooth, 

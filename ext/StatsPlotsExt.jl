@@ -708,6 +708,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                 measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
@@ -855,7 +856,16 @@ function plot_model_estimates(𝓂::ℳ,
     if filter ∈ MacroModelling.PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
-                                      particle_rng))
+                                      particle_rng, tempering_target_ratio, tempering_mh_steps,
+                                      tempering_max_stages, tempering_mh_scale))
+    end
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none, so only forward it where it means something.
+    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; initial_covariance))
     end
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
@@ -1379,6 +1389,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                                 measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
                                 n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
                                 particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
@@ -1516,6 +1527,16 @@ function plot_model_estimates!(𝓂::ℳ,
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
            tempering_max_stages, tempering_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; particle_kw...)
     

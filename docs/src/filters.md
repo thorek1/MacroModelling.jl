@@ -43,6 +43,30 @@ A short decision rule:
 
 By default the package picks `:kalman` for `:first_order` and `:inversion` for the nonlinear algorithms.
 
+## What you get by default
+
+Every knob discussed on this page has a default, and the defaults are not neutral — they are what determines the number you get from `get_loglikelihood(model, data, parameters)` with no keywords.
+
+| setting | default | consequence |
+|---|---|---|
+| `filter` | `:kalman` at `:first_order`, `:inversion` at every higher order | nonlinear models are filtered *exactly given the shocks*, with no measurement error |
+| `measurement_error` | `:auto` | **none** for Kalman and inversion; ``(0.1 s_i)^2`` per observable for the particle filters |
+| `initial_covariance` | `:theoretical` | the ergodic covariance — *not* the inversion filter's implicit ``BB'``, which is why Kalman and inversion likelihoods differ by default |
+| `smooth` | `true` for the Kalman filter, `false` otherwise | the particle filters **do** support smoothing but do not use it unless asked |
+| `presample_periods` | `0` | the initial-condition transient is included in the likelihood |
+| `warmup_iterations` | `0` | — |
+| `on_failure_loglikelihood` | `-Inf`; `-1e6` for the particle filters | a stochastic failure rejects one proposal instead of killing a sampler's chain |
+| `n_particles` | `10_000` | |
+| `particle_resampling` | `:systematic`, threshold `0.5` | resample only when the effective sample size halves |
+| `particle_initial_state_scaling` | `1.0` | the initial cloud has exactly the ergodic spread |
+| tempering | ratio `2.0`, 1 MH step, ≤100 stages, scale `0.3` | only used by `:tempered_particle` |
+
+Three consequences are worth internalising, because they surprise people:
+
+1. **Kalman and inversion likelihoods are not comparable out of the box**, even on a first-order model with as many shocks as observables. They differ by the initial covariance alone (see below), and on Smets-Wouters that is worth hundreds of log points. Match `initial_covariance` before comparing.
+2. **Likelihoods computed under different measurement error are not comparable at all** — ``H`` shifts the level of every period. Since `:auto` is data-driven, that includes two particle-filter runs on different samples.
+3. **Switching perturbation order silently switches filter**, from Kalman to inversion, and with it the assumption about measurement error and the initial state. If you want a like-for-like comparison across orders, set `filter` explicitly.
+
 ## The Kalman filter
 
 For a linear model with Gaussian shocks the filtering distribution stays Gaussian forever, so tracking it only requires tracking a mean and a covariance. The recursion alternates prediction and update:
@@ -275,6 +299,32 @@ The differences above are not vague family resemblances — on a linear model th
 The first row is the sharp statement, and it is the one to remember: **the inversion filter *is* the Kalman filter that assumes the state is known exactly.** It fixes ``x_0`` at the steady state, so the only uncertainty about ``x_1`` is that period's shocks, ``\mathrm{Var}(x_1) = BB'``; given ``n_y \ge n_\varepsilon`` the update then drives the posterior covariance to exactly zero and it stays there. Hand the Kalman filter that same prior and the two agree to machine precision — verified in the test suite on a small RBC and on Smets-Wouters (2007) with seven shocks, seven observables and 184 periods.
 
 The second row is why the two filters normally *disagree* even on a square system: the default ergodic prior is a genuinely different starting point, and the error decays as ``\delta_t = (I - BZ^{-1}C)A\,\delta_{t-1}``. The spectral radius of that matrix is the **invertibility** (fundamentalness) condition — the "poor man's invertibility condition" of Fernández-Villaverde, Rubio-Ramírez, Sargent & Watson. If it exceeds one the inversion filter's state estimate never converges and its likelihood is wrong at any sample length; if it is close to one (0.98 in the RBC example) convergence is real but slow.
+
+### Does the equivalence carry to the states?
+
+Yes, and it is a sharper check than the likelihood: a likelihood is one scalar, whereas the states and shocks pin the whole path.
+
+The reason is immediate once the gain is written out. With ``P_{t|t-1} = BB'`` the Kalman gain is
+
+```math
+K_t = P_{t|t-1}C'F_t^{-1} = BB'C'(CBB'C')^{-1} = BZ'(ZZ')^{-1} = BZ^{+},
+```
+
+so ``\hat x_{t|t} = A\hat x_{t-1|t-1} + BZ^{+}v_t`` — literally the inversion filter's recursion. The estimated **shocks** are then the same object as well, since the inversion filter's ``\hat\varepsilon_t = Z^{+}v_t`` is exactly the Kalman disturbance estimate.
+
+Measured on Smets-Wouters (2007), relative maximum deviation across all variables and all 184 periods:
+
+| comparison | deviation |
+|---|---|
+| inversion states vs Kalman **smoothed** states (``P_1 = BB'``) | ``7\times10^{-11}`` |
+| inversion shocks vs Kalman smoothed shocks (``P_1 = BB'``) | ``9\times10^{-11}`` |
+| inversion shocks vs Kalman **filtered** shocks (``P_1 = BB'``) | ``7\times10^{-11}`` |
+| inversion states vs Kalman smoothed states (**ergodic** ``P_1``) | ``0.99`` |
+
+One wrinkle worth knowing. The states match the **smoothed** Kalman estimates, not the filtered ones. That is not a contradiction of "the inversion filter's filtered and smoothed estimates coincide" — it reflects what is being conditioned on. The estimates are reported for all model variables, and a single period's seven observations do not pin all forty of them contemporaneously; the *full sample* does, through the model's own restrictions. Directly checkable: under ``P_1 = BB'`` the Kalman **smoothed** dispersion collapses to ``\approx 0`` (max standard deviation ``3.6\times10^{-5}``) while the filtered dispersion does not. Since exact identification of the state is precisely the inversion filter's assumption, the smoothed estimates are the ones it reproduces. The *shocks* match under both, because a period's shocks are pinned by that period's observations alone.
+
+!!! note "`initial_covariance` is expressed in different bases"
+    On `get_loglikelihood` the matrix is over `union(past states, observables)`; on the estimate functions (`get_estimated_variables` and friends) it is over *all* model variables. Build ``BB'`` from the same rows you intend to filter over — this is the one place where passing the matrix from the wrong path silently fails with a dimension mismatch rather than a wrong answer.
 
 The third row is the particle filters' correctness check, and is exactly what the package's tests do: on a linear model the particle log-likelihood must approach the Kalman value as ``N`` grows, approaching it *from below* because of the Jensen bias.
 
