@@ -3,6 +3,7 @@ using Test
 import Random
 import Statistics
 using DelimitedFiles, AxisKeys
+import LinearAlgebra as ℒ
 
 # Validate the particle filter on the Smets & Wouters (2007) linear model and the
 # US data used by the estimation tests: in the linear (first-order) case every
@@ -118,4 +119,37 @@ end
     @test !isapprox(get_loglikelihood(m, data, p; filter = :inversion, presample_periods = 20),
                     get_loglikelihood(m, data, p; filter = :kalman,    presample_periods = 20),
                     rtol = 1e-3)
+
+    # The particle filters' `initial_covariance` is Var(x₀) — the cloud is drawn
+    # around the initial state and *then* propagated — whereas the Kalman filter's
+    # is Var(x₁), the covariance of the first predicted state. The two therefore
+    # correspond as  P₁ = A·Var(x₀)·A' + BB'. This is invisible at the
+    # `:theoretical` default, because the ergodic Σ is the fixed point of
+    # Σ = AΣA' + BB' and the shift maps it to itself, which is why the
+    # measurement-error testset above can pass the same symbol to both. Pin both
+    # ends of the correspondence so the distinction cannot drift.
+    Ak = S1[oas, 1:nP] * Matrix(1.0 * ℒ.I, T.nVars, T.nVars)[past, oas]
+    me = 2.0 .* [Statistics.std(collect(data(o))) for o in observables]
+
+    # Var(x₀) = 0  ⇒  P₁ = BB'
+    kal_BB = get_loglikelihood(m, data, p; filter = :kalman,
+                               initial_covariance = P1, measurement_error = me .^ 2)
+    pf_0 = [get_loglikelihood(m, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                              initial_covariance = zeros(T.nVars, T.nVars),
+                              measurement_error = me .^ 2, n_particles = 20_000,
+                              particle_rng = Random.Xoshiro(300 + s)) for s in 1:4]
+    @test all(isfinite, pf_0)
+    @test abs(kal_BB - Statistics.mean(pf_0)) < 8
+
+    # Var(x₀) = BB'  ⇒  P₁ = A BB' A' + BB'
+    Bfull = S1[:, nP+1:end]
+    kal_shift = get_loglikelihood(m, data, p; filter = :kalman,
+                                  initial_covariance = Ak * P1 * Ak' + P1,
+                                  measurement_error = me .^ 2)
+    pf_BB = [get_loglikelihood(m, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+                               initial_covariance = Bfull * Bfull',
+                               measurement_error = me .^ 2, n_particles = 20_000,
+                               particle_rng = Random.Xoshiro(400 + s)) for s in 1:4]
+    @test all(isfinite, pf_BB)
+    @test abs(kal_shift - Statistics.mean(pf_BB)) < 8
 end

@@ -197,6 +197,17 @@ end
 # from the cached first-order solution, the usual choice for a stationary model);
 # `:diagonal` uses 10·I; an nVars×nVars matrix is used directly.
 #
+# Note the timing convention, which differs from the Kalman filter's argument of
+# the same name. Here Σ is the covariance of x₀, the cloud the filter starts
+# from *before* the first transition; the Kalman filter's `initial_covariance` is
+# P₁ = Var(x₁), the covariance of the first *predicted* state. The two therefore
+# correspond as P₁ = A Σ A' + BB'. This is invisible at the `:theoretical`
+# default — the ergodic covariance is the fixed point of that very map, so it is
+# carried to itself — which is why passing `:theoretical` to both filters lines
+# them up. It matters as soon as an explicit matrix is supplied: to reproduce a
+# Kalman run with P₁ = BB' (i.e. the inversion filter), pass a zero matrix here,
+# not BB'.
+#
 # Σ is deliberately the *first-order* covariance at every perturbation order, and
 # does not follow `algorithm`. Elsewhere in the package `:theoretical` is only
 # ever reached from the Kalman filter (`get_initial_covariance` in kalman.jl),
