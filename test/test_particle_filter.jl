@@ -329,6 +329,83 @@ threw(f) = try; f(); false; catch; true; end
         @test threw(() -> get_estimated_variable_standard_deviations(RBC_pf, data; filter = :inversion))
     end
 
+    @testset "Linear model: every perturbation order reproduces the Kalman likelihood" begin
+        # A *linear* model has no higher-order solution terms, so every
+        # perturbation order describes the same system and the exact likelihood is
+        # the Kalman one — at every order. That turns the Kalman filter into a
+        # reference for the higher-order particle machinery (the pruned and
+        # non-pruned second- and third-order transitions, their Kronecker scratch,
+        # and the pruned `Vector{Vector}` particle layout), which otherwise has
+        # nothing exact to be checked against. Deviations beyond Monte-Carlo error
+        # are a bug in the transition code, not a property of the model.
+        @model LIN_pf begin
+            zs[0] = rho_l * zs[-1] + sig_l * e1[x]
+            ys[0] = zs[0] + 0 * ys[1]
+        end
+        @parameters LIN_pf begin
+            rho_l = 0.5
+            sig_l = 0.01
+        end
+
+        Random.seed!(4242)
+        dlin = simulate(LIN_pf, periods = 60)([:ys], :, :simulate)
+        plin = LIN_pf.parameter_values
+        mel  = 5e-6   # variance
+
+        # Premise: the model really is linear. The inversion filter is
+        # deterministic, so it must return the identical value at every order.
+        inv_lls = [get_loglikelihood(LIN_pf, dlin, plin; filter = :inversion, algorithm = a)
+                   for a in (:first_order, :pruned_second_order, :second_order,
+                             :pruned_third_order, :third_order)]
+        @test all(isapprox.(inv_lls, inv_lls[1], rtol = 1e-10))
+
+        kal_lin = get_loglikelihood(LIN_pf, dlin, plin; filter = :kalman,
+                                    measurement_error = mel)
+        @test isfinite(kal_lin)
+
+        for algo in (:first_order, :pruned_second_order, :second_order,
+                     :pruned_third_order, :third_order)
+            lls = [get_loglikelihood(LIN_pf, dlin, plin; filter = :bootstrap_particle,
+                                     algorithm = algo, measurement_error = mel,
+                                     n_particles = 20_000,
+                                     particle_rng = Random.Xoshiro(600 + s)) for s in 1:3]
+            @test all(isfinite, lls)
+            @test abs(kal_lin - Statistics.mean(lls)) < 8.0
+        end
+    end
+
+    @testset "Higher order: particle filter approaches the inversion filter" begin
+        # At higher order there is no Kalman filter to check against, but there is
+        # still an exact reference. As H -> 0 the measurement density collapses onto
+        # the change of variables y -> eps, so
+        #     p(y_t | x_{t-1}) -> N(eps_hat; 0, I) / |det Z(x_{t-1})|,
+        # which is precisely the inversion filter's per-period contribution. Giving
+        # the particle filter a degenerate initial cloud (`initial_covariance = 0`)
+        # matches the inversion filter's other assumption — that x_0 is known
+        # exactly — so the two must agree in that limit, at any perturbation order.
+        #
+        # The limit is numerically hostile: shrinking H is exactly what makes the
+        # importance weights degenerate, so the approach stalls at a floor set by
+        # particle noise rather than continuing to zero. The test therefore checks
+        # the *direction* — a moderate H is far from the inversion value, a small
+        # one is close — instead of pinning a single tolerance.
+        nV = length(get_variables(RBC_pf))
+        Z0 = zeros(nV, nV)
+        algo = :pruned_second_order
+        inv_ll = get_loglikelihood(RBC_pf, data, p; filter = :inversion, algorithm = algo)
+        @test isfinite(inv_ll)
+
+        pf(h) = Statistics.mean(get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle,
+                    algorithm = algo, initial_covariance = Z0, measurement_error = h,
+                    n_particles = 25_000, particle_rng = Random.Xoshiro(900 + s)) for s in 1:2)
+
+        far   = pf(1e-4)   # too much measurement error: a different problem
+        close = pf(1e-5)   # small enough to approach the zero-measurement-error limit
+        @test isfinite(far) && isfinite(close)
+        @test abs(close - inv_ll) < 12
+        @test abs(close - inv_ll) < abs(far - inv_ll)
+    end
+
     @testset "Filter selection and automatic measurement error" begin
         # `:particle` is an alias for the bootstrap filter: same RNG ⇒ same value
         @test get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,

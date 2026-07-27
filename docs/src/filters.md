@@ -300,6 +300,38 @@ The first row is the sharp statement, and it is the one to remember: **the inver
 
 The second row is why the two filters normally *disagree* even on a square system: the default ergodic prior is a genuinely different starting point, and the error decays as ``\delta_t = (I - BZ^{-1}C)A\,\delta_{t-1}``. The spectral radius of that matrix is the **invertibility** (fundamentalness) condition — the "poor man's invertibility condition" of Fernández-Villaverde, Rubio-Ramírez, Sargent & Watson. If it exceeds one the inversion filter's state estimate never converges and its likelihood is wrong at any sample length; if it is close to one (0.98 in the RBC example) convergence is real but slow.
 
+### Equivalences above first order
+
+Above first order there is no Kalman filter to check against, but two exact references remain.
+
+**A linear model filtered at a nonlinear order.** If the model's higher-order solution terms vanish, every perturbation order describes the same system, so a particle filter run at `:pruned_second_order` or `:third_order` must still reproduce the *Kalman* likelihood. Smets-Wouters (2007) in its log-linearised form is exactly such a model — the inversion filter returns an identical value at all five orders — which makes it a rare thing: complex enough to be a real test (40 variables, 7 shocks, 184 periods) with a known exact answer, yet exercising the pruned and non-pruned second- and third-order transitions and the pruned particle layout. Deviations from the Kalman value at ``H = 2s_i``, averaged over seeds:
+
+| order | deviation |
+|---|---|
+| `first_order` | ``-2.7`` |
+| `pruned_second_order` | ``-0.3`` |
+| `second_order` | ``-0.3`` |
+
+All within Monte-Carlo error and on the expected (downward) side of it. Pruned and non-pruned agree *exactly*, as they must when there is nothing to prune.
+
+Third order on forty variables costs minutes per evaluation, so the package tests it the same way but on a small linear model, where the whole sweep — all five orders against the Kalman value — runs in seconds. The logic is identical; only the model is cheaper.
+
+**The zero-measurement-error limit.** On a genuinely nonlinear model the reference is the inversion filter. As ``H \to 0`` the measurement density collapses onto the change of variables ``y \mapsto \varepsilon``,
+
+```math
+p(y_t \mid x_{t-1}) \;\longrightarrow\; N(\hat\varepsilon_t; 0, I)\,/\,|\det Z(x_{t-1})|,
+```
+
+which is exactly the inversion filter's per-period contribution. Give the particle filter a degenerate initial cloud (`initial_covariance = 0`, matching the inversion filter's assumption that ``x_0`` is known) and the two must agree in that limit, at any order. On the package's RBC example at `:pruned_second_order`, against an inversion value of ``386.6``:
+
+| measurement-error variance | deviation |
+|---|---|
+| ``10^{-4}`` | ``-35.9`` |
+| ``10^{-5}`` | ``-1.6`` |
+| ``10^{-6}`` | ``-3.2`` |
+
+The non-monotonicity is the interesting part and is not a defect: shrinking ``H`` is precisely what makes the importance weights degenerate, so the approach to the inversion filter stalls at a floor set by particle noise rather than continuing to zero. This is the same tension noted earlier — as measurement error vanishes the particle filter degenerates towards the inversion filter's problem, and that is exactly where it needs the most particles.
+
 ### Does the equivalence carry to the states?
 
 Yes, and it is a sharper check than the likelihood: a likelihood is one scalar, whereas the states and shocks pin the whole path.
