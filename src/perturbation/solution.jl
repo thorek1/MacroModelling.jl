@@ -2411,14 +2411,39 @@ function compressed_kron²(a::AbstractMatrix{T};
     return out
 end
 
-"""Fill `out` with the unique pair terms of `kron(a, b)`.
+"""Fill `out` with the compressed square of `a`.
 
-The output uses the same ordering as `𝐔₂ * kron(a, b)`: the pair `(i, j)`
-with `i ≥ j` is stored at `(i - 1) * i ÷ 2 + j`.  Off-diagonal entries
-include both mixed permutations because the policy coefficients are stored in
-the symmetric compressed basis.
+The output is ordered like `𝐔₂ * kron(a, a)`, with diagonal entries `a[i]^2`
+and off-diagonal entries `2a[i]a[j]`.  The dedicated name makes repeated-input
+contractions explicit at their call sites and avoids the generic permutation
+logic used for two different inputs.
 """
+function compressed_kron²_power!(out::AbstractVector, a::AbstractVector)
+    n = length(a)
+    expected_length = n * (n + 1) ÷ 2
+    length(out) == expected_length || throw(DimensionMismatch("compressed pair output must have length $expected_length"))
+
+    p = 0
+    @inbounds for i in 1:n
+        ai = a[i]
+        for j in 1:i
+            p += 1
+            out[p] = i == j ? ai * ai : 2 * ai * a[j]
+        end
+    end
+    return out
+end
+
+function compressed_kron²_power(a::AbstractVector)
+    T = eltype(a)
+    out = Vector{T}(undef, length(a) * (length(a) + 1) ÷ 2)
+    return compressed_kron²_power!(out, a)
+end
+
+compressed_kron²_same!(out::AbstractVector, a::AbstractVector) = compressed_kron²_power!(out, a)
+
 function compressed_kron²!(out::AbstractVector, a::AbstractVector, b::AbstractVector)
+    a === b && return compressed_kron²_power!(out, a)
     n = length(a)
     length(b) == n || throw(DimensionMismatch("compressed pair inputs must have equal length"))
     expected_length = n * (n + 1) ÷ 2
@@ -2463,14 +2488,13 @@ function compressed_kron²(a::AbstractVector, b::AbstractMatrix)
     return compressed_kron²!(out, a, b)
 end
 
-"""Fill `out` with the unique triple terms of `kron(a, a), a`.
+"""Fill `out` with the compressed cube of `a`.
 
-This specialized path is used automatically when the generic triple kernel
-receives the same vector three times.  It avoids evaluating all distinct
-permutations separately, which is material in pruned transitions and particle
-filters where same-vector cubic contractions are the common case.
+The output is ordered like `𝐔₃ * kron(kron(a, a), a)`.  Repeated-index terms
+use their exact multiplicities: `a[i]^3`, `3a[i]^2a[k]`, `3a[i]a[j]^2`, and
+`6a[i]a[j]a[k]`.
 """
-function compressed_kron³_same!(out::AbstractVector, a::AbstractVector)
+function compressed_kron³_power!(out::AbstractVector, a::AbstractVector)
     n = length(a)
     expected_length = n * (n + 1) * (n + 2) ÷ 6
     length(out) == expected_length || throw(DimensionMismatch("compressed triple output must have length $expected_length"))
@@ -2495,6 +2519,14 @@ function compressed_kron³_same!(out::AbstractVector, a::AbstractVector)
     return out
 end
 
+function compressed_kron³_power(a::AbstractVector)
+    T = eltype(a)
+    out = Vector{T}(undef, length(a) * (length(a) + 1) * (length(a) + 2) ÷ 6)
+    return compressed_kron³_power!(out, a)
+end
+
+compressed_kron³_same!(out::AbstractVector, a::AbstractVector) = compressed_kron³_power!(out, a)
+
 """Fill `out` with the unique triple terms of `kron(kron(a, b), c)`.
 
 The output uses the same ordering as `𝐔₃ * kron(kron(a, b), c)`: sorted index
@@ -2510,7 +2542,7 @@ function compressed_kron³!(out::AbstractVector, a::AbstractVector,
     length(out) == expected_length || throw(DimensionMismatch("compressed triple output must have length $expected_length"))
 
     if a === b && b === c
-        return compressed_kron³_same!(out, a)
+        return compressed_kron³_power!(out, a)
     end
 
     p = 0
@@ -2574,8 +2606,8 @@ function compressed_kron²_vjp!(da::AbstractVector, db::AbstractVector,
     return da, db
 end
 
-function compressed_kron²_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
-                                    a::AbstractVector, scale = one(eltype(da)))
+function compressed_kron²_power_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                                     a::AbstractVector, scale = one(eltype(da)))
     n = length(a)
     length(da) == n || throw(DimensionMismatch("compressed pair VJP output has the wrong length"))
     length(cotangent) == n * (n + 1) ÷ 2 ||
@@ -2596,6 +2628,10 @@ function compressed_kron²_same_vjp!(da::AbstractVector, cotangent::AbstractVect
     end
     return da
 end
+
+compressed_kron²_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                           a::AbstractVector, scale = one(eltype(da))) =
+    compressed_kron²_power_vjp!(da, cotangent, a, scale)
 
 function compressed_kron³_vjp!(da::AbstractVector, db::AbstractVector,
                                dc::AbstractVector, cotangent::AbstractVector,
@@ -2652,8 +2688,8 @@ function compressed_kron³_vjp!(da::AbstractVector, db::AbstractVector,
     return da, db, dc
 end
 
-function compressed_kron³_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
-                                    a::AbstractVector, scale = one(eltype(da)))
+function compressed_kron³_power_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                                     a::AbstractVector, scale = one(eltype(da)))
     n = length(a)
     length(da) == n || throw(DimensionMismatch("compressed triple VJP output has the wrong length"))
     length(cotangent) == n * (n + 1) * (n + 2) ÷ 6 ||
@@ -2685,6 +2721,10 @@ function compressed_kron³_same_vjp!(da::AbstractVector, cotangent::AbstractVect
     end
     return da
 end
+
+compressed_kron³_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                           a::AbstractVector, scale = one(eltype(da))) =
+    compressed_kron³_power_vjp!(da, cotangent, a, scale)
 
 """Accumulate the VJP of `compressed_kron³(a, a, I)` with respect to `a`."""
 function compressed_kron³_identity_vjp!(da::AbstractVector,
@@ -2821,25 +2861,71 @@ function compressed_triple_hessian!(out::AbstractMatrix,
     return out
 end
 
-"""Build a compressed matrix for fixing one state coordinate in a cubic term."""
-function compressed_triple_state_to_pair(state::AbstractVector,
-                                         n_global::Int,
-                                         shock_offset::Int,
-                                         n_exo::Int,
-                                         selected_indices)
-    n_pair = n_exo * (n_exo + 1) ÷ 2
-    output = zeros(promote_type(eltype(state), Float64), length(selected_indices), n_pair)
-    pair_index = 0
+function compressed_shock_state_state_rows(selected_indices,
+                                           shock_offset::Int,
+                                           n_state::Int,
+                                           n_exo::Int)
+    n_state_pair = n_state * (n_state + 1) ÷ 2
+    rows = Vector{Int}(undef, n_exo * n_state_pair)
+    p = 0
+    @inbounds for q in 1:n_exo
+        for i in 1:n_state
+            for j in 1:i
+                p += 1
+                triple_index = compressed_triple_index(shock_offset + q, i, j)
+                row = searchsortedfirst(selected_indices, triple_index)
+                row <= length(selected_indices) && selected_indices[row] == triple_index ||
+                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                rows[p] = row
+            end
+        end
+    end
+    return rows
+end
+
+function compressed_shock_shock_state_rows(selected_indices,
+                                           shock_offset::Int,
+                                           n_state::Int,
+                                           n_exo::Int)
+    n_shock_pair = n_exo * (n_exo + 1) ÷ 2
+    rows = Vector{Int}(undef, n_shock_pair * n_state)
+    p = 0
     @inbounds for i in 1:n_exo
         for j in 1:i
-            pair_index += 1
-            for state_index in eachindex(state)
+            for state_index in 1:n_state
+                p += 1
                 triple_index = compressed_triple_index(shock_offset + i,
                                                        shock_offset + j,
                                                        state_index)
                 row = searchsortedfirst(selected_indices, triple_index)
                 row <= length(selected_indices) && selected_indices[row] == triple_index ||
                     throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                rows[p] = row
+            end
+        end
+    end
+    return rows
+end
+
+"""Build a compressed matrix for fixing one state coordinate in a cubic term."""
+function compressed_triple_state_to_pair(state::AbstractVector,
+                                         n_global::Int,
+                                         shock_offset::Int,
+                                         n_exo::Int,
+                                         selected_indices;
+                                         index_rows = nothing)
+    n_pair = n_exo * (n_exo + 1) ÷ 2
+    output = zeros(promote_type(eltype(state), Float64), length(selected_indices), n_pair)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
+    pair_index = 0
+    row_index = 0
+    @inbounds for i in 1:n_exo
+        for j in 1:i
+            pair_index += 1
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
                 output[row, pair_index] = state[state_index] / 2
             end
         end
@@ -2854,22 +2940,22 @@ function compressed_triple_state_to_pair_vjp!(dstate::AbstractVector,
                                               n_global::Int,
                                               shock_offset::Int,
                                               n_exo::Int,
-                                              selected_indices)
+                                              selected_indices;
+                                              index_rows = nothing)
     size(cotangent, 1) == length(selected_indices) ||
         throw(DimensionMismatch("compressed triple state-to-pair cotangent has the wrong row count"))
     size(cotangent, 2) == n_exo * (n_exo + 1) ÷ 2 ||
         throw(DimensionMismatch("compressed triple state-to-pair cotangent has the wrong column count"))
     pair_index = 0
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
+    row_index = 0
     @inbounds for i in 1:n_exo
         for j in 1:i
             pair_index += 1
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 dstate[state_index] += cotangent[row, pair_index] / 2
             end
         end
@@ -2881,15 +2967,17 @@ end
 function compressed_triple_shock_state_state(shock::AbstractVector,
                                              state::AbstractVector,
                                              shock_offset::Int,
-                                             selected_indices)
+                                             selected_indices;
+                                             index_rows = nothing)
     output = zeros(promote_type(eltype(shock), eltype(state), Float64), length(selected_indices))
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for shock_index in eachindex(shock)
         for i in eachindex(state)
             for j in 1:i
-                triple_index = compressed_triple_index(shock_offset + shock_index, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                row = rows[row_index]
                 output[row] = shock[shock_index] * (i == j ? state[i] * state[i] : 2 * state[i] * state[j])
             end
         end
@@ -2905,14 +2993,16 @@ function compressed_triple_shock_state_state_vjp!(dshock::AbstractVector,
                                                   state::AbstractVector,
                                                   shock_offset::Int,
                                                   selected_indices,
-                                                  scale = 1)
+                                                  scale = 1;
+                                                  index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for q in eachindex(shock)
         for i in eachindex(state)
             for j in 1:i
-                triple_index = compressed_triple_index(shock_offset + q, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                row = rows[row_index]
                 value = cotangent[row] * scale
                 dshock[q] += value * (i == j ? state[i] * state[i] : 2 * state[i] * state[j])
                 if i == j
@@ -2931,18 +3021,18 @@ end
 function compressed_triple_shock_shock_state(shock::AbstractVector,
                                              state::AbstractVector,
                                              shock_offset::Int,
-                                             selected_indices)
+                                             selected_indices;
+                                             index_rows = nothing)
     output = zeros(promote_type(eltype(shock), eltype(state), Float64), length(selected_indices))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 output[row] = pair_value * state[state_index]
             end
         end
@@ -2958,17 +3048,17 @@ function compressed_triple_shock_shock_state_vjp!(dshock::AbstractVector,
                                                   state::AbstractVector,
                                                   shock_offset::Int,
                                                   selected_indices,
-                                                  scale = 1)
+                                                  scale = 1;
+                                                  index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 value = cotangent[row] * scale
                 dstate[state_index] += value * pair_value
                 if i == j
@@ -2987,19 +3077,19 @@ end
 function compressed_triple_shock_shock_state_to_state(shock::AbstractVector,
                                                       state::AbstractVector,
                                                       shock_offset::Int,
-                                                      selected_indices)
+                                                      selected_indices;
+                                                      index_rows = nothing)
     output = zeros(promote_type(eltype(shock), eltype(state), Float64),
                    length(selected_indices), length(state))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 output[row, state_index] = pair_value
             end
         end
@@ -3014,16 +3104,16 @@ function compressed_triple_shock_shock_state_to_state_vjp!(dshock::AbstractVecto
                                                            state::AbstractVector,
                                                            shock_offset::Int,
                                                            selected_indices,
-                                                           scale = 1)
+                                                           scale = 1;
+                                                           index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 value = scale * cotangent[row, state_index]
                 if i == j
                     dshock[i] += value * 2 * shock[i]
@@ -3042,19 +3132,22 @@ function compressed_triple_state_pair_to_shock(state_pair::AbstractVector,
                                                n_global::Int,
                                                shock_offset::Int,
                                                n_exo::Int,
-                                               selected_indices)
+                                               selected_indices;
+                                               index_rows = nothing)
     n_state = round(Int, (sqrt(8 * length(state_pair) + 1) - 1) / 2)
     n_state * (n_state + 1) ÷ 2 == length(state_pair) ||
         throw(DimensionMismatch("compressed state-pair vector has an invalid length"))
     output = zeros(promote_type(eltype(state_pair), Float64), length(selected_indices), n_exo)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, n_state, n_exo) : index_rows
     @inbounds for shock_index in 1:n_exo
+        row_index = (shock_index - 1) * (n_state * (n_state + 1) ÷ 2)
+        pair_index = 0
         for i in 1:n_state
             for j in 1:i
-                pair_index = compressed_pair_index(i, j)
-                triple_index = compressed_triple_index(shock_offset + shock_index, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                pair_index += 1
+                row = rows[row_index]
                 output[row, shock_index] = state_pair[pair_index] / 2
             end
         end
@@ -3069,24 +3162,27 @@ function compressed_triple_state_pair_to_shock_vjp!(dstate::AbstractVector,
                                                     n_global::Int,
                                                     shock_offset::Int,
                                                     n_exo::Int,
-                                                    selected_indices)
+                                                    selected_indices;
+                                                    index_rows = nothing)
     n_state_pair = length(state) * (length(state) + 1) ÷ 2
     size(cotangent) == (length(selected_indices), n_exo) ||
         throw(DimensionMismatch("compressed triple state-pair-to-shock cotangent has the wrong size"))
     dstate_pair = zeros(promote_type(eltype(state), eltype(cotangent)), n_state_pair)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
     @inbounds for shock_index in 1:n_exo
+        row_index = (shock_index - 1) * n_state_pair
+        pair_index = 0
         for i in eachindex(state)
             for j in 1:i
-                pair_index = compressed_pair_index(i, j)
-                triple_index = compressed_triple_index(shock_offset + shock_index, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                pair_index += 1
+                row = rows[row_index]
                 dstate_pair[pair_index] += cotangent[row, shock_index] / 2
             end
         end
     end
-    compressed_kron²_same_vjp!(dstate, dstate_pair, state)
+    compressed_kron²_power_vjp!(dstate, dstate_pair, state)
     return dstate
 end
 
@@ -3094,16 +3190,18 @@ end
 function compressed_triple_shock_state_to_state(shock::AbstractVector,
                                                 state::AbstractVector,
                                                 shock_offset::Int,
-                                                selected_indices)
+                                                selected_indices;
+                                                index_rows = nothing)
     output = zeros(promote_type(eltype(shock), eltype(state), Float64),
                    length(selected_indices), length(state))
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for shock_index in eachindex(shock)
         for i in eachindex(state)
             for j in 1:i
-                triple_index = compressed_triple_index(shock_offset + shock_index, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                row = rows[row_index]
                 if i == j
                     output[row, i] = shock[shock_index] * state[i]
                 else
@@ -3124,14 +3222,16 @@ function compressed_triple_shock_state_to_state_vjp!(dshock::AbstractVector,
                                                      state::AbstractVector,
                                                      shock_offset::Int,
                                                      selected_indices,
-                                                     scale = 1)
+                                                     scale = 1;
+                                                     index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for q in eachindex(shock)
         for i in eachindex(state)
             for j in 1:i
-                triple_index = compressed_triple_index(shock_offset + q, i, j)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                row_index += 1
+                row = rows[row_index]
                 if i == j
                     dshock[q] += scale * cotangent[row, i] * state[i]
                     dstate[i] += scale * cotangent[row, i] * shock[q]
@@ -3150,18 +3250,18 @@ end
 function compressed_triple_state_shock_to_shock(state::AbstractVector,
                                                 shock::AbstractVector,
                                                 shock_offset::Int,
-                                                selected_indices)
+                                                selected_indices;
+                                                index_rows = nothing)
     output = zeros(promote_type(eltype(shock), eltype(state), Float64),
                    length(selected_indices), length(shock))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 if i == j
                     output[row, i] = state[state_index] * shock[i]
                 else
@@ -3182,16 +3282,16 @@ function compressed_triple_state_shock_to_shock_vjp!(dstate::AbstractVector,
                                                      shock::AbstractVector,
                                                      shock_offset::Int,
                                                      selected_indices,
-                                                     scale = 1)
+                                                     scale = 1;
+                                                     index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
     @inbounds for i in eachindex(shock)
         for j in 1:i
             for state_index in eachindex(state)
-                triple_index = compressed_triple_index(shock_offset + i,
-                                                       shock_offset + j,
-                                                       state_index)
-                row = searchsortedfirst(selected_indices, triple_index)
-                row <= length(selected_indices) && selected_indices[row] == triple_index ||
-                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                row_index += 1
+                row = rows[row_index]
                 value = cotangent[row, :]
                 if i == j
                     dstate[state_index] += scale * value[i] * shock[i]

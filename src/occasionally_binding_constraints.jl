@@ -623,8 +623,8 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
 
     # ── t = 0 ──
     aug = [state[past_idx]; one(S); shock_vals]
-    Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * compressed_kron²(aug, aug) / 2
-    if has_third;  Y[:, 1] += 𝐒₃ * compressed_kron³(aug, aug, aug) / 6;  end
+    Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2
+    if has_third;  Y[:, 1] += 𝐒₃ * compressed_kron³_power(aug) / 6;  end
 
     d_aug = zeros(S, n_aug)
     for j in 1:n_x
@@ -640,8 +640,8 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
     d_aug_t = zeros(S, n_aug)
     for t in 1:periods
         aug_t    = [Y[past_idx, t]; one(S); zeros(S, n_shocks)]
-        Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * compressed_kron²(aug_t, aug_t) / 2
-        if has_third;  Y[:, t+1] += 𝐒₃ * compressed_kron³(aug_t, aug_t, aug_t) / 6;  end
+        Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * compressed_kron²_power(aug_t) / 2
+        if has_third;  Y[:, t+1] += 𝐒₃ * compressed_kron³_power(aug_t) / 6;  end
 
         for j in 1:n_x
             fill!(d_aug_t, zero(S))
@@ -686,7 +686,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     y₁_new = Ŝ₁̂ * aug₁
 
     aug₂ = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
-    kron_aug₁ = compressed_kron²(aug₁, aug₁)
+    kron_aug₁ = compressed_kron²_power(aug₁)
     y₂_new = Ŝ₁̂ * aug₂ + 𝐒₂ * kron_aug₁ / 2
 
     for j in 1:n_x
@@ -700,7 +700,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     if has_third
         aug₁̂ = [y₁[past_idx]; zero(S); shock_vals]
         aug₃ = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
-        y₃_new = Ŝ₁̂ * aug₃ + 𝐒₂ * compressed_kron²(aug₁̂, aug₂) + 𝐒₃ * compressed_kron³(aug₁, aug₁, aug₁) / 6
+        y₃_new = Ŝ₁̂ * aug₃ + 𝐒₂ * compressed_kron²(aug₁̂, aug₂) + 𝐒₃ * compressed_kron³_power(aug₁) / 6
 
         for j in 1:n_x
             fill!(d_aug, zero(S))
@@ -722,7 +722,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     d_aug_t = zeros(S, n_aug)
     for t in 1:periods
         aug₁_t = [y₁[past_idx]; one(S); zeros(S, n_shocks)]
-        kron_aug₁_t = compressed_kron²(aug₁_t, aug₁_t)
+        kron_aug₁_t = compressed_kron²_power(aug₁_t)
 
         y₁_new = Ŝ₁̂ * aug₁_t
         aug₂_t = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
@@ -745,7 +745,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
         if has_third
             aug₁̂_t = [y₁[past_idx]; zero(S); zeros(S, n_shocks)]
             aug₃_t = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
-            y₃_new = Ŝ₁̂ * aug₃_t + 𝐒₂ * compressed_kron²(aug₁̂_t, aug₂_t) + 𝐒₃ * compressed_kron³(aug₁_t, aug₁_t, aug₁_t) / 6
+            y₃_new = Ŝ₁̂ * aug₃_t + 𝐒₂ * compressed_kron²(aug₁̂_t, aug₂_t) + 𝐒₃ * compressed_kron³_power(aug₁_t) / 6
 
             dy₃dx_new = zeros(S, nv, n_x)
             for j in 1:n_x

@@ -5,6 +5,9 @@
 - [x] Migrate filtering, inversion, OBC, IRF, and filter-free paths.
 - [x] Migrate higher-order rrules and analytical VJPs.
 - [x] Audit remaining full conversions and run focused verification.
+- [x] Add explicit power kernels/VJPs for repeated-input contractions.
+- [x] Precompute compressed pair and cubic row maps used by inversion pullbacks.
+- [x] Verify power kernels, cached row maps, static hot-path audit, and inversion likelihood levels.
 
 The full test suite was not run. A large third-order Gali OBC probe was stopped during its expensive solve after the second-order compressed transition assertion passed; see `AGENT_PROGRESS.md` for the focused evidence.
 

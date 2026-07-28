@@ -148,12 +148,12 @@ function direct_transition_sweep(case, steps)
         if full_reference && order >= 2
             copyto!(pair_full, kron(augmented, augmented))
         elseif order >= 2
-            MacroModelling.compressed_kron²!(pair, augmented, augmented)
+            MacroModelling.compressed_kron²_power!(pair, augmented)
         end
         if full_reference && order == 3
             copyto!(triple_full, kron(pair_full, augmented))
         elseif order == 3
-            MacroModelling.compressed_kron³!(triple, augmented, augmented, augmented)
+            MacroModelling.compressed_kron³_power!(triple, augmented)
         end
         mul!(output, first, augmented)
         if order >= 2

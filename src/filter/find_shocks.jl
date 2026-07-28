@@ -103,7 +103,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
                 𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
 
-                compressed_kron²!(kron_state_vol, state_vol, state_vol)
+                compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
                 ℒ.kron!(kron_I_state, J, state_vol)
@@ -128,7 +128,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
                 𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
 
-                compressed_kron²!(kron_state_vol, state_vol, state_vol)
+                compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
                 ℒ.kron!(kron_I_state, J, state_vol)
@@ -166,7 +166,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₃, -1, 1)
 
-            compressed_kron²!(kron_state_vol, state_vol, state_vol)
+            compressed_kron²_power!(kron_state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
             kron_state₁₂ = ws.kron_state₁₂
@@ -174,7 +174,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             ℒ.mul!(shock_independent, 𝐒²⁻, kron_state₁₂, -1, 1)
 
             kron_state_vol3 = ws.kron_state_vol3
-            compressed_kron³!(kron_state_vol3, state_vol, state_vol, state_vol)
+            compressed_kron³_power!(kron_state_vol3, state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
             ℒ.kron!(kron_I_state, J, state_vol)
@@ -214,11 +214,11 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
 
-            compressed_kron²!(kron_state_vol, state_vol, state_vol)
+            compressed_kron²_power!(kron_state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
             kron_state_vol3 = ws.kron_state_vol3
-            compressed_kron³!(kron_state_vol3, state_vol, state_vol, state_vol)
+            compressed_kron³_power!(kron_state_vol3, state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
             ℒ.kron!(kron_I_state, J, state_vol)
@@ -1003,7 +1003,7 @@ function find_shocks(::Val{:LagrangeNewton},
         # λ = xλ[size(𝐒ⁱ, 2)+1:end]
         copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
-        compressed_kron²!(kron_buffer, x, x)
+        compressed_kron²_power!(kron_buffer, x)
 
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
 
@@ -1079,7 +1079,7 @@ function find_shocks(::Val{:LagrangeNewton},
     @inbounds for i in 1:max_iter
         iter = i
         # Initialize x ⊗ x for the current iterate before using kron_buffer in Jacobian terms.
-        compressed_kron²!(kron_buffer, x, x)
+        compressed_kron²_power!(kron_buffer, x)
         compressed_kron²!(kron_buffer2, x, J)
         compressed_kron³!(kron_buffer3, x, x, J)
 
@@ -1131,9 +1131,9 @@ function find_shocks(::Val{:LagrangeNewton},
         # λ = xλ[size(𝐒ⁱ, 2)+1:end]
         copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
-        compressed_kron²!(kron_buffer, x, x)
+        compressed_kron²_power!(kron_buffer, x)
 
-        compressed_kron³!(kron_buffer², x, x, x)
+        compressed_kron³_power!(kron_buffer², x)
 
         ℒ.mul!(x̂, 𝐒ⁱ, x)
 

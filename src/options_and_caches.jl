@@ -87,6 +87,7 @@ function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
+    empty_matrix_int = Matrix{Int}(undef, 0, 0)
     return second_order_indices(
         # Auxiliary matrices (𝛔, 𝛔_sym, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂, 𝐈ₙ₊, 𝐈ₙ₋)
         empty_sparse_int,
@@ -128,6 +129,7 @@ function Second_order_indices()
         empty_matrix_float,  # I_exo
         empty_matrix_float,  # I_state_vol
         empty_matrix_float,  # I_aug
+        empty_matrix_int,    # compressed_pair_index_map
         # Conditional forecast indices
         Int[],               # var²_idxs
         Int[],               # shockvar²_idxs
@@ -195,6 +197,10 @@ function Third_order_indices()
         Int[],               # shockvar³2_idxs
         Int[],               # shockvar³_idxs
         empty_sparse_float,  # I_exo2
+        Int[],               # shock_state_state_idxs
+        Int[],               # shock_state_state_rows
+        Int[],               # shock_shock_state_idxs
+        Int[],               # shock_shock_state_rows
         # Moment computation caches
         Float64[],           # e6
         BitVector(),         # kron_e_v
@@ -1817,6 +1823,16 @@ function ensure_computational_constants!(constants::constants)
         I_exo = Matrix{Float64}(ℒ.I, nᵉ, nᵉ)
         I_state_vol = Matrix{Float64}(ℒ.I, nˢ + 1, nˢ + 1)
         I_aug = Matrix{Float64}(ℒ.I, nˢ + 1 + nᵉ, nˢ + 1 + nᵉ)
+        n_aug = nˢ + 1 + nᵉ
+        compressed_pair_index_map = Matrix{Int}(undef, n_aug, n_aug)
+        @inbounds for i in 1:n_aug
+            base = (i - 1) * i ÷ 2
+            for j in 1:i
+                index = base + j
+                compressed_pair_index_map[i, j] = index
+                compressed_pair_index_map[j, i] = index
+            end
+        end
 
         so.s_in_s⁺ = s_in_s⁺
         so.s_in_s = s_in_s
@@ -1838,6 +1854,7 @@ function ensure_computational_constants!(constants::constants)
         so.I_exo = I_exo
         so.I_state_vol = I_state_vol
         so.I_aug = I_aug
+        so.compressed_pair_index_map = compressed_pair_index_map
     end
 
     return constants.second_order
@@ -1845,6 +1862,9 @@ end
 
 function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
     so = ensure_computational_constants!(constants)
+    T = constants.post_model_macro
+    nᵉ = T.nExo
+    nˢ = T.nPast_not_future_and_mixed
 
     if isempty(so.var²_idxs)
         s_in_s⁺ = so.s_in_s
@@ -1888,6 +1908,25 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
             to.shockvar3_idxs = shockvar3_idxs
             to.shockvar³2_idxs = shockvar³2_idxs
             to.shockvar³_idxs = shockvar³_idxs
+
+        end
+
+        if isempty(to.shock_state_state_idxs)
+            state_length = nˢ + 1
+            shock_offset = state_length
+            shock_state_state_loop = [compressed_triple_index(shock_offset + q, i, j)
+                                      for q in 1:nᵉ for i in 1:state_length for j in 1:i]
+            shock_state_state_order = sortperm(shock_state_state_loop)
+            to.shock_state_state_idxs = shock_state_state_loop[shock_state_state_order]
+            to.shock_state_state_rows = invperm(shock_state_state_order)
+
+            shock_shock_state_loop = [compressed_triple_index(shock_offset + i,
+                                                              shock_offset + j,
+                                                              state_index)
+                                      for i in 1:nᵉ for j in 1:i for state_index in 1:state_length]
+            shock_shock_state_order = sortperm(shock_shock_state_loop)
+            to.shock_shock_state_idxs = shock_shock_state_loop[shock_shock_state_order]
+            to.shock_shock_state_rows = invperm(shock_shock_state_order)
         end
 
         if size(to.I_exo2, 1) != constants.post_model_macro.nExo^2

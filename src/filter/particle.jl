@@ -458,7 +458,7 @@ end
 # out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug),  aug = [state[past]; 1; shock].
 function nonpruned_state_update_2nd_order!(out, state, past_idx, shock, aug, kk, 𝐒)
     fill_aug!(aug, state, past_idx, shock, 1.0)
-    compressed_kron²!(kk, aug, aug)
+    compressed_kron²_power!(kk, aug)
     ℒ.mul!(out, 𝐒[1], aug)
     ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
     return out
@@ -467,8 +467,8 @@ end
 # out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug) + ⅙ 𝐒₃·(aug⊗aug⊗aug).
 function nonpruned_state_update_3rd_order!(out, state, past_idx, shock, aug, kk, kkk, 𝐒)
     fill_aug!(aug, state, past_idx, shock, 1.0)
-    compressed_kron²!(kk, aug, aug)
-    compressed_kron³!(kkk, aug, aug, aug)
+    compressed_kron²_power!(kk, aug)
+    compressed_kron³_power!(kkk, aug)
     ℒ.mul!(out, 𝐒[1], aug)
     ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
     ℒ.mul!(out, 𝐒[3], kkk, 1 / 6, 1.0)
@@ -487,7 +487,7 @@ function pf_pruned_2nd!(new_s1, new_s2, s1, s2, past_idx, shock, aug1, aug2, kk,
     @inbounds for e in eachindex(shock)
         aug2[n_past + 1 + e] = 0.0
     end
-    compressed_kron²!(kk, aug1, aug1)
+    compressed_kron²_power!(kk, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
@@ -509,9 +509,9 @@ function pf_pruned_3rd!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, shock,
         aug2[n_past + 1 + e] = 0.0
         aug3[n_past + 1 + e] = 0.0
     end
-    compressed_kron²!(k11, aug1, aug1)
+    compressed_kron²_power!(k11, aug1)
     compressed_kron²!(k12̂, aug1̂, aug2)
-    compressed_kron³!(k111, aug1, aug1, aug1)
+    compressed_kron³_power!(k111, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)

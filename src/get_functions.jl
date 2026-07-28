@@ -1560,7 +1560,7 @@ function irf_forward_simulate!(::Val{:second_order},
             shocks_store[si, t] = shock_hist[:, t]
             prev = states_store[si, t]
             aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / 2
+            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2
             states_store[si, t+1] = y_t
             Y_all[:, t, si] = y_t
         end
@@ -1584,7 +1584,7 @@ function irf_forward_simulate!(::Val{:third_order},
             shocks_store[si, t] = shock_hist[:, t]
             prev = states_store[si, t]
             aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / 2 + 𝐒₃ * compressed_kron³(aug, aug, aug) / 6
+            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2 + 𝐒₃ * compressed_kron³_power(aug) / 6
             states_store[si, t+1] = y_t
             Y_all[:, t, si] = y_t
         end
@@ -5337,13 +5337,13 @@ function filter_free_loglikelihood_loop(::Val{:second_order},
     for t in 1:n_warm
         ϵ = view(shocks, :, t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / R(2)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2)
     end
 
     for t in 1:nT
         ϵ = view(shocks, :, n_warm + t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / R(2)
+        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2)
         idx = obs_idx_per_t[t]
         if !isempty(idx)
             obs_dev = new_state[obs_indices[idx]]
@@ -5379,13 +5379,13 @@ function filter_free_loglikelihood_loop(::Val{:third_order},
     for t in 1:n_warm
         ϵ = view(shocks, :, t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / R(2) + 𝐒₃ * compressed_kron³(aug, aug, aug) / R(6)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2) + 𝐒₃ * compressed_kron³_power(aug) / R(6)
     end
 
     for t in 1:nT
         ϵ = view(shocks, :, n_warm + t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²(aug, aug) / R(2) + 𝐒₃ * compressed_kron³(aug, aug, aug) / R(6)
+        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2) + 𝐒₃ * compressed_kron³_power(aug) / R(6)
         idx = obs_idx_per_t[t]
         if !isempty(idx)
             obs_dev = new_state[obs_indices[idx]]

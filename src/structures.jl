@@ -337,6 +337,7 @@ mutable struct second_order_indices
     I_exo::Matrix{Float64}               # I(nExo) reused by inversion warmup helpers
     I_state_vol::Matrix{Float64}         # I(nPast+1) reused by inversion warmup helpers
     I_aug::Matrix{Float64}               # I(nPast+1+nExo) reused by inversion warmup helpers
+    compressed_pair_index_map::Matrix{Int} # Pair-coordinate map for hot pullback loops
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -431,6 +432,10 @@ mutable struct third_order_indices
     shockvar³2_idxs::Vector{Int}         # Shock × var³ indices (2nd variant)
     shockvar³_idxs::Vector{Int}          # Shock × var³ indices
     I_exo2::SparseMatrixCSC{Float64, Int} # I(nExo^2) reused by inversion warmup helpers
+    shock_state_state_idxs::Vector{Int}   # Sorted shock × state² compressed indices
+    shock_state_state_rows::Vector{Int}   # Loop-order rows into shock_state_state_idxs
+    shock_shock_state_idxs::Vector{Int}   # Sorted shock² × state compressed indices
+    shock_shock_state_rows::Vector{Int}   # Loop-order rows into shock_shock_state_idxs
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS
