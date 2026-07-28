@@ -1148,13 +1148,13 @@ mutable struct inversion_workspace{T <: Real}
     aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
     state²⁻_vol::Vector{T}           # n_past+1 - second-order state with volatility slot
     # Third-order state kron buffers
-    kronstate_vol³::Vector{T}        # (n_past+1)^3 - triple kron of state_vol
-    kron_buffer2ss::Vector{T}        # n_past^2 - ℒ.kron(state₁, state₂) for pruned 3rd order
-    kron_buffer3sv::Matrix{T}        # (n_exo * (n_past+1)^2, n_exo) - ℒ.kron(kron(J, state_vol), state_vol)
-    kron_buffer4sv::Matrix{T}        # (n_exo^2 * (n_past+1), n_exo^2) - x_kron_II! scratch
-    kron_shock_state2::Vector{T}     # n_exo * (n_past+1)^2 - ℒ.kron(kron_shock_state, state_vol)
-    kron_shock2_state::Vector{T}     # n_exo^2 * (n_past+1) - ℒ.kron(kron_shock_shock, state_vol)
-    kronaug_state_aux::Vector{T}     # (n_past+1+n_exo)^2 - auxiliary augmented-state kron scratch
+    kronstate_vol³::Vector{T}        # compressed triple of state_vol
+    kron_buffer2ss::Vector{T}        # compressed pair of state₁ and state₂
+    kron_buffer3sv::Matrix{T}        # shock × compressed state pair × shock
+    kron_buffer4sv::Matrix{T}        # compressed shock pair × state
+    kron_shock_state2::Vector{T}     # shock × compressed state pair
+    kron_shock2_state::Vector{T}     # compressed shock pair × state
+    kronaug_state_aux::Vector{T}     # compressed augmented-state pair scratch
     
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
@@ -1348,12 +1348,12 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     # Dedicated FastLapackInterface LU workspace for the SSS pullback transpose solve
     fast_lu_ws_sss_pullback::FastLapackInterface.LUWs
     fast_lu_dims_sss_pullback::NTuple{2, Int}
-    # SSS Newton iter kron! buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
+    # SSS Newton compressed-kron buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
     x_aug_buf::Vector{F}            # length nPast+1, holds [x; 1]
-    kron_x_aug_xx::Vector{F}        # length (nPast+1)^2, holds kron(x_aug, x_aug)
-    kron_x_aug_x_kron::Vector{F}    # length (nPast+1)^3, holds kron(x_aug, kron_x_aug); 3rd order only
-    kron_x_aug_I::Matrix{F}         # size (nPast+1)*nPast × nPast, holds kron(x_aug, I_nPast)
-    kron_x_kron_I::Matrix{F}        # size (nPast+1)^2*nPast × nPast, holds kron(kron_x_aug, I_nPast); 3rd order only
+    kron_x_aug_xx::Vector{F}        # compressed pair terms of x_aug with itself
+    kron_x_aug_x_kron::Vector{F}    # compressed triple terms of x_aug with itself; 3rd order only
+    kron_x_aug_I::Matrix{F}         # compressed pair terms of x_aug with I_nPast
+    kron_x_kron_I::Matrix{F}        # compressed triple terms of x_aug with itself and I_nPast; 3rd order only
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials

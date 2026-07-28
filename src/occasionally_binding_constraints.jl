@@ -614,29 +614,25 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
     S = eltype(Y)
     nv = size(Y, 1)
     n_x = size(dYdx, 2)
-    𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = 𝓂.caches.second_order_solution
     Ŝ₁̂ = [Ŝ₁[:, 1:n_past] zeros(S, nv) Ŝ₁[:, n_past+1:end]]
     n_aug = n_past + 1 + n_shocks
 
     has_third = algorithm == :third_order
-    𝐒₃ = has_third ? 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃ : nothing
+    𝐒₃ = has_third ? 𝓂.caches.third_order_solution : nothing
 
     # ── t = 0 ──
     aug = [state[past_idx]; one(S); shock_vals]
-    kron_aug = ℒ.kron(aug, aug)
-    Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * kron_aug / 2
-    if has_third;  Y[:, 1] += 𝐒₃ * ℒ.kron(kron_aug, aug) / 6;  end
+    Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * compressed_kron²(aug, aug) / 2
+    if has_third;  Y[:, 1] += 𝐒₃ * compressed_kron³(aug, aug, aug) / 6;  end
 
     d_aug = zeros(S, n_aug)
     for j in 1:n_x
         fill!(d_aug, zero(S))
         d_aug[n_past + 1 + obc_idx[j]] = one(S)
-        dYdx[:, j, 1] = Ŝ₁̂ * d_aug +
-                         𝐒₂ * (ℒ.kron(d_aug, aug) + ℒ.kron(aug, d_aug)) / 2
+        dYdx[:, j, 1] = Ŝ₁̂ * d_aug + 𝐒₂ * compressed_kron²(d_aug, aug)
         if has_third
-            dYdx[:, j, 1] += 𝐒₃ * (ℒ.kron(ℒ.kron(d_aug, aug), aug) +
-                                    ℒ.kron(ℒ.kron(aug, d_aug), aug) +
-                                    ℒ.kron(kron_aug, d_aug)) / 6
+            dYdx[:, j, 1] += 𝐒₃ * compressed_kron³(d_aug, aug, aug) / 2
         end
     end
 
@@ -644,19 +640,15 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
     d_aug_t = zeros(S, n_aug)
     for t in 1:periods
         aug_t    = [Y[past_idx, t]; one(S); zeros(S, n_shocks)]
-        kron_aug_t = ℒ.kron(aug_t, aug_t)
-        Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * kron_aug_t / 2
-        if has_third;  Y[:, t+1] += 𝐒₃ * ℒ.kron(kron_aug_t, aug_t) / 6;  end
+        Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * compressed_kron²(aug_t, aug_t) / 2
+        if has_third;  Y[:, t+1] += 𝐒₃ * compressed_kron³(aug_t, aug_t, aug_t) / 6;  end
 
         for j in 1:n_x
             fill!(d_aug_t, zero(S))
             d_aug_t[1:n_past] .= @view dYdx[past_idx, j, t]
-            dYdx[:, j, t+1] = Ŝ₁̂ * d_aug_t +
-                              𝐒₂ * (ℒ.kron(d_aug_t, aug_t) + ℒ.kron(aug_t, d_aug_t)) / 2
+            dYdx[:, j, t+1] = Ŝ₁̂ * d_aug_t + 𝐒₂ * compressed_kron²(d_aug_t, aug_t)
             if has_third
-                dYdx[:, j, t+1] += 𝐒₃ * (ℒ.kron(ℒ.kron(d_aug_t, aug_t), aug_t) +
-                                         ℒ.kron(ℒ.kron(aug_t, d_aug_t), aug_t) +
-                                         ℒ.kron(kron_aug_t, d_aug_t)) / 6
+                dYdx[:, j, t+1] += 𝐒₃ * compressed_kron³(d_aug_t, aug_t, aug_t) / 2
             end
         end
     end
@@ -670,12 +662,12 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     S = eltype(Y)
     nv = size(Y, 1)
     n_x = size(dYdx, 2)
-    𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+    𝐒₂ = 𝓂.caches.second_order_solution
     Ŝ₁̂ = [Ŝ₁[:, 1:n_past] zeros(S, nv) Ŝ₁[:, n_past+1:end]]
     n_aug = n_past + 1 + n_shocks
 
     has_third = algorithm == :pruned_third_order
-    𝐒₃ = has_third ? 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃ : nothing
+    𝐒₃ = has_third ? 𝓂.caches.third_order_solution : nothing
 
     # Component vectors
     y₁ = state isa AbstractVector{<:AbstractVector} ? state[1] : state
@@ -694,7 +686,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     y₁_new = Ŝ₁̂ * aug₁
 
     aug₂ = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
-    kron_aug₁ = ℒ.kron(aug₁, aug₁)
+    kron_aug₁ = compressed_kron²(aug₁, aug₁)
     y₂_new = Ŝ₁̂ * aug₂ + 𝐒₂ * kron_aug₁ / 2
 
     for j in 1:n_x
@@ -702,22 +694,20 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
         d_aug[n_past + 1 + obc_idx[j]] = one(S)
         dy₁dx[:, j] = Ŝ₁̂ * d_aug
         # dy₂ only depends on aug₁ perturbation (aug₂ initial is independent of x)
-        dy₂dx[:, j] = 𝐒₂ * (ℒ.kron(d_aug, aug₁) + ℒ.kron(aug₁, d_aug)) / 2
+        dy₂dx[:, j] = 𝐒₂ * compressed_kron²(d_aug, aug₁)
     end
 
     if has_third
         aug₁̂ = [y₁[past_idx]; zero(S); shock_vals]
         aug₃ = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
-        y₃_new = Ŝ₁̂ * aug₃ + 𝐒₂ * ℒ.kron(aug₁̂, aug₂) + 𝐒₃ * ℒ.kron(kron_aug₁, aug₁) / 6
+        y₃_new = Ŝ₁̂ * aug₃ + 𝐒₂ * compressed_kron²(aug₁̂, aug₂) + 𝐒₃ * compressed_kron³(aug₁, aug₁, aug₁) / 6
 
         for j in 1:n_x
             fill!(d_aug, zero(S))
             d_aug[n_past + 1 + obc_idx[j]] = one(S)
             d_aug₁̂ = copy(d_aug);  d_aug₁̂[n_past + 1] = zero(S)  # hat: zero for the "1" slot
-            dy₃dx[:, j] = 𝐒₂ * (ℒ.kron(d_aug₁̂, aug₂) + ℒ.kron(aug₁̂, zeros(S, n_aug))) +
-                          𝐒₃ * (ℒ.kron(ℒ.kron(d_aug, aug₁), aug₁) +
-                                 ℒ.kron(ℒ.kron(aug₁, d_aug), aug₁) +
-                                 ℒ.kron(kron_aug₁, d_aug)) / 6
+            dy₃dx[:, j] = 𝐒₂ * compressed_kron²(d_aug₁̂, aug₂) +
+                          𝐒₃ * compressed_kron³(d_aug, aug₁, aug₁) / 2
         end
         y₃ = y₃_new
     end
@@ -732,7 +722,7 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
     d_aug_t = zeros(S, n_aug)
     for t in 1:periods
         aug₁_t = [y₁[past_idx]; one(S); zeros(S, n_shocks)]
-        kron_aug₁_t = ℒ.kron(aug₁_t, aug₁_t)
+        kron_aug₁_t = compressed_kron²(aug₁_t, aug₁_t)
 
         y₁_new = Ŝ₁̂ * aug₁_t
         aug₂_t = [y₂[past_idx]; zero(S); zeros(S, n_shocks)]
@@ -749,13 +739,13 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
             d_aug₂_t = zeros(S, n_aug)
             d_aug₂_t[1:n_past] .= @view dy₂dx[past_idx, j]
             dy₂dx_new[:, j] = Ŝ₁̂ * d_aug₂_t +
-                              𝐒₂ * (ℒ.kron(d_aug_t, aug₁_t) + ℒ.kron(aug₁_t, d_aug_t)) / 2
+                              𝐒₂ * compressed_kron²(d_aug_t, aug₁_t)
         end
 
         if has_third
             aug₁̂_t = [y₁[past_idx]; zero(S); zeros(S, n_shocks)]
             aug₃_t = [y₃[past_idx]; zero(S); zeros(S, n_shocks)]
-            y₃_new = Ŝ₁̂ * aug₃_t + 𝐒₂ * ℒ.kron(aug₁̂_t, aug₂_t) + 𝐒₃ * ℒ.kron(kron_aug₁_t, aug₁_t) / 6
+            y₃_new = Ŝ₁̂ * aug₃_t + 𝐒₂ * compressed_kron²(aug₁̂_t, aug₂_t) + 𝐒₃ * compressed_kron³(aug₁_t, aug₁_t, aug₁_t) / 6
 
             dy₃dx_new = zeros(S, nv, n_x)
             for j in 1:n_x
@@ -770,10 +760,8 @@ function obc_dYdx_pruned!(Y, dYdx, state, shock_vals, zero_shock,
                 d_aug₃_t[1:n_past] .= @view dy₃dx[past_idx, j]
 
                 dy₃dx_new[:, j] = Ŝ₁̂ * d_aug₃_t +
-                                  𝐒₂ * (ℒ.kron(d_aug₁̂_t, aug₂_t) + ℒ.kron(aug₁̂_t, d_aug₂_t)) +
-                                  𝐒₃ * (ℒ.kron(ℒ.kron(d_aug_t, aug₁_t), aug₁_t) +
-                                         ℒ.kron(ℒ.kron(aug₁_t, d_aug_t), aug₁_t) +
-                                         ℒ.kron(kron_aug₁_t, d_aug_t)) / 6
+                                  𝐒₂ * (compressed_kron²(d_aug₁̂_t, aug₂_t) + compressed_kron²(aug₁̂_t, d_aug₂_t)) +
+                                  𝐒₃ * compressed_kron³(d_aug_t, aug₁_t, aug₁_t) / 2
             end
             y₃ = y₃_new
             dy₃dx .= dy₃dx_new

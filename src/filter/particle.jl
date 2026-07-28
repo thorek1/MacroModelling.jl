@@ -458,7 +458,7 @@ end
 # out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug),  aug = [state[past]; 1; shock].
 function nonpruned_state_update_2nd_order!(out, state, past_idx, shock, aug, kk, 𝐒)
     fill_aug!(aug, state, past_idx, shock, 1.0)
-    ℒ.kron!(kk, aug, aug)
+    compressed_kron²!(kk, aug, aug)
     ℒ.mul!(out, 𝐒[1], aug)
     ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
     return out
@@ -467,8 +467,8 @@ end
 # out = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug) + ⅙ 𝐒₃·(aug⊗aug⊗aug).
 function nonpruned_state_update_3rd_order!(out, state, past_idx, shock, aug, kk, kkk, 𝐒)
     fill_aug!(aug, state, past_idx, shock, 1.0)
-    ℒ.kron!(kk, aug, aug)
-    ℒ.kron!(kkk, kk, aug)
+    compressed_kron²!(kk, aug, aug)
+    compressed_kron³!(kkk, aug, aug, aug)
     ℒ.mul!(out, 𝐒[1], aug)
     ℒ.mul!(out, 𝐒[2], kk, 0.5, 1.0)
     ℒ.mul!(out, 𝐒[3], kkk, 1 / 6, 1.0)
@@ -487,7 +487,7 @@ function pf_pruned_2nd!(new_s1, new_s2, s1, s2, past_idx, shock, aug1, aug2, kk,
     @inbounds for e in eachindex(shock)
         aug2[n_past + 1 + e] = 0.0
     end
-    ℒ.kron!(kk, aug1, aug1)
+    compressed_kron²!(kk, aug1, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
@@ -509,9 +509,9 @@ function pf_pruned_3rd!(new_s1, new_s2, new_s3, s1, s2, s3, past_idx, shock,
         aug2[n_past + 1 + e] = 0.0
         aug3[n_past + 1 + e] = 0.0
     end
-    ℒ.kron!(k11,  aug1, aug1)
-    ℒ.kron!(k12̂,  aug1̂, aug2)
-    ℒ.kron!(k111, k11,  aug1)
+    compressed_kron²!(k11, aug1, aug1)
+    compressed_kron²!(k12̂, aug1̂, aug2)
+    compressed_kron³!(k111, aug1, aug1, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
@@ -524,23 +524,29 @@ end
 # Preallocated kron/aug scratch for one particle, sized per algorithm.
 function build_higher_scratch(::Val{:second_order}, nPast::Int, nExo::Int)
     naug = nPast + 1 + nExo
-    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug^2))
+    naug2 = naug * (naug + 1) ÷ 2
+    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug2))
 end
 function build_higher_scratch(::Val{:third_order}, nPast::Int, nExo::Int)
     naug = nPast + 1 + nExo
-    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug^2), kkk = Vector{Float64}(undef, naug^3))
+    naug2 = naug * (naug + 1) ÷ 2
+    naug3 = naug * (naug + 1) * (naug + 2) ÷ 6
+    (aug = Vector{Float64}(undef, naug), kk = Vector{Float64}(undef, naug2), kkk = Vector{Float64}(undef, naug3))
 end
 function build_higher_scratch(::Val{:pruned_second_order}, nPast::Int, nExo::Int)
     naug = nPast + 1 + nExo
+    naug2 = naug * (naug + 1) ÷ 2
     (aug1 = Vector{Float64}(undef, naug), aug2 = Vector{Float64}(undef, naug),
-     kk = Vector{Float64}(undef, naug^2), zero_shock = zeros(Float64, nExo))
+     kk = Vector{Float64}(undef, naug2), zero_shock = zeros(Float64, nExo))
 end
 function build_higher_scratch(::Val{:pruned_third_order}, nPast::Int, nExo::Int)
     naug = nPast + 1 + nExo
+    naug2 = naug * (naug + 1) ÷ 2
+    naug3 = naug * (naug + 1) * (naug + 2) ÷ 6
     (aug1 = Vector{Float64}(undef, naug), aug1̂ = Vector{Float64}(undef, naug),
      aug2 = Vector{Float64}(undef, naug), aug3 = Vector{Float64}(undef, naug),
-     k11 = Vector{Float64}(undef, naug^2), k12̂ = Vector{Float64}(undef, naug^2),
-     k111 = Vector{Float64}(undef, naug^3), zero_shock = zeros(Float64, nExo))
+     k11 = Vector{Float64}(undef, naug2), k12̂ = Vector{Float64}(undef, naug2),
+     k111 = Vector{Float64}(undef, naug3), zero_shock = zeros(Float64, nExo))
 end
 
 # In-place propagation dispatch: writes the next state into `out`.
@@ -1893,7 +1899,7 @@ end
         parts2 = [zeros(Float64, nVars) for _ in 1:n_particles]
         propagate! = (out, prev, sh) -> linear_propagate_estimates!(out, tr, prev, sh)
     else
-        𝐒f = [Matrix{Float64}(S) for S in 𝐒]
+        𝐒f = 𝐒
         scr = build_higher_scratch(Val(algo), T.nPast_not_future_and_mixed, nExo)
         parts  = init_higher_particles(Val(algo), rng, state, L, n_particles, nVars)
         parts2 = [zeros_like_particle(parts[1]) for _ in 1:n_particles]

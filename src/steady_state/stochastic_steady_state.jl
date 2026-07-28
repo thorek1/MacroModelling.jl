@@ -81,13 +81,11 @@ function prepare_stochastic_steady_state_base_terms(parameters::Vector{M},
             C)
     end
 
-    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
-
     𝐒₁ = [𝐒₁[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁[:,T.nPast_not_future_and_mixed+1:end]]
 
-    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
+    aug_state₁ = [zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)]
     tmp = collect(T.I_nPast - 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed])
-    rhs = collect((𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
+    rhs = collect((𝐒₂_raw * compressed_kron²(aug_state₁, aug_state₁) / 2)[T.past_not_future_and_mixed_idx])
 
     if M === Float64
         ensure_sss_tmp_lu_buffer!(𝓂.workspaces.second_order, tmp, rhs)
@@ -159,7 +157,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
             ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
+            𝐒₂ = sparse(𝓂.caches.second_order_solution)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -172,13 +170,9 @@ function calculate_stochastic_steady_state(::Val{:second_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = 𝐒₂_raw
 
-    so = 𝓂.constants.second_order
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
     A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B̂ = 𝐒₂[:,kron_s⁺_s⁺]
 
     SSSstates, converged = solve_stochastic_steady_state_newton(Val(:second_order), 𝐒₁, 𝐒₂, collect(SSSstates), 𝓂)
 
@@ -188,7 +182,8 @@ function calculate_stochastic_steady_state(::Val{:second_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
+    aug_sss = [SSSstates; one(M); zeros(M, 𝓂.constants.post_model_macro.nExo)]
+    state = A * SSSstates + (𝐒₂ * compressed_kron²(aug_sss, aug_sss) / 2)
     result = all_SS + Vector{M}(state)
 
     if caching && M === Float64
@@ -216,7 +211,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
             ∇₂ = sparse(𝓂.caches.hessian)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
+            𝐒₂ = sparse(𝓂.caches.second_order_solution)::SparseMatrixCSC{M, Int}
             return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, 𝐒₁, 𝐒₂
         end
     end
@@ -229,13 +224,12 @@ function calculate_stochastic_steady_state(::Val{:pruned_second_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
-    # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = 𝐒₂_raw
 
     T = 𝓂.constants.post_model_macro
-    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
+    aug_state₁ = [zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)]
     state = 𝐒₁[:,1:T.nPast_not_future_and_mixed] * SSSstates +
-            𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+            𝐒₂ * compressed_kron²(aug_state₁, aug_state₁) / 2
 
     result = all_SS + Vector{M}(state)
 
@@ -259,25 +253,22 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
 
     # Get cached computational constants
     constants = initialise_constants!(𝓂)
-    so = constants.second_order
+    so = ensure_computational_constants!(constants)
     T = constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
     I_nPast = T.I_nPast
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
+
     A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    B = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    n_state_aug = T.nPast_not_future_and_mixed + 1
+    n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
+    B = 𝐒₂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
+    B̂ = B
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
 
     ℂ = 𝓂.workspaces.second_order
     nPast = length(x)
+    state_identity = @view so.I_state_vol[:, 1:nPast]
     ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
     x_aug = ℂ.x_aug_buf
     x_aug[end] = one(R)
@@ -287,10 +278,10 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
     for i in 1:max_iters
         copyto!(x_aug, 1, x, 1, nPast)
 
-        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        compressed_kron²!(kron_x_aug_I, x_aug, state_identity)
         ∂x = (A + B * kron_x_aug_I - I_nPast)
 
-        ℒ.kron!(kron_x_aug_xx, x_aug, x_aug)
+        compressed_kron²!(kron_x_aug_xx, x_aug, x_aug)
         x̂ = A * x + B̂ * kron_x_aug_xx / 2
 
         Δx = x̂ - x
@@ -313,7 +304,7 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
     # end # timeit_debug
 
     copyto!(x_aug, 1, x, 1, nPast)
-    ℒ.kron!(kron_x_aug_xx, x_aug, x_aug)
+    compressed_kron²!(kron_x_aug_xx, x_aug, x_aug)
     return x, isapprox(A * x + B̂ * kron_x_aug_xx / 2, x, rtol = tol)
 end
 
@@ -339,9 +330,9 @@ function calculate_stochastic_steady_state(::Val{:third_order},
             ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
-            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
-            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
+            𝐒₂ = sparse(𝓂.caches.second_order_solution)::SparseMatrixCSC{M, Int}
+            𝐒₃ = sparse(𝓂.caches.third_order_solution)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
         end
     end
 
@@ -353,8 +344,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = 𝐒₂_raw
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -377,24 +367,10 @@ function calculate_stochastic_steady_state(::Val{:third_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
-        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.constants.third_order.𝐔₃
-    else
-        ℒ.mul!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.constants.third_order.𝐔₃)
-    end
-
-    Ŝ = 𝓂.workspaces.third_order.Ŝ
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
-
-    so = 𝓂.constants.second_order
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
-
     A = 𝐒₁[:,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B̂ = 𝐒₂[:,kron_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
 
-    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:third_order), 𝐒₁, 𝐒₂, 𝐒₃̂, collect(SSSstates), 𝓂)
+    𝐒₃ = sparse(𝐒₃)::SparseMatrixCSC{M, Int}
+    SSSstates, converged = solve_stochastic_steady_state_newton(Val(:third_order), 𝐒₁, 𝐒₂, 𝐒₃, collect(SSSstates), 𝓂)
 
     if !converged
         if opts.verbose println("SSS not found") end
@@ -402,7 +378,8 @@ function calculate_stochastic_steady_state(::Val{:third_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1), ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
+    aug_sss = [SSSstates; one(M); zeros(M, 𝓂.constants.post_model_macro.nExo)]
+    state = A * SSSstates + 𝐒₂ * compressed_kron²(aug_sss, aug_sss) / 2 + 𝐒₃ * compressed_kron³(aug_sss, aug_sss, aug_sss) / 6
 
 
     result = all_SS + Vector{M}(state)
@@ -412,7 +389,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
         𝓂.caches.valid_for.third_order_stochastic_steady_state = Float64.(parameters)
     end
 
-    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    return result, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
 end
 
 function calculate_stochastic_steady_state(::Val{:pruned_third_order},
@@ -433,9 +410,9 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
             ∇₃ = sparse(𝓂.caches.third_order_derivatives)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
             𝐒₁_raw = Matrix(𝓂.caches.first_order_solution_matrix)::Matrix{M}
             𝐒₁ = [𝐒₁_raw[:,1:T.nPast_not_future_and_mixed] zeros(M, T.nVars) 𝐒₁_raw[:,T.nPast_not_future_and_mixed+1:end]]
-            𝐒₂ = (sparse(𝓂.caches.second_order_solution) * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
-            𝐒̂₃ = (sparse(𝓂.caches.third_order_solution) * 𝓂.constants.third_order.𝐔₃)::SparseMatrixCSC{M, Int}  # was: dense_to_sparse
-            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒̂₃
+            𝐒₂ = sparse(𝓂.caches.second_order_solution)::SparseMatrixCSC{M, Int}
+            𝐒₃ = sparse(𝓂.caches.third_order_solution)::SparseMatrixCSC{M, Int}
+            return cached_sss, true, SS_and_pars, zero(M), ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
         end
     end
 
@@ -447,8 +424,7 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    # Expand compressed 𝐒₂_raw to full
-    𝐒₂ = (𝐒₂_raw * 𝓂.constants.second_order.𝐔₂)::SparseMatrixCSC{M, Int}
+    𝐒₂ = 𝐒₂_raw
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂.caches, 𝓂.functions.third_order_derivatives, 𝓂.workspaces, caching = caching)
     nPast = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
@@ -469,18 +445,9 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
         return all_SS, false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0), spzeros(M,0,0)
     end
 
-    if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
-        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.constants.third_order.𝐔₃
-    else
-        ℒ.mul!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.constants.third_order.𝐔₃)
-    end
-
-    Ŝ = 𝓂.workspaces.third_order.Ŝ
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)::SparseMatrixCSC{M, Int}
-
     T = 𝓂.constants.post_model_macro
-    aug_state₁ = sparse([zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)])
-    state = 𝐒₁[:,1:T.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+    aug_state₁ = [zeros(M, T.nPast_not_future_and_mixed); one(M); zeros(M, T.nExo)]
+    state = 𝐒₁[:,1:T.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * compressed_kron²(aug_state₁, aug_state₁) / 2
 
     result = all_SS + Vector{M}(state)
 
@@ -489,43 +456,37 @@ function calculate_stochastic_steady_state(::Val{:pruned_third_order},
         𝓂.caches.valid_for.pruned_third_order_stochastic_steady_state = Float64.(parameters)
     end
 
-    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
+    return result, true, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
 end
 
 
 function solve_stochastic_steady_state_newton(::Val{:third_order}, 
                                               𝐒₁::Matrix{Float64}, 
-                                              𝐒₂::AbstractSparseMatrix{Float64}, 
-                                              𝐒₃::AbstractSparseMatrix{Float64},
+                                              𝐒₂::AbstractMatrix{Float64},
+                                              𝐒₃::AbstractMatrix{Float64},
                                               x::Vector{Float64},
                                               𝓂::ℳ;
                                               tol::AbstractFloat = 1e-14)::Tuple{Vector{Float64}, Bool}
     # Get cached computational constants
-    so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
     I_nPast = T.I_nPast
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
-    
-    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
+    so = ensure_computational_constants!(𝓂.constants)
     
     A = 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+    n_state_aug = T.nPast_not_future_and_mixed + 1
+    n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
+    n_state_triple = n_state_aug * (n_state_aug + 1) * (n_state_aug + 2) ÷ 6
+    B = 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
+    B̂ = B
+    C = 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_triple]
+    Ĉ = C
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
 
     ℂ = 𝓂.workspaces.third_order
     nPast = length(x)
+    state_identity = @view so.I_state_vol[:, 1:nPast]
     ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
     x_aug = ℂ.x_aug_buf
     x_aug[end] = 1.0
@@ -536,11 +497,11 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
 
     for i in 1:max_iters
         copyto!(x_aug, 1, x, 1, nPast)
-        ℒ.kron!(kron_x_aug, x_aug, x_aug)
-        ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
+        compressed_kron²!(kron_x_aug, x_aug, x_aug)
+        compressed_kron³!(kron_x_kron, x_aug, x_aug, x_aug)
 
-        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
-        ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+        compressed_kron²!(kron_x_aug_I, x_aug, state_identity)
+        compressed_kron³!(kron_x_kron_I, x_aug, x_aug, state_identity)
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = (A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x)
@@ -561,8 +522,8 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
     end
 
     copyto!(x_aug, 1, x, 1, nPast)
-    ℒ.kron!(kron_x_aug, x_aug, x_aug)
-    ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
+    compressed_kron²!(kron_x_aug, x_aug, x_aug)
+    compressed_kron³!(kron_x_kron, x_aug, x_aug, x_aug)
     return x, isapprox(A * x + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x, rtol = tol)
 end
 

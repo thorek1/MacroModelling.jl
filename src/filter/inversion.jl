@@ -44,7 +44,7 @@ function pruned_state_update_2nd_order!(
     @views copyto!(aug2[1:n_past], s2[past_idx])
     aug2[n_past + 1] = 0.0
     copyto!(aug2, n_past + 2, zero_dir, 1, length(zero_dir))
-    ℒ.kron!(kk, aug1, aug1)
+    compressed_kron²!(kk, aug1, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], kk, 0.5, 1.0)
@@ -69,9 +69,9 @@ function pruned_state_update_3rd_order!(
     @views copyto!(aug3[1:n_past], s3[past_idx])
     aug3[n_past + 1] = 0.0
     copyto!(aug3, n_past + 2, zero_dir, 1, length(zero_dir))
-    ℒ.kron!(k11,  aug1, aug1)
-    ℒ.kron!(k12̂,  aug1̂, aug2)
-    ℒ.kron!(k111, k11,  aug1)
+    compressed_kron²!(k11, aug1, aug1)
+    compressed_kron²!(k12̂, aug1̂, aug2)
+    compressed_kron³!(k111, aug1, aug1, aug1)
     ℒ.mul!(new_s1, 𝐒[1], aug1)
     ℒ.mul!(new_s2, 𝐒[1], aug2)
     ℒ.mul!(new_s2, 𝐒[2], k11, 0.5, 1.0)
@@ -110,9 +110,7 @@ function advance_aumann_shapley_pruned_2nd_warmup!(
             da₂[nₚ + 1] = 0.0
             copyto!(da₂, nₚ + 2, ε₀, 1, size(warmup_shocks, 1))
 
-            ℒ.kron!(dk₁₁, da₁, a₁)
-            ℒ.kron!(dk₁₁′, a₁, da₁)
-            dk₁₁ .+= dk₁₁′
+            compressed_kron²!(dk₁₁, da₁, a₁)
 
             ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
             ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
@@ -164,23 +162,19 @@ function advance_aumann_shapley_pruned_3rd_warmup!(
             da₃[nₚ + 1] = 0.0
             copyto!(da₃, nₚ + 2, ε₀, 1, size(warmup_shocks, 1))
 
-            ℒ.kron!(dk₁₁, da₁, a₁)
-            ℒ.kron!(k₂tmp, a₁, da₁)
-            dk₁₁ .+= k₂tmp
+            compressed_kron²!(dk₁₁, da₁, a₁)
 
-            ℒ.kron!(dk₁₂⁰, da₁, a₂)
-            ℒ.kron!(k₂tmp, a₁⁰, da₂)
+            compressed_kron²!(dk₁₂⁰, da₁, a₂)
+            compressed_kron²!(k₂tmp, a₁⁰, da₂)
             dk₁₂⁰ .+= k₂tmp
 
-            ℒ.kron!(dk₁₁₁, dk₁₁, a₁)
-            ℒ.kron!(k₃tmp, k₁₁, da₁)
-            dk₁₁₁ .+= k₃tmp
+            compressed_kron³!(dk₁₁₁, da₁, a₁, a₁)
 
             ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
             ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
             ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
             ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
-            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 0.5, 1.0)
             ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
 
             copyto!(ds₁ᵢ[i], ds₁ᵢ⁺[i])
@@ -255,7 +249,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     iₚ = T.past_not_future_and_mixed_idx
     nₚ = length(iₚ)
     n_aug = nₚ + 1 + nE
-    n_kron = n_aug^2
+    n_kron = n_aug * (n_aug + 1) ÷ 2
     nₜ = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(n_nodes)
@@ -355,9 +349,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
                 copyto!(da₂, nₚ + 2, ε₀, 1, nE)
 
                 # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
-                ℒ.kron!(dk₁₁,  da₁, a₁)
-                ℒ.kron!(dk₁₁′, a₁, da₁)
-                dk₁₁ .+= dk₁₁′
+                compressed_kron²!(dk₁₁, da₁, a₁)
 
                 # Plain form: ds₁ᵢ⁺ = S1 * da₁
                 ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
@@ -457,8 +449,8 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     iₚ = T.past_not_future_and_mixed_idx
     nₚ = length(iₚ)
     n_aug = nₚ + 1 + nE
-    n_kron2 = n_aug^2
-    n_kron3 = n_aug^3
+    n_kron2 = n_aug * (n_aug + 1) ÷ 2
+    n_kron3 = n_aug * (n_aug + 1) * (n_aug + 2) ÷ 6
     nₜ = size(decomposition, 3)
 
     nodes, weights = gausslegendre_unit_interval(n_nodes)
@@ -587,18 +579,17 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                 copyto!(da₃, nₚ + 2, ε₀, 1, nE)
 
                 # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
-                ℒ.kron!(dk₁₁, da₁, a₁)
-                ℒ.kron!(k₂tmp, a₁, da₁)
-                dk₁₁ .+= k₂tmp
+                compressed_kron²!(dk₁₁, da₁, a₁)
 
                 # d(aug1_no_const ⊗ aug2) = (d aug1 ⊗ aug2) + (aug1_no_const ⊗ d aug2)
-                ℒ.kron!(dk₁₂⁰, da₁, a₂)
-                ℒ.kron!(k₂tmp, a₁⁰, da₂)
+                compressed_kron²!(dk₁₂⁰, da₁, a₂)
+                compressed_kron²!(k₂tmp, a₁⁰, da₂)
                 dk₁₂⁰ .+= k₂tmp
 
                 # d(k11 ⊗ aug1) = (d k11 ⊗ aug1) + (k11 ⊗ d aug1)
-                ℒ.kron!(dk₁₁₁, dk₁₁, a₁)
-                ℒ.kron!(k₃tmp, k₁₁, da₁)
+                compressed_kron³!(dk₁₁₁, da₁, a₁, a₁)
+                compressed_kron³!(k₃tmp, a₁, a₁, da₁)
+                ℒ.rmul!(k₃tmp, 2)
                 dk₁₁₁ .+= k₃tmp
 
                 # Plain form: ds₁ᵢ⁺ = S1 * da₁
@@ -608,7 +599,7 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                 ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
                 # Plain form: ds₃ᵢ⁺ = S1 * da₃ + S2 * d(a₁⁰⊗a₂) + (1/6) * S3 * d(a₁⊗a₁⊗a₁)
                 ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
-                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 0.5, 1.0)
                 ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
 
                 @inbounds for v in 1:nᵥ
@@ -873,10 +864,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -934,11 +925,12 @@ function calculate_loglikelihood(::Val{:inversion},
         state¹⁻_vol = vcat(state₁, one(R))
         aug_state₁ = vcat(state₁, one(R), ones(R, n_exo))
         aug_state₂ = vcat(state₂, zero(R), zeros(R, n_exo))
-        kronaug_state₁ = zeros(R, n_aug^2)
-        kron_buffer = zeros(R, n_exo^2)
-        kron_buffer2 = zeros(R, n_exo^2, n_exo)
+        kronaug_state₁ = zeros(R, n_aug * (n_aug + 1) ÷ 2)
+        n_exo² = n_exo * (n_exo + 1) ÷ 2
+        kron_buffer = zeros(R, n_exo²)
+        kron_buffer2 = zeros(R, n_exo², n_exo)
         kron_buffer3 = zeros(R, n_exo * n_state_vol, n_exo)
-        kronstate¹⁻_vol = zeros(R, n_state_vol^2)
+        kronstate¹⁻_vol = zeros(R, n_state_vol * (n_state_vol + 1) ÷ 2)
         shock_independent = zeros(R, n_cond)
         𝐒ⁱ = Matrix{R}(𝐒¹ᵉ)
         jacc = Matrix{R}(𝐒¹ᵉ)
@@ -986,7 +978,7 @@ function calculate_loglikelihood(::Val{:inversion},
             ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
 
             ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
-            ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
             ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
         end
 
@@ -1014,7 +1006,7 @@ function calculate_loglikelihood(::Val{:inversion},
         
         ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
 
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
 
@@ -1098,7 +1090,7 @@ function calculate_loglikelihood(::Val{:inversion},
         # end
 
         # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
-        ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
 
         ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
 
@@ -1129,7 +1121,7 @@ function calculate_loglikelihood(::Val{:inversion},
         ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
 
         ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
-        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
         ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
     end
 
@@ -1194,10 +1186,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
     # 𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
-    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1272,7 +1264,7 @@ function calculate_loglikelihood(::Val{:inversion},
             aug_state[n_past + 1] = one(R)
             copyto!(aug_state, n_past + 2, view(warmup_shocks, :, w), 1, n_exo)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
             ℒ.mul!(state, 𝐒⁻¹, aug_state)
             ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2, 1)
         end
@@ -1297,7 +1289,7 @@ function calculate_loglikelihood(::Val{:inversion},
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
 
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
         # shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
@@ -1378,7 +1370,7 @@ function calculate_loglikelihood(::Val{:inversion},
         # end
 
         # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
-        ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
 
         ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
 
@@ -1409,7 +1401,7 @@ function calculate_loglikelihood(::Val{:inversion},
         # println("Match with data: $res")
 
         # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
         ℒ.mul!(state, 𝐒⁻¹, aug_state)
         ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2 ,1)
     end
@@ -1443,6 +1435,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
@@ -1474,11 +1467,11 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
-    𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,shockvar_idxs]
-    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1493,10 +1486,10 @@ function calculate_loglikelihood(::Val{:inversion},
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-    𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs] |> collect
-    𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,shockvar³_idxs]
-    𝐒³ᵉ  = 𝐒[3][cond_var_idx,shock³_idxs]
+𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
+𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -1516,7 +1509,8 @@ function calculate_loglikelihood(::Val{:inversion},
     kron_buffer = ws.kron_buffer
     kron_buffer² = ws.kron_buffer²
     J = ℒ.I(T.nExo)
-    II = ℒ.I(T.nExo^2)
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = ℒ.I(n_exo_pair)
     kron_buffer2 = ws.kron_buffer2
     kron_buffer3 = ws.kron_buffer3
     kron_buffer4 = ws.kron_buffer4
@@ -1536,9 +1530,9 @@ function calculate_loglikelihood(::Val{:inversion},
     copyto!(state_vol, 1, state[1], 1, n_past)
     state_vol[end] = one(R)
     ℒ.kron!(kron_buffer_state, J, state_vol)
-    x_kron_II!(kron_buffer4sv, state_vol)
-    ℒ.kron!(kron_buffer2ss, state[1], state[1])
-    ℒ.kron!(kron_buffer3sv, kron_buffer_state, state_vol)
+    # The compressed shock-shock-state contraction is assembled below.
+compressed_kron²!(kron_buffer2ss, state[1], state[1])
+    ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
     
     # Use workspaces for augmented state kron operations
     kron_aug_state₁ = ws.kronaug_state
@@ -1610,8 +1604,8 @@ function calculate_loglikelihood(::Val{:inversion},
             aug_state₃[n_past + 1] = zero(R)
             fill!(view(aug_state₃, n_past + 2:n_past + 1 + n_exo), zero(R))
 
-            ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
-            ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
 
             ℒ.mul!(state¹⁻, 𝐒⁻¹, aug_state₁)
 
@@ -1619,8 +1613,8 @@ function calculate_loglikelihood(::Val{:inversion},
             ℒ.mul!(state²⁻, 𝐒⁻², kron_aug_state₁, 1/2, 1)
 
             ℒ.mul!(state³⁻, 𝐒⁻¹, aug_state₃)
-            ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
-            ℒ.mul!(state³⁻, 𝐒⁻², kron_aug_state₁, 1, 1)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+            ℒ.mul!(state³⁻, 𝐒⁻², kron_aug_state₁, 1.0, 1)
             ℒ.mul!(state³⁻, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
         end
 
@@ -1647,15 +1641,15 @@ function calculate_loglikelihood(::Val{:inversion},
 
         ℒ.mul!(shock_independent, 𝐒¹⁻, state³⁻, -1, 1)
 
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
 
-        ℒ.kron!(kron_buffer2ss, state¹⁻, state²⁻)
+compressed_kron²!(kron_buffer2ss, state¹⁻, state²⁻)
 
         ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
 
-        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
         
@@ -1671,17 +1665,25 @@ function calculate_loglikelihood(::Val{:inversion},
     
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
     
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         
         ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
 
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        # The compressed shock-shock-state contraction is assembled below.
 
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -1844,9 +1846,9 @@ function calculate_loglikelihood(::Val{:inversion},
         #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x))), $(ℒ.norm(x3)-ℒ.norm(x))")
         # end
         
-        ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
 
-        ℒ.kron!(kron_buffer3, kron_buffer2, x)
+compressed_kron³!(kron_buffer3, x, x, J)
 
         ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
 
@@ -1892,9 +1894,9 @@ function calculate_loglikelihood(::Val{:inversion},
         fill!(view(aug_state₃, n_past + 2:n_past + 1 + n_exo), zero(R))
         
         # kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-        ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
 
-        ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
         # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * kron_aug_state₁ / 2   +   𝐒[1][cond_var_idx,:] * aug_state₃ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3][cond_var_idx,:] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6 - data_in_deviations[:,i]
         # println("Match with data: $res")
         
@@ -1911,9 +1913,9 @@ function calculate_loglikelihood(::Val{:inversion},
 
         ℒ.mul!(state³⁻, 𝐒⁻¹, aug_state₃)
 
-        ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
         
-        ℒ.mul!(state³⁻, 𝐒⁻², kron_aug_state₁, 1, 1)
+        ℒ.mul!(state³⁻, 𝐒⁻², kron_aug_state₁, 1.0, 1)
         ℒ.mul!(state³⁻, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
     end
 
@@ -1948,6 +1950,7 @@ function calculate_loglikelihood(::Val{:inversion},
     # Ensure workspaces are properly sized
     n_exo = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     ensure_inversion_buffers!(ws, n_exo, n_past; third_order = true)
     ensure_inversion_estimation_buffers!(ws, n_exo, length(observables_index); third_order = true)
 
@@ -1975,10 +1978,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
-    𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
-    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1994,10 +1997,10 @@ function calculate_loglikelihood(::Val{:inversion},
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,shockvar³_idxs]
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx,shock³_idxs]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -2018,7 +2021,8 @@ function calculate_loglikelihood(::Val{:inversion},
 
     kron_buffer4 = ws.kron_buffer4
 
-    II = sparse(ℒ.I(T.nExo^2))
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = sparse(ℒ.I(n_exo_pair))
 
     # Use workspace buffers for state/estimation temporaries
     state_vol = ws.state_vol
@@ -2072,11 +2076,11 @@ function calculate_loglikelihood(::Val{:inversion},
             aug_state[n_past + 1] = one(R)
             copyto!(aug_state, n_past + 2, view(warmup_shocks, :, w), 1, n_exo)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
             ℒ.mul!(state, 𝐒⁻¹, aug_state)
             ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2, 1)
 
-            ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
             ℒ.mul!(state, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
         end
 
@@ -2100,22 +2104,30 @@ function calculate_loglikelihood(::Val{:inversion},
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
         
-        ℒ.kron!(kronstate_vol³, state¹⁻_vol, kronstate_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
 
         # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron(I, sv) + 𝐒³⁻ᵉ² * kron(kron(I, sv), sv) / 2
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         copyto!(𝐒ⁱ, 𝐒¹ᵉ)
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
     
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        # The compressed shock-shock-state contraction is assembled below.
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         fill!(init_guess, zero(R))
 
@@ -2266,9 +2278,9 @@ function calculate_loglikelihood(::Val{:inversion},
         # # end
 
         # jacc = -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron(I,x) + 3 * 𝐒ⁱ³ᵉ * kron(I, kron(x,x)))
-        ℒ.kron!(kron_buffer2, J, x)
-        ℒ.kron!(kron_buffer, x, x)
-        ℒ.kron!(kron_buffer3, J, kron_buffer)
+compressed_kron²!(kron_buffer2, x, J)
+        compressed_kron²!(kron_buffer, x, x)
+compressed_kron³!(kron_buffer3, x, x, J)
         copyto!(jacc, 𝐒ⁱ)
         ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
         ℒ.mul!(jacc, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 1)
@@ -2295,8 +2307,8 @@ function calculate_loglikelihood(::Val{:inversion},
         copyto!(aug_state, n_past + 2, x, 1, n_exo)
 
         # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * kron(aug,aug)/2 + 𝐒⁻³ * kron(kron(aug,aug),aug)/6
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
-        ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
         ℒ.mul!(state, 𝐒⁻¹, aug_state)
         ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2, 1)
         ℒ.mul!(state, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
@@ -2544,10 +2556,10 @@ end
     𝐒¹⁻ᵛ = 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒₂[cond_var_idx,var_vol²_idxs]
+𝐒²⁻ᵛ = 𝐒₂[cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
     # 𝐒²⁻ = 𝐒₂[cond_var_idx,var²_idxs]
     𝐒²⁻ᵉ = 𝐒₂[cond_var_idx,shockvar²_idxs]
-    𝐒²ᵉ = 𝐒₂[cond_var_idx,shock²_idxs]
+𝐒²ᵉ = 𝐒₂[cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒₂[T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -2631,7 +2643,7 @@ end
             aug_state[n_past + 1] = 1.0
             copyto!(aug_state, n_past + 2, view(warmup_shocks, :, w), 1, n_exo)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
             ℒ.mul!(full_state, 𝐒₁, aug_state)
             ℒ.mul!(full_state, 𝐒₂, kronaug_state, 1/2, 1)
 
@@ -2650,7 +2662,7 @@ end
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
 
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
         # shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
@@ -2755,7 +2767,7 @@ end
         # end
 
         # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
-        ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
 
         ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
 
@@ -2772,7 +2784,7 @@ end
         # println("Match with data: $res")
 
         # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
         ℒ.mul!(full_state, 𝐒₁, aug_state)
         ℒ.mul!(full_state, 𝐒₂, kronaug_state, 1/2 ,1)
 
@@ -2838,10 +2850,10 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -2947,7 +2959,7 @@ end
             ℒ.mul!(state[1], 𝐒[1], aug_state₁)
             state₁ .= state[1][T.past_not_future_and_mixed_idx]
 
-            ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
             ℒ.mul!(state[2], 𝐒[1], aug_state₂)
             ℒ.mul!(state[2], 𝐒[2], kronaug_state₁, 1/2, 1)
             state₂ .= state[2][T.past_not_future_and_mixed_idx]
@@ -2971,7 +2983,7 @@ end
         
         ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
 
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
 
@@ -3094,7 +3106,7 @@ end
         ℒ.mul!(state[1], 𝐒[1], aug_state₁)
         state₁ .= state[1][T.past_not_future_and_mixed_idx]
 
-        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
         # ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
         # ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
         ℒ.mul!(state[2], 𝐒[1], aug_state₂)
@@ -3232,10 +3244,10 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
-    𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
-    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -3251,10 +3263,10 @@ end
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,shockvar³_idxs]
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx,shock³_idxs]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -3280,7 +3292,8 @@ end
 
     kron_buffer4 = ws.kron_buffer4
 
-    II = to.I_exo2
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = ℒ.I(n_exo_pair)
 
     state¹⁻_vol = ws.state_vol
     kronstate_vol = ws.kronstate_vol
@@ -3341,8 +3354,8 @@ end
             aug_state[n_past + 1] = 1.0
             copyto!(aug_state, n_past + 2, xw, 1, n_exo)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
-            ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
             ℒ.mul!(full_state, 𝐒[1], aug_state)
             ℒ.mul!(full_state, 𝐒[2], kronaug_state, 1/2, 1)
             ℒ.mul!(full_state, 𝐒[3], kron_kron_aug_state, 1/6, 1)
@@ -3360,22 +3373,30 @@ end
 
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
         
-        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
 
         copyto!(𝐒ⁱ, 𝐒¹ᵉ)
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
     
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
+        # The compressed shock-shock-state contraction is assembled below.
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -3555,8 +3576,8 @@ end
         # println("Match with data: $res")
 
         # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
-        ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
         ℒ.mul!(full_state, 𝐒[1], aug_state)
         ℒ.mul!(full_state, 𝐒[2], kronaug_state, 1/2, 1)
         ℒ.mul!(full_state, 𝐒[3], kron_kron_aug_state, 1/6, 1)
@@ -3629,11 +3650,11 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
-    𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,shockvar_idxs]
-    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -3648,10 +3669,10 @@ end
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-    𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
-    𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,shockvar³_idxs]
-    𝐒³ᵉ  = 𝐒[3][cond_var_idx,shock³_idxs]
+𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -3675,7 +3696,8 @@ end
 
     kron_buffer² = ws.kron_buffer²
 
-    II = to.I_exo2
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = ℒ.I(n_exo_pair)
     
     J = ℒ.I(T.nExo)
 
@@ -3762,15 +3784,15 @@ end
             aug_state₃[n_past + 1] = 0.0
             fill!(view(aug_state₃, n_past + 2:length(aug_state₃)), 0.0)
 
-            ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
-            ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
 
             ℒ.mul!(state[1], 𝐒[1], aug_state₁)
             ℒ.mul!(state[2], 𝐒[1], aug_state₂)
             ℒ.mul!(state[2], 𝐒[2], kron_aug_state₁, 1/2, 1)
             ℒ.mul!(state[3], 𝐒[1], aug_state₃)
-            ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
-            ℒ.mul!(state[3], 𝐒[2], kron_aug_state₁, 1, 1)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+            ℒ.mul!(state[3], 𝐒[2], kron_aug_state₁, 1.0, 1)
             ℒ.mul!(state[3], 𝐒[3], kron_kron_aug_state₁, 1/6, 1)
 
             state₁ .= state[1][T.past_not_future_and_mixed_idx]
@@ -3796,13 +3818,13 @@ end
 
         ℒ.mul!(shock_independent, 𝐒¹⁻, state₃, -1, 1)
 
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
         
-        ℒ.kron!(kron_buffer2ss, state₁, state₂)
+compressed_kron²!(kron_buffer2ss, state₁, state₂)
         ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
         
-        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)   
 
         copyto!(𝐒ⁱ, 𝐒¹ᵉ)
@@ -3810,13 +3832,20 @@ end
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer_state)
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
     
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -4013,8 +4042,8 @@ end
         aug_state₃[n_past + 1] = 0.0
         fill!(view(aug_state₃, n_past + 2:length(aug_state₃)), 0.0)
         
-        ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
-        ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
 
         # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * kron_aug_state₁ / 2   +   𝐒[1][cond_var_idx,:] * aug_state₃ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3][cond_var_idx,:] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6 - data_in_deviations[:,i]
         # println("Match with data: $res")
@@ -4026,8 +4055,8 @@ end
         ℒ.mul!(state[2], 𝐒[1], aug_state₂)
         ℒ.mul!(state[2], 𝐒[2], kron_aug_state₁, 1/2, 1)
         ℒ.mul!(state[3], 𝐒[1], aug_state₃)
-        ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
-        ℒ.mul!(state[3], 𝐒[2], kron_aug_state₁, 1, 1)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+        ℒ.mul!(state[3], 𝐒[2], kron_aug_state₁, 1.0, 1)
         ℒ.mul!(state[3], 𝐒[3], kron_kron_aug_state₁, 1/6, 1)
         
         state₁ .= state[1][T.past_not_future_and_mixed_idx]
@@ -4207,6 +4236,13 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     n_aug = n_past + 1 + n_exo
     n_state_vol = n_past + 1
     n_z = n_exo * n_warm
+    shock_offset = n_state_vol
+    shock_state_state_indices = sort!([compressed_triple_index(shock_offset + shock_index, i, j)
+                                       for shock_index in 1:n_exo for i in 1:n_state_vol for j in 1:i])
+    shock_shock_state_indices = sort!([compressed_triple_index(shock_offset + i,
+                                                                shock_offset + j,
+                                                                state_index)
+                                       for i in 1:n_exo for j in 1:i for state_index in 1:n_state_vol])
 
     state = copy(state0)
     state_next = similar(state0)
@@ -4228,11 +4264,11 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
         aug_state[n_past + 1] = one(R)
         copyto!(aug_state, n_past + 2, view(warmup_shocks, :, i), 1, n_exo)
 
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
         ℒ.mul!(state_next, 𝐒⁻¹, aug_state)
         ℒ.mul!(state_next, 𝐒⁻², kronaug_state, 1/2, 1)
 
-        jac_aug = (ℒ.kron(I_aug, aug_state) + ℒ.kron(aug_state, I_aug)) / 2
+        jac_aug = compressed_kron²(aug_state, I_aug)
         Fs = 𝐒⁻¹[:, 1:n_past] + 𝐒⁻² * jac_aug[:, 1:n_past]
         Fu = 𝐒⁻¹[:, n_past+2:end] + 𝐒⁻² * jac_aug[:, n_past+2:end]
 
@@ -4250,23 +4286,23 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
 
     fill!(y_pred, zero(R))
     ℒ.mul!(y_pred, 𝐒¹⁻ᵛ, state_vol)
-    ℒ.kron!(kronstate_vol, state_vol, state_vol)
+compressed_kron²!(kronstate_vol, state_vol, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵛ, kronstate_vol, 1/2, 1)
     ℒ.mul!(y_pred, 𝐒¹ᵉ, final_shock, 1, 1)
 
     ℒ.kron!(kron_shock_state, final_shock, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵉ, kron_shock_state, 1, 1)
 
-    ℒ.kron!(kron_shock_shock, final_shock, final_shock)
+    compressed_kron²!(kron_shock_shock, final_shock, final_shock)
     ℒ.mul!(y_pred, 𝐒²ᵉ, kron_shock_shock, 1/2, 1)
 
-    jac_state_vol = (ℒ.kron(I_state_vol, state_vol) + ℒ.kron(state_vol, I_state_vol)) / 2
+    jac_state_vol = compressed_kron²(state_vol, I_state_vol)
     jac_y_state = 𝐒¹⁻ᵛ + 𝐒²⁻ᵛ * jac_state_vol + 𝐒²⁻ᵉ * ℒ.kron(final_shock, I_state_vol)
 
     copyto!(jac_x, 𝐒¹ᵉ)
     ℒ.kron!(kron_I_state, I_exo, state_vol)
     ℒ.mul!(jac_x, 𝐒²⁻ᵉ, kron_I_state, 1, 1)
-    jac_x += 𝐒²ᵉ * (ℒ.kron(I_exo, final_shock) + ℒ.kron(final_shock, I_exo)) / 2
+    jac_x += 𝐒²ᵉ * compressed_kron²(final_shock, I_exo)
 
     jac = zeros(R, n_obs, n_z)
     ℒ.mul!(jac, jac_y_state[:, 1:n_past], ds_dz)
@@ -4423,13 +4459,13 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
         aug_state₂[n_past + 1] = zero(R)
         fill!(view(aug_state₂, n_past + 2:n_past + 1 + n_exo), zero(R))
 
-        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
 
         ℒ.mul!(state₁_next, 𝐒⁻¹, aug_state₁)
         ℒ.mul!(state₂_next, 𝐒⁻¹, aug_state₂)
         ℒ.mul!(state₂_next, 𝐒⁻², kronaug_state₁, 1/2, 1)
 
-        jac_aug = (ℒ.kron(I_aug, aug_state₁) + ℒ.kron(aug_state₁, I_aug)) / 2
+        jac_aug = compressed_kron²(aug_state₁, I_aug)
         A11 = 𝐒⁻¹[:, 1:n_past]
         B1 = 𝐒⁻¹[:, n_past+2:end]
         A22 = 𝐒⁻¹[:, 1:n_past]
@@ -4466,17 +4502,17 @@ function pruned_second_order_warmup_observation_and_jacobian(state10::AbstractVe
     ℒ.kron!(kron_shock_state, final_shock, state₁_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵉ, kron_shock_state, 1, 1)
 
-    ℒ.kron!(kron_shock_shock, final_shock, final_shock)
+    compressed_kron²!(kron_shock_shock, final_shock, final_shock)
     ℒ.mul!(y_pred, 𝐒²ᵉ, kron_shock_shock, 1/2, 1)
 
-    jac_state_vol = (ℒ.kron(I_state_vol, state₁_vol) + ℒ.kron(state₁_vol, I_state_vol)) / 2
+    jac_state_vol = compressed_kron²(state₁_vol, I_state_vol)
     jac_y_s1 = 𝐒¹⁻ᵛ[:, 1:n_past] + 𝐒²⁻ᵛ * jac_state_vol[:, 1:n_past] + 𝐒²⁻ᵉ * ℒ.kron(final_shock, I_state_vol)[:, 1:n_past]
     jac_y_s2 = 𝐒¹⁻
 
     copyto!(jac_x, 𝐒¹ᵉ)
     ℒ.kron!(kron_I_state, I_exo, state₁_vol)
     ℒ.mul!(jac_x, 𝐒²⁻ᵉ, kron_I_state, 1, 1)
-    jac_x += 𝐒²ᵉ * (ℒ.kron(I_exo, final_shock) + ℒ.kron(final_shock, I_exo)) / 2
+    jac_x += 𝐒²ᵉ * compressed_kron²(final_shock, I_exo)
 
     jac = zeros(R, n_obs, n_z)
     ℒ.mul!(jac, jac_y_s1, ds1_dz)
@@ -4634,18 +4670,18 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
         aug_state[n_past + 1] = one(R)
         copyto!(aug_state, n_past + 2, view(warmup_shocks, :, i), 1, n_exo)
 
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
         ℒ.mul!(state_next, 𝐒⁻¹, aug_state)
         ℒ.mul!(state_next, 𝐒⁻², kronaug_state, 1/2, 1)
 
-        ℒ.kron!(kron_aug3, kronaug_state, aug_state)
+        compressed_kron³!(kron_aug3, aug_state, aug_state, aug_state)
         ℒ.mul!(state_next, 𝐒⁻³, kron_aug3, 1/6, 1)
 
-        jac_aug2 = (ℒ.kron(I_aug, aug_state) + ℒ.kron(aug_state, I_aug)) / 2
-        jac_aug3 = ℒ.kron(ℒ.kron(I_aug, aug_state) + ℒ.kron(aug_state, I_aug), aug_state) + ℒ.kron(kronaug_state, I_aug)
+        jac_aug2 = compressed_kron²(aug_state, I_aug)
+        jac_aug3 = compressed_kron³(aug_state, aug_state, I_aug)
 
-        Fs = 𝐒⁻¹[:, 1:n_past] + 𝐒⁻² * jac_aug2[:, 1:n_past] + 𝐒⁻³ * (jac_aug3[:, 1:n_past] / 6)
-        Fu = 𝐒⁻¹[:, n_past+2:end] + 𝐒⁻² * jac_aug2[:, n_past+2:end] + 𝐒⁻³ * (jac_aug3[:, n_past+2:end] / 6)
+        Fs = 𝐒⁻¹[:, 1:n_past] + 𝐒⁻² * jac_aug2[:, 1:n_past] + 𝐒⁻³ * (jac_aug3[:, 1:n_past] / 2)
+        Fu = 𝐒⁻¹[:, n_past+2:end] + 𝐒⁻² * jac_aug2[:, n_past+2:end] + 𝐒⁻³ * (jac_aug3[:, n_past+2:end] / 2)
 
         ℒ.mul!(ds_tmp, Fs, ds_dz)
         copyto!(ds_dz, ds_tmp)
@@ -4662,10 +4698,10 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     fill!(y_pred, zero(R))
     ℒ.mul!(y_pred, 𝐒¹⁻ᵛ, state_vol)
 
-    ℒ.kron!(kronstate_vol, state_vol, state_vol)
+compressed_kron²!(kronstate_vol, state_vol, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵛ, kronstate_vol, 1/2, 1)
 
-    ℒ.kron!(kronstate_vol3, state_vol, kronstate_vol)
+    compressed_kron³!(kronstate_vol3, state_vol, state_vol, state_vol)
     ℒ.mul!(y_pred, 𝐒³⁻ᵛ, kronstate_vol3, 1/6, 1)
 
     ℒ.mul!(y_pred, 𝐒¹ᵉ, final_shock, 1, 1)
@@ -4673,7 +4709,7 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     ℒ.kron!(kron_shock_state, final_shock, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵉ, kron_shock_state, 1, 1)
 
-    ℒ.kron!(kron_shock_state2, kron_shock_state, state_vol)
+    ℒ.kron!(kron_shock_state2, final_shock, kronstate_vol)
     ℒ.mul!(y_pred, 𝐒³⁻ᵉ², kron_shock_state2, 1/2, 1)
 
     ℒ.kron!(kron_shock_shock, final_shock, final_shock)
@@ -4682,26 +4718,35 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     ℒ.kron!(kron_shock2_state, kron_shock_shock, state_vol)
     ℒ.mul!(y_pred, 𝐒³⁻ᵉ, kron_shock2_state, 1/2, 1)
 
-    ℒ.kron!(kron_shock3, final_shock, kron_shock_shock)
+    compressed_kron³!(kron_shock3, final_shock, final_shock, final_shock)
     ℒ.mul!(y_pred, 𝐒³ᵉ, kron_shock3, 1/6, 1)
 
-    jac_state2 = ℒ.kron(I_state_vol, state_vol) + ℒ.kron(state_vol, I_state_vol)
-    jac_state3 = ℒ.kron(jac_state2, state_vol) + ℒ.kron(kronstate_vol, I_state_vol)
+    jac_state2 = compressed_kron²(state_vol, I_state_vol)
+    jac_state3 = compressed_kron³(state_vol, state_vol, I_state_vol)
 
-    jac_y_state = 𝐒¹⁻ᵛ + 𝐒²⁻ᵛ * (jac_state2 / 2) + 𝐒³⁻ᵛ * (jac_state3 / 6)
+    jac_y_state = 𝐒¹⁻ᵛ + 𝐒²⁻ᵛ * jac_state2 + 𝐒³⁻ᵛ * (jac_state3 / 2)
     jac_y_state += 𝐒²⁻ᵉ * ℒ.kron(final_shock, I_state_vol)
-    jac_y_state += 𝐒³⁻ᵉ² * (ℒ.kron(ℒ.kron(final_shock, I_state_vol), state_vol) + ℒ.kron(ℒ.kron(final_shock, state_vol), I_state_vol)) / 2
+    jac_y_state += 𝐒³⁻ᵉ² * compressed_triple_shock_state_to_state(final_shock,
+                                                                    state_vol,
+                                                                    shock_offset,
+                                                                    shock_state_state_indices)
     jac_y_state += 𝐒³⁻ᵉ * ℒ.kron(kron_shock_shock, I_state_vol) / 2
 
     copyto!(jac_x, 𝐒¹ᵉ)
     ℒ.kron!(kron_I_state, I_exo, state_vol)
     ℒ.mul!(jac_x, 𝐒²⁻ᵉ, kron_I_state, 1, 1)
-    jac_x += 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(I_exo, state_vol), state_vol) / 2
-    jac_x += 𝐒²ᵉ * (ℒ.kron(I_exo, final_shock) + ℒ.kron(final_shock, I_exo)) / 2
-    jac_x += 𝐒³⁻ᵉ * (ℒ.kron(I_exo, kron_shock_state) + ℒ.kron(final_shock, kron_I_state)) / 2
+    jac_x += 𝐒³⁻ᵉ² * compressed_triple_state_pair_to_shock(kronstate_vol,
+                                                            n_aug,
+                                                            shock_offset,
+                                                            n_exo,
+                                                            shock_state_state_indices)
+    jac_x += 𝐒²ᵉ * compressed_kron²(final_shock, I_exo)
+    jac_x += 𝐒³⁻ᵉ * compressed_triple_state_shock_to_shock(state_vol,
+                                                            final_shock,
+                                                            shock_offset,
+                                                            shock_shock_state_indices)
 
-    jac_x3 = ℒ.kron(ℒ.kron(I_exo, final_shock) + ℒ.kron(final_shock, I_exo), final_shock) + ℒ.kron(kron_shock_shock, I_exo)
-    jac_x += 𝐒³ᵉ * (jac_x3 / 6)
+    jac_x += 𝐒³ᵉ * (compressed_kron³(final_shock, final_shock, I_exo) / 2)
 
     jac = zeros(R, n_obs, n_z)
     ℒ.mul!(jac, jac_y_state[:, 1:n_past], ds_dz)
@@ -4981,6 +5026,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -5001,10 +5047,10 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
@@ -5076,7 +5122,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
 
             ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
             ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
-            ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
             ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
         end
 
@@ -5097,7 +5143,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
         copyto!(shock_independent, view(data_in_deviations, :, i))
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
 
         ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
@@ -5125,7 +5171,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
             end
             if i > presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
-                ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
                 logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
@@ -5146,7 +5192,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
 
         ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
         ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
-        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+compressed_kron²!(kronaug_state₁, aug_state₁, aug_state₁)
         ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
     end
 
@@ -5172,6 +5218,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -5190,9 +5237,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
@@ -5253,7 +5300,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
             aug_state[length(st) + 1] = one(R)
             copyto!(aug_state, length(st) + 2, view(warmup_shocks, :, w), 1)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
             ℒ.mul!(st, 𝐒⁻¹, aug_state)
             ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
         end
@@ -5274,7 +5321,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
 
         copyto!(shock_independent, view(data_in_deviations, :, i))
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
-        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
 
         ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
@@ -5302,7 +5349,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
             end
             if i > presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
-                ℒ.kron!(kron_buffer2, J, x)
+compressed_kron²!(kron_buffer2, x, J)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.axpby!(1, 𝐒ⁱ_v, 2, jacc_v)
                 logabsdets += m == n_exo ? ℒ.logabsdet(jacc_v)[1] : ℒ.logabsdet(jacc_v * jacc_v')[1] / 2
@@ -5318,7 +5365,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
         aug_state[length(st) + 1] = one(R)
         copyto!(aug_state, length(st) + 2, x, 1)
 
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
         ℒ.mul!(st, 𝐒⁻¹, aug_state)
         ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
     end
@@ -5345,6 +5392,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -5371,16 +5419,16 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻   = 𝐒[2][cond_var_idx, var²_idxs]
-    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, shockvar_idxs]
-    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻   = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ   = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs]
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ
@@ -5399,7 +5447,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     st3 = convert(Vector{R}, state[3][T.past_not_future_and_mixed_idx])
 
     J  = ℒ.I(n_exo)
-    II = ℒ.I(n_exo^2)
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = ℒ.I(n_exo_pair)
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
     state_vol         = ws.state_vol
@@ -5483,8 +5532,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
             aug_state₃[n_past + 1] = zero(R)
             fill!(view(aug_state₃, n_past + 2:n_past + 1 + n_exo), zero(R))
 
-            ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
-            ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
 
             ℒ.mul!(st1, 𝐒⁻¹, aug_state₁)
 
@@ -5492,8 +5541,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
             ℒ.mul!(st2, 𝐒⁻², kron_aug_state₁, 1/2, 1)
 
             ℒ.mul!(st3, 𝐒⁻¹, aug_state₃)
-            ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
-            ℒ.mul!(st3, 𝐒⁻², kron_aug_state₁, 1, 1)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+            ℒ.mul!(st3, 𝐒⁻², kron_aug_state₁, 1.0, 1)
             ℒ.mul!(st3, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
         end
 
@@ -5516,11 +5565,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         ℒ.mul!(shock_independent, 𝐒¹⁻, st2, -1, 1)
         ℒ.mul!(shock_independent, 𝐒¹⁻, st3, -1, 1)
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
-        ℒ.kron!(kron_buffer2ss, st1, st2)
+compressed_kron²!(kron_buffer2ss, st1, st2)
         ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
-        ℒ.kron!(kronstate_vol³, kronstate_vol, state¹⁻_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)
 
         copyto!(state²⁻_vol, 1, st2, 1); state²⁻_vol[end] = zero(R)
@@ -5528,13 +5577,20 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
         ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵛᵉ, kron_buffer_state)
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         if m == 0
             x = x_zero
@@ -5558,8 +5614,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
                 return on_failure_loglikelihood
             end
             if i > presample_periods
-                ℒ.kron!(kron_buffer2, J, x)
-                ℒ.kron!(kron_buffer3, kron_buffer2, x)
+compressed_kron²!(kron_buffer2, x, J)
+compressed_kron³!(kron_buffer3, x, x, J)
                 jacc_v = view(jacc_v_buf, 1:m, :)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2)
                 ℒ.mul!(jacc_v, 𝐒ⁱ³ᵉ_v, kron_buffer3, 3, 2)
@@ -5578,14 +5634,14 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
         copyto!(aug_state₂, 1, st2, 1, n_past); aug_state₂[n_past+1] = zero(R); fill!(view(aug_state₂, n_past+2:n_past+1+n_exo), zero(R))
         copyto!(aug_state₃, 1, st3, 1, n_past); aug_state₃[n_past+1] = zero(R); fill!(view(aug_state₃, n_past+2:n_past+1+n_exo), zero(R))
 
-        ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
-        ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
+compressed_kron²!(kron_aug_state₁, aug_state₁, aug_state₁)
+compressed_kron³!(kron_kron_aug_state₁, aug_state₁, aug_state₁, aug_state₁)
 
         ℒ.mul!(st1, 𝐒⁻¹, aug_state₁)
         ℒ.mul!(st2, 𝐒⁻¹, aug_state₂); ℒ.mul!(st2, 𝐒⁻², kron_aug_state₁, 1/2, 1)
         ℒ.mul!(st3, 𝐒⁻¹, aug_state₃)
-        ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
-        ℒ.mul!(st3, 𝐒⁻², kron_aug_state₁, 1, 1)
+compressed_kron²!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+        ℒ.mul!(st3, 𝐒⁻², kron_aug_state₁, 1.0, 1)
         ℒ.mul!(st3, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
     end
 
@@ -5611,6 +5667,7 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     T = constants.post_model_macro
     n_exo  = T.nExo
     n_past = T.nPast_not_future_and_mixed
+    shock_shock_state_indices = compressed_shock_shock_state_indices(n_past, n_exo)
     cond_var_idx = observables_index
     n_cond = length(cond_var_idx)
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -5634,14 +5691,14 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-    𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, var_vol²_idxs]
-    𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, shockvar²_idxs]
-    𝐒²ᵉ   = 𝐒[2][cond_var_idx, shock²_idxs]
+𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²ᵉ   = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
-    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx, var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, shockvar³2_idxs] |> collect
-    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx, shockvar³_idxs]
-    𝐒³ᵉ   = 𝐒[3][cond_var_idx, shock³_idxs]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo, T.nPast_not_future_and_mixed + 1)]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ
@@ -5656,7 +5713,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
     J  = ℒ.I(n_exo)
-    II = sparse(ℒ.I(n_exo^2))
+    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
+    II = sparse(ℒ.I(n_exo_pair))
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
     state_vol         = ws.state_vol
@@ -5721,8 +5779,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
             aug_state[n_past + 1] = one(R)
             copyto!(aug_state, n_past + 2, view(warmup_shocks, :, w), 1, n_exo)
 
-            ℒ.kron!(kronaug_state, aug_state, aug_state)
-            ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
             ℒ.mul!(st, 𝐒⁻¹, aug_state)
             ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
             ℒ.mul!(st, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
@@ -5745,20 +5803,27 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
 
         copyto!(shock_independent, view(data_in_deviations, :, i))
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
-        ℒ.kron!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
+compressed_kron²!(kronstate_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate_vol, -1/2, 1)
-        ℒ.kron!(kronstate_vol³, state¹⁻_vol, kronstate_vol)
+compressed_kron³!(kronstate_vol³, state¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kronstate_vol³, -1/6, 1)
 
         ℒ.kron!(kron_buffer_state, J, state¹⁻_vol)
         copyto!(𝐒ⁱ_full, 𝐒¹ᵉ)
         ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_buffer_state, 1, 1)
-        ℒ.kron!(kron_buffer3sv, kron_buffer_state, state¹⁻_vol)
+        ℒ.kron!(kron_buffer3sv, J, kronstate_vol)
         ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
-        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1/2, 1)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full,
+               𝐒³⁻ᵉ,
+               compressed_triple_state_to_pair(state¹⁻_vol,
+                                                n_past + 1 + n_exo,
+                                                n_past + 1,
+                                                n_exo,
+                                                shock_shock_state_indices),
+               1,
+               1)
 
         if m == 0
             x = x_zero
@@ -5782,9 +5847,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
                 return on_failure_loglikelihood
             end
             if i > presample_periods
-                ℒ.kron!(kron_buffer2, J, x)
-                ℒ.kron!(kron_buffer, x, x)
-                ℒ.kron!(kron_buffer3, J, kron_buffer)
+compressed_kron²!(kron_buffer2, x, J)
+                compressed_kron²!(kron_buffer, x, x)
+compressed_kron³!(kron_buffer3, x, x, J)
                 jacc_v = view(jacc_v_buf, 1:m, :)
                 copyto!(jacc_v, 𝐒ⁱ_v)
                 ℒ.mul!(jacc_v, 𝐒ⁱ²ᵉ_v, kron_buffer2, 2, 1)
@@ -5800,8 +5865,8 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
         end
 
         copyto!(aug_state, 1, st, 1, n_past); aug_state[n_past+1] = one(R); copyto!(aug_state, n_past+2, x, 1, n_exo)
-        ℒ.kron!(kronaug_state, aug_state, aug_state)
-        ℒ.kron!(kron_kron_aug_state, kronaug_state, aug_state)
+compressed_kron²!(kronaug_state, aug_state, aug_state)
+compressed_kron³!(kron_kron_aug_state, aug_state, aug_state, aug_state)
         ℒ.mul!(st, 𝐒⁻¹, aug_state)
         ℒ.mul!(st, 𝐒⁻², kronaug_state, 1/2, 1)
         ℒ.mul!(st, 𝐒⁻³, kron_kron_aug_state, 1/6, 1)
