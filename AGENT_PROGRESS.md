@@ -80,7 +80,7 @@ LoopVectorization is not applicable to the branchy triangular cubic kernel; a br
 
 Verification for this follow-up:
 
-- `test/test_compressed_kron.jl`: 89/89 checks, including directional derivative identities, bang-helper equivalence, and the static audit.
+- `test/test_compressed_kron.jl`: all test groups passed (86 vector, 4 power-edge, 6 VJP, 3 state-equivalence, 3 directional-derivative, 6 cached-helper, and 83 static-audit assertions).
 - `test/test_inversion_filter_likelihood.jl`: 7/7 checks.
 - User-facing RBC smoke: second-, third-, and pruned-third-order stochastic steady states all returned finite values.
 - `test/test_filter_free_gradients.jl` could not start because `ForwardDiff` is absent from the test environment; no code failure was observed.
