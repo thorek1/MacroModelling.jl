@@ -194,3 +194,60 @@ end
     @test all(isfinite, pf_BB)
     @test abs(kal_shift - Statistics.mean(pf_BB)) < 8
 end
+
+# -----------------------------------------------------------------------------
+# Higher-order equivalence for the particle filters.
+#
+# Smets-Wouters (2007) in its log-linearised form is *linear*, so every
+# perturbation order yields the same solution — asserted below rather than
+# assumed. That makes it a rare thing: a model complex enough to be a real test
+# (40 variables, 7 shocks, 7 observables, 184 periods) on which the exact
+# likelihood is known, yet which exercises the higher-order particle machinery —
+# the pruned and non-pruned second-order transitions, their augmented Kronecker
+# scratch, and the pruned `Vector{Vector}` particle layout. (Third order is
+# covered on a small linear model in `test_particle_filter.jl` — same idea, but
+# seconds rather than minutes per evaluation on 40 variables.)
+#
+# Any deviation from the Kalman value beyond Monte-Carlo error is therefore a
+# bug in the higher-order transition code, not a property of the model.
+# -----------------------------------------------------------------------------
+@testset "SW07 linear: particle filter at higher order matches Kalman" begin
+    dat, header = readdlm(joinpath(@__DIR__, "data", "usmodel.csv"), ',', header = true)
+    dat = Float64.(dat)
+    csv_names = vec(Symbol.(strip.(header)))
+    data = KeyedArray(dat', Variable = csv_names, Time = axes(dat, 1))
+    data = data([:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs], 47:230)
+    observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs]
+    data = rekey(data, :Variable => observables)
+
+    include("../models/Smets_Wouters_2007_linear.jl")
+    SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])
+    m = Smets_Wouters_2007_linear
+    p = m.parameter_values
+
+    # Premise: the model is linear. The inversion filter is deterministic, so if
+    # the higher-order solution terms vanish it must return the identical value
+    # at every order.
+    inv_lls = [get_loglikelihood(m, data, p; filter = :inversion, algorithm = a)
+               for a in (:first_order, :pruned_second_order, :second_order,
+                         :pruned_third_order, :third_order)]
+    @test all(isapprox.(inv_lls, inv_lls[1], rtol = 1e-10))
+
+    me = 2.0 .* [Statistics.std(collect(data(o))) for o in observables]
+    kal = get_loglikelihood(m, data, p; filter = :kalman, presample_periods = 4,
+                            initial_covariance = :theoretical, measurement_error = me .^ 2)
+
+    # Second order only: third order on a 40-variable model costs minutes per
+    # evaluation, which is not worth it here. The third-order transitions are
+    # covered against the same exact reference on a small linear model in
+    # `test_particle_filter.jl`, where the whole sweep runs in seconds.
+    for (algo, N, tol) in ((:pruned_second_order, 20_000, 15.0),
+                           (:second_order,        20_000, 15.0))
+        lls = [get_loglikelihood(m, data, p; filter = :bootstrap_particle, algorithm = algo,
+                                 presample_periods = 4, initial_covariance = :theoretical,
+                                 measurement_error = me .^ 2, n_particles = N,
+                                 particle_rng = Random.Xoshiro(700 + s)) for s in 1:2]
+        @test all(isfinite, lls)
+        @test abs(kal - Statistics.mean(lls)) < tol
+    end
+end
