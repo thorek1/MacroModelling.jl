@@ -3182,7 +3182,22 @@ function compressed_triple_state_pair_to_shock_vjp!(dstate::AbstractVector,
             end
         end
     end
-    compressed_kron²_power_vjp!(dstate, dstate_pair, state)
+    # `compressed_kron²_power_vjp!` fills its output.  This helper has
+    # accumulating semantics, so add the state-pair contribution explicitly
+    # instead of overwriting cotangents already supplied by other terms.
+    pair_index = 0
+    @inbounds for i in eachindex(state)
+        for j in 1:i
+            pair_index += 1
+            value = dstate_pair[pair_index]
+            if i == j
+                dstate[i] += 2 * value * state[i]
+            else
+                dstate[i] += 2 * value * state[j]
+                dstate[j] += 2 * value * state[i]
+            end
+        end
+    end
     return dstate
 end
 

@@ -101,7 +101,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             else
                 𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(var_vol²_idxs, n_global)]
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global)]
 
                 compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
@@ -126,7 +126,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             else
                 𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(var_vol²_idxs, n_global)]
                 𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global)]
 
                 compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
@@ -154,12 +154,12 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒²⁻ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(var²_idxs, n_global)]
             𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
             𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar_idxs, n_global)]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global)]
 
             𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(var_vol³_idxs, n_global)]
             𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shockvar³2_idxs, n_global)]
             𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shockvar³_idxs, n_global)]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shock³_idxs, n_global, nPast + 1)]
+                𝐒³ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shock³_idxs, n_global)]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
@@ -204,12 +204,12 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
             𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(var_vol²_idxs, n_global)]
             𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shockvar²_idxs, n_global)]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global, nPast + 1)]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, compressed_pair_indices(shock²_idxs, n_global)]
 
             𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(var_vol³_idxs, n_global)]
             𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shockvar³2_idxs, n_global)]
             𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shockvar³_idxs, n_global)]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shock³_idxs, n_global, nPast + 1)]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, compressed_triple_indices(shock³_idxs, n_global)]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)

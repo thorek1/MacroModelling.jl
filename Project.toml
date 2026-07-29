@@ -122,6 +122,7 @@ BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CondaPkg = "992eb4ea-22a4-4c89-a5bb-47a3300528ab"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
@@ -141,4 +142,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ADTypes", "Aqua", "BenchmarkTools", "CondaPkg", "PythonCall", "JET", "Dates", "DelimitedFiles", "DifferentiationInterface", "DynamicPPL", "ForwardDiff", "Mooncake", "FlexiChains", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "StatsPlots", "Preferences", "Zygote"]
+test = ["ADTypes", "Aqua", "BenchmarkTools", "CondaPkg", "PythonCall", "JET", "Dates", "DelimitedFiles", "Statistics", "DifferentiationInterface", "DynamicPPL", "ForwardDiff", "Mooncake", "FlexiChains", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "StatsPlots", "Preferences", "Zygote"]

@@ -52,4 +52,12 @@ A redundant `--compiled-modules=no` source-load probe was interrupted after 8.5 
 
 The predict/score loops in bootstrap, auxiliary, and tempered filters are particle-independent within a period and can be threaded. Resampling, weight normalization/reduction, tempering level selection, and MH acceptance remain sequential synchronization points. A safe production design must pre-draw shocks sequentially (preserving `particle_rng` order), use a typed chunk function with one scratch/shock/measurement buffer per chunk, and either restrict the fast path to diagonal measurement error or give dense measurement-error state one cache per chunk. An opt-in threshold is preferable because the small RBC end-to-end benchmark did not benefit.
 
+## CI repair follow-up
+
+- Added `Statistics` to the test target so the particle-filter test environment can load the stdlib explicitly.
+- Made particle-pool cross-representation copy methods explicit for JET's nested-vector union split, and narrowed validated particle measurement error before the keyword dispatch boundary.
+- Added the missing cached shock–shock–state row bindings in ordinary and pruned third-order inversion paths; pure shock-coordinate selectors now use global compressed maps without state offsets.
+- Reproduced the Windows inversion `BoundsError` with the affected selector shape and verified second-order RBC calibration and inversion calls return finite results after the global-map fix. The focused missing-data likelihood and shock-estimation probes also pass.
+- The old CI run's later SSS finite-difference and Turing initialisation failures were not treated as solved by masking them; they require separate numerical reproductions if they recur after these direct dispatch and index fixes.
+
 LoopVectorization is not applicable to the branchy triangular cubic kernel; a branchless candidate was slower. Existing preallocation, function barriers, `mul!`, `@inbounds`, and dense/sparse selection are already used where applicable.

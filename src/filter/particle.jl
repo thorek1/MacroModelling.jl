@@ -567,6 +567,19 @@ end
     end
     return dst
 end
+# These branches are unreachable for a valid particle pool, but making the
+# cross-representation cases explicit keeps union-specialized JET analysis
+# total and fails visibly if a pool is ever assembled with mixed shapes.
+@inline copy_particle!(::AbstractVector{Float64}, ::AbstractVector{<:AbstractVector}) =
+    throw(ArgumentError("cannot copy a structured particle into a flat particle"))
+@inline copy_particle!(::AbstractVector{<:AbstractVector}, ::AbstractVector{Float64}) =
+    throw(ArgumentError("cannot copy a flat particle into a structured particle"))
+# Spell out the concrete nested-vector cases as well.  JET's union splitting
+# does not always prove the subtype relation in the parametric methods above.
+@inline copy_particle!(::Vector{Float64}, ::Vector{Vector{Float64}}) =
+    throw(ArgumentError("cannot copy a structured particle into a flat particle"))
+@inline copy_particle!(::Vector{Vector{Float64}}, ::Vector{Float64}) =
+    throw(ArgumentError("cannot copy a flat particle into a structured particle"))
 
 # A zeroed particle with the same shape as `template` (for the second pool).
 zeros_like_particle(template::AbstractVector{Float64}) = zeros(Float64, length(template))

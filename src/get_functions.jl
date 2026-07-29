@@ -4830,6 +4830,7 @@ function get_loglikelihood(𝓂::ℳ,
         if measurement_error_H === nothing
             error("The particle filters require measurement error (they are degenerate without it); set `measurement_error` to a positive variance (scalar, per-observable vector, or covariance matrix), or leave it at `:auto`.")
         end
+        particle_measurement_error = measurement_error_H::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}}
         # The particle filter evaluates in Float64 and is not differentiable; a
         # forward-mode `Dual` parameter type would silently yield a zero gradient.
         if !(S <: AbstractFloat)
@@ -4848,7 +4849,7 @@ function get_loglikelihood(𝓂::ℳ,
                             constants_obj,
                             state,
                             𝓂,
-                            measurement_error_H,
+                            particle_measurement_error,
                             obs_idx_per_t,
                             has_missing;
                             n_particles = n_particles,
