@@ -18982,7 +18982,9 @@ function filter_free_pullback_pruned3rd(
         d_k12 = Vector{eltype(d_aug₁)}(undef, length(k12))
         ℒ.mul!(d_k12, 𝐒₂', d_new_3)
         d_aug₁̂ = similar(aug₁̂)
-        compressed_kron²_vjp!(d_aug₁̂, d_aug₂, d_k12, aug₁̂, aug₂)
+        d_aug₂_from_cross = similar(d_aug₂)
+        compressed_kron²_vjp!(d_aug₁̂, d_aug₂_from_cross, d_k12, aug₁̂, aug₂)
+        ℒ.axpy!(one(eltype(d_aug₂)), d_aug₂_from_cross, d_aug₂)
         # 𝐒₃ * kron(kaug₁, aug₁) / 6
         sixth = one(eltype(d_aug₁)) / 6
         kaug3 = compressed_kron³_power(aug₁)
@@ -19196,7 +19198,9 @@ function filter_free_warmup_pullback_pruned3rd(
         d_k12 = Vector{eltype(d_aug₁)}(undef, length(k12))
         ℒ.mul!(d_k12, 𝐒₂', d_new_3)
         d_aug₁̂ = similar(aug₁̂)
-        compressed_kron²_vjp!(d_aug₁̂, d_aug₂, d_k12, aug₁̂, aug₂)
+        d_aug₂_from_cross = similar(d_aug₂)
+        compressed_kron²_vjp!(d_aug₁̂, d_aug₂_from_cross, d_k12, aug₁̂, aug₂)
+        ℒ.axpy!(one(eltype(d_aug₂)), d_aug₂_from_cross, d_aug₂)
         sixth = one(eltype(d_aug₁)) / 6
         kaug3 = compressed_kron³_power(aug₁)
         ℒ.mul!(d_𝐒₃, d_new_3, kaug3', sixth, one(eltype(d_𝐒₃)))
@@ -19584,7 +19588,7 @@ function rrule(::typeof(get_loglikelihood),
             aug₁ = vcat(cur_state[1][past_in_needed], one(R), ϵ)
             aug₂ = vcat(cur_state[2][past_in_needed], zero(R), zeros(R, nExo))
             warmup_intermediates[t] = (; aug₁ = aug₁, aug₂ = aug₂)
-            cur_state = [𝐒₁ * aug₁, 𝐒₁ * aug₂ + (𝐒₂ * kron(aug₁, aug₁)) ./ R(2)]
+            cur_state = [𝐒₁ * aug₁, 𝐒₁ * aug₂ + (𝐒₂ * compressed_kron²_power(aug₁)) ./ R(2)]
         end
         @inbounds for t in 1:nT
             idx = obs_idx_per_t[t]
@@ -19592,7 +19596,7 @@ function rrule(::typeof(get_loglikelihood),
             aug₁ = vcat(cur_state[1][past_in_needed], one(R), ϵ)
             aug₂ = vcat(cur_state[2][past_in_needed], zero(R), zeros(R, nExo))
             new1 = 𝐒₁ * aug₁
-            new2 = 𝐒₁ * aug₂ + (𝐒₂ * kron(aug₁, aug₁)) ./ R(2)
+            new2 = 𝐒₁ * aug₂ + (𝐒₂ * compressed_kron²_power(aug₁)) ./ R(2)
             new_state = [new1, new2]
             residual  = data_in_deviations[idx, t] - (new1[obs_in_needed[idx]] + new2[obs_in_needed[idx]])
             llh += filter_free_obs_logpdf(residual, period_me_std(aligned_me_std, idx, t))

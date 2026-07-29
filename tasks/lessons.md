@@ -26,3 +26,8 @@
 - A compressed symmetric directional derivative already contains the distinct permutation sum: `d(C₂(a,a))/2 = C₂(da,a)` and `d(C₃(a,a,a))/6 = C₃(da,a,a)/2`. Applying the old full-coordinate prefactors again silently drops a factor of two or three.
 - Existing third-order inversion workspaces already have matrices with the exact selector dimensions needed by state-to-pair and state-pair-to-shock helpers. Adding bang overloads and reusing those buffers removes the recurring output allocation without changing downstream matrix types.
 - Sparse selector matrices can be much cheaper for the subsequent multiplication when the selector pattern is very thin, but a useful sparse implementation needs a cached CSC pattern and value-position map. Do not rebuild sparse structure in a period loop; measure the full workload before adding that cache.
+
+## 2026-07-29
+
+- A compressed VJP kernel fills both output cotangents. When one output already contains contributions from another branch, route the kernel result through a scratch vector and accumulate it; passing the live cotangent directly silently discards earlier terms.
+- Optional AD packages must be installed in the isolated test environment before interpreting a gradient test failure. After adding the declared test dependencies, the filter-free gradient suite passed 185/185.

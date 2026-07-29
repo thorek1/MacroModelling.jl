@@ -83,4 +83,15 @@ Verification for this follow-up:
 - `test/test_compressed_kron.jl`: all test groups passed (86 vector, 4 power-edge, 6 VJP, 3 state-equivalence, 3 directional-derivative, 6 cached-helper, and 83 static-audit assertions).
 - `test/test_inversion_filter_likelihood.jl`: 7/7 checks.
 - User-facing RBC smoke: second-, third-, and pruned-third-order stochastic steady states all returned finite values.
-- `test/test_filter_free_gradients.jl` could not start because `ForwardDiff` is absent from the test environment; no code failure was observed.
+
+## ForwardDiff gradient repair
+
+- Added the `filtered` keyword to the ForwardDiff higher-order stochastic-steady-state Newton overloads and kept their residual/Jacobian contractions compressed.
+- Replaced the remaining full `kron(aug₁, aug₁)` construction in the pruned second-order filter-free forward rrule with the compressed power kernel.
+- Fixed pruned third-order reverse pullbacks so the compressed cross-term VJP is accumulated into the existing linear `aug₂` cotangent instead of overwriting it; the visible and warmup paths now match the full-coordinate accumulation semantics.
+
+Verification:
+
+- `test/test_filter_free_gradients.jl`: 185/185 passed in 5m03.4s in an isolated environment containing the optional ForwardDiff, Zygote, FiniteDifferences, DifferentiationInterface, ADTypes, and Mooncake test dependencies.
+- The focused boundary probe passed all five algorithms, with analytical shock cotangents agreeing with fifth-order central finite differences to approximately 1e-12.
+- The full test suite remains intentionally unrun.

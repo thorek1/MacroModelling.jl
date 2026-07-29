@@ -29,6 +29,8 @@ import MacroModelling:
     ensure_lyapunov_workspace!, evaluate_custom_steady_state_function,
     solve_nsss_wrapper, update_ss_counter!, factorize_lu!, solve_lu_left!,
     get_initial_covariance, find_shocks, normalize_presample_periods,
+    compressed_kron²!, compressed_kron²_power!, compressed_kron³!,
+    compressed_kron³_power!,
     # Constants
     DEFAULT_SOLVER_PARAMETERS, DEFAULT_QME_ALGORITHM
 
@@ -57,7 +59,8 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
                                               𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                               x::Vector{ℱ.Dual{Z,S,N}},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                              tol::AbstractFloat = 1e-14,
+                                              filtered::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -66,19 +69,23 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     # Get cached computational constants
     constants = initialise_constants!(𝓂)
     so = constants.second_order
+    cc = ensure_computational_constants!(constants)
     ℂ = 𝓂.workspaces.second_order
     T = constants.post_model_macro
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
     I_nPast = T.I_nPast
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    A = 𝐒₁̂[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+
+    nPast = length(x̂)
+    n_state_aug = nPast + 1
+    n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
+    if filtered
+        A = 𝐒₁̂
+        B = 𝐒₂̂
+        B̂ = B
+    else
+        A = 𝐒₁̂[T.past_not_future_and_mixed_idx, 1:nPast]
+        B = 𝐒₂̂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
+        B̂ = B
+    end
  
     # Allocate or reuse workspace for partials and SSS kron buffers.
     # NOTE: when this overload is called from a higher-level ForwardDiff path,
@@ -86,7 +93,6 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     # perturbation solver. Since the SSS Newton iter here is intentionally
     # carried out on the primal (`S`) values only, we allocate fresh `S`-typed
     # local buffers whenever the cached ones are not `S`-typed.
-    nPast = length(x̂)
     MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
     if size(ℂ.∂x_second_order) != (nPast, N) || eltype(ℂ.∂x_second_order) !== S
         ℂ.∂x_second_order = zeros(S, nPast, N)
@@ -95,24 +101,26 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     end
     ∂x̄ = ℂ.∂x_second_order
     n_aug = nPast + 1
-    if eltype(ℂ.x_aug_buf) === S
+    n_aug2 = n_aug * (n_aug + 1) ÷ 2
+    if eltype(ℂ.x_aug_buf) === S && length(ℂ.kron_x_aug_xx) == n_aug2 && size(ℂ.kron_x_aug_I) == (n_aug2, nPast)
         x_aug = ℂ.x_aug_buf
         kron_x_aug = ℂ.kron_x_aug_xx
         kron_x_aug_I = ℂ.kron_x_aug_I
     else
         x_aug = zeros(S, n_aug)
-        kron_x_aug = zeros(S, n_aug^2)
-        kron_x_aug_I = zeros(S, n_aug * nPast, nPast)
+        kron_x_aug = zeros(S, n_aug2)
+        kron_x_aug_I = zeros(S, n_aug2, nPast)
     end
+    state_identity = @view cc.I_state_vol[:, 1:nPast]
     x_aug[end] = one(S)
 
     max_iters = 100
     for i in 1:max_iters
         copyto!(x_aug, 1, x̂, 1, nPast)
-        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+        compressed_kron²!(kron_x_aug_I, x_aug, state_identity)
         ∂x = (A + B * kron_x_aug_I - I_nPast)
 
-        ℒ.kron!(kron_x_aug, x_aug, x_aug)
+        compressed_kron²_power!(kron_x_aug, x_aug)
         Δx = A * x̂ + B̂ * kron_x_aug / 2 - x̂
         ∂x_lu = ℒ.lu(∂x, check = false)
         ℒ.issuccess(∂x_lu) || break
@@ -126,8 +134,8 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     end
 
     copyto!(x_aug, 1, x̂, 1, nPast)
-    ℒ.kron!(kron_x_aug, x_aug, x_aug)
-    ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
+    compressed_kron²_power!(kron_x_aug, x_aug)
+    compressed_kron²!(kron_x_aug_I, x_aug, state_identity)
     solved = isapprox(A * x̂ + B̂ * kron_x_aug / 2, x̂, rtol = tol)
 
     if solved
@@ -136,8 +144,13 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
             ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
 
-            ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+            if filtered
+                ∂A = ∂𝐒₁
+                ∂B̂ = ∂𝐒₂
+            else
+                ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:nPast]
+                ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
+            end
 
             tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2
 
@@ -159,7 +172,8 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
                                               𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
                                               x::Vector{ℱ.Dual{Z,S,N}},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                              tol::AbstractFloat = 1e-14,
+                                              filtered::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
@@ -169,29 +183,30 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     so = ensure_computational_constants!(𝓂.constants)
     T = 𝓂.constants.post_model_macro
     ℂ = 𝓂.workspaces.third_order
-    s_in_s⁺ = so.s_in_s⁺
-    s_in_s = so.s_in_s
     I_nPast = T.I_nPast
-    
-    kron_s⁺_s⁺ = so.kron_s⁺_s⁺
-    
-    kron_s⁺_s = so.kron_s⁺_s
-    
-    kron_s⁺_s⁺_s⁺ = so.kron_s⁺_s⁺_s⁺
-    
-    kron_s_s⁺_s⁺ = so.kron_s_s⁺_s⁺
-    
-    A = 𝐒₁̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+
+    nPast = length(x̂)
+    n_state_aug = nPast + 1
+    n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
+    n_state_triple = n_state_aug * (n_state_aug + 1) * (n_state_aug + 2) ÷ 6
+    if filtered
+        A = 𝐒₁̂
+        B = 𝐒₂̂
+        B̂ = B
+        C = 𝐒₃̂
+        Ĉ = C
+    else
+        A = 𝐒₁̂[T.past_not_future_and_mixed_idx, 1:nPast]
+        B = 𝐒₂̂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
+        B̂ = B
+        C = 𝐒₃̂[T.past_not_future_and_mixed_idx, 1:n_state_triple]
+        Ĉ = C
+    end
 
     # Allocate or reuse workspace for partials and SSS kron buffers.
     # See note in the `:second_order` overload above — fall back to fresh
     # `S`-typed local buffers when the cached workspace got mutated to a
     # `Dual`-typed one upstream.
-    nPast = length(x̂)
     MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
     if size(ℂ.∂x_third_order) != (nPast, N) || eltype(ℂ.∂x_third_order) !== S
         ℂ.∂x_third_order = zeros(S, nPast, N)
@@ -200,7 +215,12 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     end
     ∂x̄ = ℂ.∂x_third_order
     n_aug = nPast + 1
-    if eltype(ℂ.x_aug_buf) === S
+    n_aug2 = n_aug * (n_aug + 1) ÷ 2
+    n_aug3 = n_aug * (n_aug + 1) * (n_aug + 2) ÷ 6
+    if eltype(ℂ.x_aug_buf) === S && length(ℂ.kron_x_aug_xx) == n_aug2 &&
+       length(ℂ.kron_x_aug_x_kron) == n_aug3 &&
+       size(ℂ.kron_x_aug_I) == (n_aug2, nPast) &&
+       size(ℂ.kron_x_kron_I) == (n_aug3, nPast)
         x_aug = ℂ.x_aug_buf
         kron_x_aug = ℂ.kron_x_aug_xx
         kron_x_kron = ℂ.kron_x_aug_x_kron
@@ -208,20 +228,21 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
         kron_x_kron_I = ℂ.kron_x_kron_I
     else
         x_aug = zeros(S, n_aug)
-        kron_x_aug = zeros(S, n_aug^2)
-        kron_x_kron = zeros(S, n_aug^3)
-        kron_x_aug_I = zeros(S, n_aug * nPast, nPast)
-        kron_x_kron_I = zeros(S, n_aug^2 * nPast, nPast)
+        kron_x_aug = zeros(S, n_aug2)
+        kron_x_kron = zeros(S, n_aug3)
+        kron_x_aug_I = zeros(S, n_aug2, nPast)
+        kron_x_kron_I = zeros(S, n_aug3, nPast)
     end
+    state_identity = @view so.I_state_vol[:, 1:nPast]
     x_aug[end] = one(S)
 
     max_iters = 100
     for i in 1:max_iters
         copyto!(x_aug, 1, x̂, 1, nPast)
-        ℒ.kron!(kron_x_aug, x_aug, x_aug)
-        ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
-        ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
-        ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+        compressed_kron²_power!(kron_x_aug, x_aug)
+        compressed_kron³_power!(kron_x_kron, x_aug)
+        compressed_kron²!(kron_x_aug_I, x_aug, state_identity)
+        compressed_kron³!(kron_x_kron_I, x_aug, x_aug, state_identity)
         ∂x = (A + B * kron_x_aug_I + C * kron_x_kron_I / 2 - I_nPast)
 
         Δx = A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6 - x̂
@@ -237,10 +258,10 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     end
 
     copyto!(x_aug, 1, x̂, 1, nPast)
-    ℒ.kron!(kron_x_aug, x_aug, x_aug)
-    ℒ.kron!(kron_x_kron, x_aug, kron_x_aug)
-    ℒ.kron!(kron_x_aug_I, x_aug, I_nPast)
-    ℒ.kron!(kron_x_kron_I, kron_x_aug, I_nPast)
+    compressed_kron²_power!(kron_x_aug, x_aug)
+    compressed_kron³_power!(kron_x_kron, x_aug)
+    compressed_kron²!(kron_x_aug_I, x_aug, @view(so.I_state_vol[:, 1:nPast]))
+    compressed_kron³!(kron_x_kron_I, x_aug, x_aug, @view(so.I_state_vol[:, 1:nPast]))
     solved = isapprox(A * x̂ + B̂ * kron_x_aug / 2 + Ĉ * kron_x_kron / 6, x̂, rtol = tol)
     
     if solved
@@ -250,9 +271,15 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
             ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
 
-            ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-            ∂Ĉ = ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+            if filtered
+                ∂A = ∂𝐒₁
+                ∂B̂ = ∂𝐒₂
+                ∂Ĉ = ∂𝐒₃
+            else
+                ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:nPast]
+                ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
+                ∂Ĉ = ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_triple]
+            end
 
             tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2 + ∂Ĉ * kron_x_kron / 6
 

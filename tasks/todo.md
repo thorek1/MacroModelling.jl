@@ -27,4 +27,5 @@ The full test suite was not run. A large third-order Gali OBC probe was stopped 
 - [x] Reuse preallocated compressed state-to-pair and state-pair-to-shock matrices in inversion and reverse-mode paths.
 - [x] Restrict stochastic-steady-state Newton inputs to the required past/mixed rows and state/constant compressed columns.
 - [x] Verify focused kernels, inversion likelihoods, and user-facing stochastic steady states.
+- [x] Repair and verify the ForwardDiff filter-free gradient test, including pruned third-order reverse-mode accumulation.
 - [ ] Add cached sparse CSC selector patterns only if a follow-up benchmark shows they beat dense workspace reuse in the full filter workload.
