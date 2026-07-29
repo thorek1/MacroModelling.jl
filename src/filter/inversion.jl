@@ -864,10 +864,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻  = 𝐒[2][cond_var_idx, so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1186,10 +1186,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,cc.var_vol²_cols]
     # 𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,so.shockvar²_cols]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1468,11 +1468,11 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,cc.var_vol²_cols]
+𝐒²⁻ = 𝐒[2][cond_var_idx,so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,so.shockvar²_cols]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,cc.shockvar_cols]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1487,10 +1487,10 @@ function calculate_loglikelihood(::Val{:inversion},
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
-𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,to.shockvar³2_cols] |> collect
+𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ  = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -1980,10 +1980,10 @@ function calculate_loglikelihood(::Val{:inversion},
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,cc.var_vol²_cols]
+𝐒²⁻ = 𝐒[2][cond_var_idx,so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,so.shockvar²_cols]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -1999,10 +1999,10 @@ function calculate_loglikelihood(::Val{:inversion},
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,to.shockvar³2_cols]
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -2544,6 +2544,7 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    cc = computational_constants
     so = ensure_conditional_forecast_constants!(𝓂.constants)
     # s_in_s⁺ = computational_constants.s_in_s
     shock²_idxs = computational_constants.shock²_idxs
@@ -2558,10 +2559,10 @@ end
     𝐒¹⁻ᵛ = 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒₂[cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒₂[cond_var_idx,cc.var_vol²_cols]
     # 𝐒²⁻ = 𝐒₂[cond_var_idx,var²_idxs]
-    𝐒²⁻ᵉ = 𝐒₂[cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒₂[cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+    𝐒²⁻ᵉ = 𝐒₂[cond_var_idx,so.shockvar²_cols]
+𝐒²ᵉ = 𝐒₂[cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒₂[T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -2839,6 +2840,7 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    cc = computational_constants
     so = ensure_conditional_forecast_constants!(𝓂.constants)
     sv_in_s⁺ = computational_constants.s_in_s⁺
     
@@ -2852,10 +2854,10 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻  = 𝐒[2][cond_var_idx, so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -3234,6 +3236,7 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    cc = computational_constants
     so = ensure_conditional_forecast_constants!(𝓂.constants; third_order = true)
     shock²_idxs = computational_constants.shock²_idxs
     shockvar²_idxs = so.shockvar²_idxs
@@ -3248,10 +3251,10 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,cc.var_vol²_cols]
+𝐒²⁻ = 𝐒[2][cond_var_idx,so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,so.shockvar²_cols]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -3267,10 +3270,10 @@ end
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,to.shockvar³2_cols]
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -3636,6 +3639,7 @@ end
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     computational_constants = ensure_computational_constants!(𝓂.constants)
+    cc = computational_constants
     so = ensure_conditional_forecast_constants!(𝓂.constants; third_order = true)
     s_in_s⁺ = computational_constants.s_in_s
     e_in_s⁺ = computational_constants.e_in_s⁺
@@ -3656,11 +3660,11 @@ end
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ = 𝐒[2][cond_var_idx,compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ = 𝐒[2][cond_var_idx,compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,cc.var_vol²_cols]
+𝐒²⁻ = 𝐒[2][cond_var_idx,so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,so.shockvar²_cols]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,cc.shockvar_cols]
+𝐒²ᵉ = 𝐒[2][cond_var_idx,cc.shock²_cols]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = nnz(𝐒²⁻ᵛ)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
@@ -3675,10 +3679,10 @@ end
     shockvar³2_idxs = to.shockvar³2_idxs
     shockvar³_idxs = to.shockvar³_idxs
 
-𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,to.shockvar³2_cols]
+𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ  = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
     𝐒³⁻ᵛ    = nnz(𝐒³⁻ᵛ)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
@@ -5059,10 +5063,10 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻  = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻  = 𝐒[2][cond_var_idx, so.var²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
@@ -5248,9 +5252,9 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+𝐒²ᵉ  = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ = nnz(𝐒²⁻ᵛ) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
@@ -5431,16 +5435,16 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻   = 𝐒[2][cond_var_idx, compressed_pair_indices(var²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ   = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻   = 𝐒[2][cond_var_idx, so.var²_cols]
+𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx, cc.shockvar_cols]
+𝐒²ᵉ   = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
-𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
-𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, to.shockvar³2_cols] |> collect
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ
@@ -5704,14 +5708,14 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]
     𝐒¹ᵉ   = 𝐒[1][cond_var_idx, end-n_exo+1:end]
 
-𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, compressed_pair_indices(var_vol²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, compressed_pair_indices(shockvar²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒²ᵉ   = 𝐒[2][cond_var_idx, compressed_pair_indices(shock²_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒²⁻ᵛ  = 𝐒[2][cond_var_idx, cc.var_vol²_cols]
+𝐒²⁻ᵉ  = 𝐒[2][cond_var_idx, so.shockvar²_cols]
+𝐒²ᵉ   = 𝐒[2][cond_var_idx, cc.shock²_cols]
     𝐒⁻²   = 𝐒[2][T.past_not_future_and_mixed_idx, :]
-𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,compressed_triple_indices(var_vol³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, compressed_triple_indices(shockvar³2_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)] |> collect
-𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,compressed_triple_indices(shockvar³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
-𝐒³ᵉ   = 𝐒[3][cond_var_idx,compressed_triple_indices(shock³_idxs, T.nPast_not_future_and_mixed + 1 + T.nExo)]
+𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,to.var_vol³_cols]
+𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx, to.shockvar³2_cols] |> collect
+𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,to.shockvar³_cols]
+𝐒³ᵉ   = 𝐒[3][cond_var_idx,to.shock³_cols]
     𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx, :]
 
     𝐒²⁻ᵛ  = nnz(𝐒²⁻ᵛ)  / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)  : 𝐒²⁻ᵛ

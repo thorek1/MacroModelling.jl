@@ -9,6 +9,7 @@
 - [x] Precompute compressed pair and cubic row maps used by inversion pullbacks.
 - [x] Verify power kernels, cached row maps, static hot-path audit, and inversion likelihood levels.
 - [x] Repair CI regressions in particle-filter dispatch, third-order inversion row bindings, and global compressed selector maps.
+- [x] Cache every invariant pair/triple compressed selector used by inversion, `find_shocks`, and higher-order rrules; remove runtime map construction.
 - [ ] Re-run the targeted GitHub CI jobs after pushing the repair commit.
 
 The full test suite was not run. A large third-order Gali OBC probe was stopped during its expensive solve after the second-order compressed transition assertion passed; see `AGENT_PROGRESS.md` for the focused evidence.

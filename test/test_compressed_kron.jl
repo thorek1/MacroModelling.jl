@@ -208,6 +208,8 @@ end
         @test !occursin("ℒ.kron(state¹⁻_vol, state¹⁻_vol)", source)
         @test !occursin("ℒ.kron(ℒ.kron(", source)
         @test !occursin("compressed_pair_index(", source)
+        @test !occursin("compressed_pair_indices(", source)
+        @test !occursin("compressed_triple_indices(", source)
         if path != "src/filter/particle.jl"
             @test !occursin("searchsortedfirst(", source)
         end
@@ -228,5 +230,7 @@ end
     @test !occursin("ℒ.kron(state_vol, state_vol)", rrule_source)
     @test !occursin("ℒ.kron(ℒ.kron(", rrule_source)
     @test !occursin("compressed_pair_index(", rrule_source)
+    @test !occursin("compressed_pair_indices(", rrule_source)
+    @test !occursin("compressed_triple_indices(", rrule_source)
     @test !occursin("searchsortedfirst(", rrule_source)
 end

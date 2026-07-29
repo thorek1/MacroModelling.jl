@@ -338,6 +338,9 @@ mutable struct second_order_indices
     I_state_vol::Matrix{Float64}         # I(nPast+1) reused by inversion warmup helpers
     I_aug::Matrix{Float64}               # I(nPast+1+nExo) reused by inversion warmup helpers
     compressed_pair_index_map::Matrix{Int} # Pair-coordinate map for hot pullback loops
+    shockvar_cols::Vector{Int}            # Compressed columns for shockvar_idxs
+    shock²_cols::Vector{Int}              # Compressed columns for shock²_idxs
+    var_vol²_cols::Vector{Int}            # Compressed columns for var_vol²_idxs
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -347,6 +350,9 @@ mutable struct second_order_indices
     var²_idxs::Vector{Int}               # Variable² indices (no-vol: kron(s_in_s, s_in_s))
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
     shockvar_no_vol_idxs::Vector{Int}    # Shock-variable cross indices (no-vol: kron(e_in_s⁺, s_in_s))
+    var²_cols::Vector{Int}                # Compressed columns for var²_idxs
+    shockvar²_cols::Vector{Int}           # Compressed columns for shockvar²_idxs
+    shockvar_no_vol_cols::Vector{Int}     # Compressed columns for shockvar_no_vol_idxs
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
@@ -436,6 +442,10 @@ mutable struct third_order_indices
     shock_state_state_rows::Vector{Int}   # Loop-order rows into shock_state_state_idxs
     shock_shock_state_idxs::Vector{Int}   # Sorted shock² × state compressed indices
     shock_shock_state_rows::Vector{Int}   # Loop-order rows into shock_shock_state_idxs
+    var_vol³_cols::Vector{Int}             # Compressed columns for var_vol³_idxs
+    shock³_cols::Vector{Int}               # Compressed columns for shock³_idxs
+    shockvar³2_cols::Vector{Int}           # Compressed columns for shockvar³2_idxs
+    shockvar³_cols::Vector{Int}            # Compressed columns for shockvar³_idxs
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS

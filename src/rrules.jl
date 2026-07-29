@@ -9547,10 +9547,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     var_vol²_idxs  = cc.var_vol²_idxs
     var²_idxs      = cc.var²_idxs
     n_global = n_past + 1 + n_exo
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
     𝐒⁻¹  = 𝐒[1][Tcc.past_not_future_and_mixed_idx, :]
     𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:n_past]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
@@ -11551,10 +11551,10 @@ function rrule(::typeof(calculate_loglikelihood),
     var_vol²_idxs = cc.var_vol²_idxs
     var²_idxs = cc.var²_idxs
     n_global = T.nPast_not_future_and_mixed + 1 + T.nExo
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
     
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒⁻¹ᵉ = 𝐒[1][T.past_not_future_and_mixed_idx,end-T.nExo+1:end]
@@ -12212,10 +12212,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     var_vol²_idxs  = cc.var_vol²_idxs
     var²_idxs      = cc.var²_idxs
     n_global = n_past + 1 + n_exo
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
 
     𝐒⁻¹  = 𝐒[1][Tcc.past_not_future_and_mixed_idx, :]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:n_past+1]
@@ -12694,10 +12694,10 @@ function rrule(::typeof(calculate_loglikelihood),
     var_vol²_idxs = cc.var_vol²_idxs
     var²_idxs = cc.var²_idxs
     n_global = T.nPast_not_future_and_mixed + 1 + T.nExo
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
     
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒⁻¹ᵉ = 𝐒[1][T.past_not_future_and_mixed_idx,end-T.nExo+1:end]
@@ -13328,15 +13328,15 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
     n_global = n_past + 1 + n_exo
     n_exo² = n_exo * (n_exo + 1) ÷ 2
     n_exo³ = n_exo * (n_exo + 1) * (n_exo + 2) ÷ 6
-    shockvar_cols = compressed_pair_indices(shockvar_idxs, n_global)
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
-    var_vol³_cols = compressed_triple_indices(var_vol³_idxs, n_global)
-    shock³_cols = compressed_triple_indices(shock³_idxs, n_global)
-    shockvar³2_cols = compressed_triple_indices(shockvar³2_idxs, n_global)
-    shockvar³_cols = compressed_triple_indices(shockvar³_idxs, n_global)
+    shockvar_cols = cc.shockvar_cols
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
+    var_vol³_cols = tc.var_vol³_cols
+    shock³_cols = tc.shock³_cols
+    shockvar³2_cols = tc.shockvar³2_cols
+    shockvar³_cols = tc.shockvar³_cols
 
     𝐒⁻¹   = 𝐒[1][Tcc.past_not_future_and_mixed_idx, :]
     𝐒¹⁻   = 𝐒[1][cond_var_idx, 1:n_past]
@@ -14163,15 +14163,15 @@ function rrule(::typeof(calculate_loglikelihood),
     n_global = T.nPast_not_future_and_mixed + 1 + T.nExo
     n_exo² = T.nExo * (T.nExo + 1) ÷ 2
     n_exo³ = T.nExo * (T.nExo + 1) * (T.nExo + 2) ÷ 6
-    shockvar_cols = compressed_pair_indices(shockvar_idxs, n_global)
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_global)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_global)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_global)
-    var²_cols = compressed_pair_indices(var²_idxs, n_global)
-    var_vol³_cols = compressed_triple_indices(var_vol³_idxs, n_global)
-    shock³_cols = compressed_triple_indices(shock³_idxs, n_global)
-    shockvar³2_cols = compressed_triple_indices(shockvar³2_idxs, n_global)
-    shockvar³_cols = compressed_triple_indices(shockvar³_idxs, n_global)
+    shockvar_cols = cc.shockvar_cols
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var²_cols = cc.var²_cols
+    var_vol³_cols = tc.var_vol³_cols
+    shock³_cols = tc.shock³_cols
+    shockvar³2_cols = tc.shockvar³2_cols
+    shockvar³_cols = tc.shockvar³_cols
 
     𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
@@ -14997,13 +14997,13 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
     n_aug = n_past + 1 + n_exo
     n_state_vol = n_past + 1
-    shock²_cols = compressed_pair_indices(shock²_idxs, n_aug)
-    shockvar²_cols = compressed_pair_indices(shockvar²_idxs, n_aug)
-    var_vol²_cols = compressed_pair_indices(var_vol²_idxs, n_aug)
-    var_vol³_cols = compressed_triple_indices(var_vol³_idxs, n_aug)
-    shock³_cols = compressed_triple_indices(shock³_idxs, n_aug)
-    shockvar³2_cols = compressed_triple_indices(shockvar³2_idxs, n_aug)
-    shockvar³_cols = compressed_triple_indices(shockvar³_idxs, n_aug)
+    shock²_cols = cc.shock²_cols
+    shockvar²_cols = cc.shockvar²_cols
+    var_vol²_cols = cc.var_vol²_cols
+    var_vol³_cols = tc.var_vol³_cols
+    shock³_cols = tc.shock³_cols
+    shockvar³2_cols = tc.shockvar³2_cols
+    shockvar³_cols = tc.shockvar³_cols
 
     𝐒⁻¹   = 𝐒[1][Tcc.past_not_future_and_mixed_idx, :]
     𝐒¹⁻ᵛ  = 𝐒[1][cond_var_idx, 1:n_past+1]

@@ -61,3 +61,11 @@ The predict/score loops in bootstrap, auxiliary, and tempered filters are partic
 - The old CI run's later SSS finite-difference and Turing initialisation failures were not treated as solved by masking them; they require separate numerical reproductions if they recur after these direct dispatch and index fixes.
 
 LoopVectorization is not applicable to the branchy triangular cubic kernel; a branchless candidate was slower. Existing preallocation, function barriers, `mul!`, `@inbounds`, and dense/sparse selection are already used where applicable.
+
+## Review follow-up: invariant compressed index maps
+
+- Added lazy constant caches for all pair maps used by inversion, `find_shocks`, and reverse-mode warmup paths, including the distinct no-volatility shock×state selector.
+- Added lazy constant caches for the four third-order selector maps used by those paths.
+- Removed every runtime `compressed_pair_indices`/`compressed_triple_indices` call from transition, filtering, inversion, and rrule code; the only remaining calls are one-time cache initialization and the helper definitions.
+- Extended the static audit to reject runtime pair/triple map construction.
+- Package-load/constructor smoke, the compressed-kernel suite (83/83 static-audit checks), and a pruned-third-order RBC model-level map-equivalence smoke all pass.

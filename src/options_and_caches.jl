@@ -130,10 +130,16 @@ function Second_order_indices()
         empty_matrix_float,  # I_state_vol
         empty_matrix_float,  # I_aug
         empty_matrix_int,    # compressed_pair_index_map
+        Int[],               # shockvar_cols
+        Int[],               # shock²_cols
+        Int[],               # var_vol²_cols
         # Conditional forecast indices
         Int[],               # var²_idxs
         Int[],               # shockvar²_idxs
         Int[],               # shockvar_no_vol_idxs
+        Int[],               # var²_cols
+        Int[],               # shockvar²_cols
+        Int[],               # shockvar_no_vol_cols
         # Moment computation caches
         BitVector(),         # kron_states
         empty_sparse_float,  # I_plus_s_s
@@ -201,6 +207,10 @@ function Third_order_indices()
         Int[],               # shock_state_state_rows
         Int[],               # shock_shock_state_idxs
         Int[],               # shock_shock_state_rows
+        Int[],               # var_vol³_cols
+        Int[],               # shock³_cols
+        Int[],               # shockvar³2_cols
+        Int[],               # shockvar³_cols
         # Moment computation caches
         Float64[],           # e6
         BitVector(),         # kron_e_v
@@ -1882,6 +1892,16 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
         so.var_vol²_idxs = var_vol²_idxs
     end
 
+    if isempty(so.var²_cols)
+        n_global = nˢ + 1 + nᵉ
+        so.shockvar_cols = compressed_pair_indices(so.shockvar_idxs, n_global)
+        so.shock²_cols = compressed_pair_indices(so.shock²_idxs, n_global)
+        so.var_vol²_cols = compressed_pair_indices(so.var_vol²_idxs, n_global)
+        so.var²_cols = compressed_pair_indices(so.var²_idxs, n_global)
+        so.shockvar²_cols = compressed_pair_indices(so.shockvar²_idxs, n_global)
+        so.shockvar_no_vol_cols = compressed_pair_indices(so.shockvar_no_vol_idxs, n_global)
+    end
+
     if third_order
         to = constants.third_order
         if isempty(to.var_vol³_idxs)
@@ -1909,6 +1929,14 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
             to.shockvar³2_idxs = shockvar³2_idxs
             to.shockvar³_idxs = shockvar³_idxs
 
+        end
+
+        if isempty(to.var_vol³_cols)
+            n_global = nˢ + 1 + nᵉ
+            to.var_vol³_cols = compressed_triple_indices(to.var_vol³_idxs, n_global)
+            to.shock³_cols = compressed_triple_indices(to.shock³_idxs, n_global)
+            to.shockvar³2_cols = compressed_triple_indices(to.shockvar³2_idxs, n_global)
+            to.shockvar³_cols = compressed_triple_indices(to.shockvar³_idxs, n_global)
         end
 
         if isempty(to.shock_state_state_idxs)
