@@ -151,6 +151,33 @@ end
           (S₃ * U₃) * kron(kron(a, a), a) / 6
 end
 
+@testset "compressed directional derivative multiplicities" begin
+    n = 5
+    a = randn(n)
+    da = randn(n)
+    a₀ = randn(n)
+    a₂ = randn(n)
+    da₂ = randn(n)
+    U₂ = pair_extractor(n)
+    U₃ = triple_extractor(n)
+
+    # The two symmetric pair permutations reduce to one compressed kernel.
+    full_pair_derivative = U₂ * (kron(da, a) + kron(a, da)) / 2
+    @test MacroModelling.compressed_kron²(da, a) ≈ full_pair_derivative
+
+    # The three symmetric cubic permutations reduce to one kernel with 1/2
+    # after the Taylor coefficient 1/6 is applied.
+    full_triple_derivative = U₃ * (
+        kron(kron(da, a), a) + kron(kron(a, da), a) + kron(kron(a, a), da)) / 6
+    @test MacroModelling.compressed_kron³(da, a, a) / 2 ≈ full_triple_derivative
+
+    # A mixed pair has no extra Taylor factor: both distinct directional
+    # terms remain present in compressed coordinates.
+    full_mixed_pair_derivative = U₂ * (kron(da, a₂) + kron(a₀, da₂))
+    @test MacroModelling.compressed_kron²(da, a₂) +
+          MacroModelling.compressed_kron²(a₀, da₂) ≈ full_mixed_pair_derivative
+end
+
 @testset "cached compressed cubic row maps" begin
     n_state = 3
     n_exo = 2
@@ -180,6 +207,23 @@ end
         shock, state_vol, shock_offset, shock_shock_state_indices;
         index_rows = shock_shock_state_rows)
     @test shock_shock_state ≈ full_compressed[shock_shock_state_indices] / 3
+
+    state_to_pair = zeros(Float64, length(shock_shock_state_indices), n_exo * (n_exo + 1) ÷ 2)
+    @test MacroModelling.compressed_triple_state_to_pair!(
+        state_to_pair, state_vol, length(augmented), shock_offset, n_exo,
+        shock_shock_state_indices; index_rows = shock_shock_state_rows) === state_to_pair
+    @test state_to_pair ≈ MacroModelling.compressed_triple_state_to_pair(
+        state_vol, length(augmented), shock_offset, n_exo, shock_shock_state_indices;
+        index_rows = shock_shock_state_rows)
+
+    state_pair_to_shock = zeros(Float64, length(shock_state_state_indices), n_exo)
+    @test MacroModelling.compressed_triple_state_pair_to_shock!(
+        state_pair_to_shock, MacroModelling.compressed_kron²_power(state_vol),
+        length(augmented), shock_offset, n_exo, shock_state_state_indices;
+        index_rows = shock_state_state_rows) === state_pair_to_shock
+    @test state_pair_to_shock ≈ MacroModelling.compressed_triple_state_pair_to_shock(
+        MacroModelling.compressed_kron²_power(state_vol), length(augmented), shock_offset,
+        n_exo, shock_state_state_indices; index_rows = shock_state_state_rows)
 end
 
 @testset "compressed transition static audit" begin

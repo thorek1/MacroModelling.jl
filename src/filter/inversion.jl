@@ -88,7 +88,7 @@ function advance_aumann_shapley_pruned_2nd_warmup!(
         sₖ,
         iₚ,
         a₁, a₂, da₁, da₂,
-        k₁₁, dk₁₁, dk₁₁′,
+        k₁₁, dk₁₁,
         ε̄ₜ, εᵢₜ, ε₀,
         𝐒)
     nₚ = length(iₚ)
@@ -110,11 +110,13 @@ function advance_aumann_shapley_pruned_2nd_warmup!(
             da₂[nₚ + 1] = 0.0
             copyto!(da₂, nₚ + 2, ε₀, 1, size(warmup_shocks, 1))
 
+            # C₂ is symmetric, so d C₂(a₁, a₁) = 2 C₂(da₁, a₁).
             compressed_kron²!(dk₁₁, da₁, a₁)
 
             ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
             ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
-            ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+            # The outer 1/2 cancels the derivative's factor of 2.
+            ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 1.0, 1.0)
 
             copyto!(ds₁ᵢ[i], ds₁ᵢ⁺[i])
             copyto!(ds₂ᵢ[i], ds₂ᵢ⁺[i])
@@ -135,7 +137,7 @@ function advance_aumann_shapley_pruned_3rd_warmup!(
         iₚ,
         a₁, a₁⁰, a₂, a₃, da₁, da₂, da₃,
         k₁₁, k₁₂⁰, k₁₁₁, dk₁₁, dk₁₂⁰, dk₁₁₁,
-        k₂tmp, k₃tmp,
+        k₂tmp,
         ε̄ₜ, εᵢₜ, ε₀,
         𝐒)
     nₚ = length(iₚ)
@@ -162,20 +164,24 @@ function advance_aumann_shapley_pruned_3rd_warmup!(
             da₃[nₚ + 1] = 0.0
             copyto!(da₃, nₚ + 2, ε₀, 1, size(warmup_shocks, 1))
 
+            # C₂ is symmetric, so d C₂(a₁, a₁) = 2 C₂(da₁, a₁).
             compressed_kron²!(dk₁₁, da₁, a₁)
 
             compressed_kron²!(dk₁₂⁰, da₁, a₂)
             compressed_kron²!(k₂tmp, a₁⁰, da₂)
             dk₁₂⁰ .+= k₂tmp
 
+            # C₃ is symmetric, so d C₃(a₁, a₁, a₁) = 3 C₃(da₁, a₁, a₁).
             compressed_kron³!(dk₁₁₁, da₁, a₁, a₁)
 
             ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
             ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
-            ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+            # The outer 1/2 cancels the pair derivative's factor of 2.
+            ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 1.0, 1.0)
             ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
-            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 0.5, 1.0)
-            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
+            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+            # The outer 1/6 times the cubic derivative's factor of 3 is 1/2.
+            ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/2, 1.0)
 
             copyto!(ds₁ᵢ[i], ds₁ᵢ⁺[i])
             copyto!(ds₂ᵢ[i], ds₂ᵢ⁺[i])
@@ -274,7 +280,6 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
     # Kronecker workspaces for a₁⊗a₁ and its directional derivative.
     k₁₁  = Vector{R}(undef, n_kron)
     dk₁₁ = Vector{R}(undef, n_kron)
-    dk₁₁′ = Vector{R}(undef, n_kron)
 
     # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
     ε̄ₜ = zeros(R, nE)
@@ -323,7 +328,7 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
                                                       sₖ,
                                                       iₚ,
                                                       a₁, a₂, da₁, da₂,
-                                                      k₁₁, dk₁₁, dk₁₁′,
+                                                      k₁₁, dk₁₁,
                                                       ε̄ₜ, εᵢₜ, ε₀,
                                                       𝐒)
         end
@@ -348,14 +353,14 @@ function aumann_shapley_shock_decomposition_pruned_2nd_order!(
                 da₂[nₚ + 1] = 0.0
                 copyto!(da₂, nₚ + 2, ε₀, 1, nE)
 
-                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                # C₂ is symmetric, so d C₂(a₁, a₁) = 2 C₂(da₁, a₁).
                 compressed_kron²!(dk₁₁, da₁, a₁)
 
                 # Plain form: ds₁ᵢ⁺ = S1 * da₁
                 ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
-                # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
+                # The outer 1/2 cancels the derivative's factor of 2.
                 ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
-                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 1.0, 1.0)
 
                 @inbounds for v in 1:nᵥ
                     decomposition[v, i, t] += wₖ * (ds₁ᵢ⁺[i][v] + ds₂ᵢ⁺[i][v])
@@ -490,7 +495,6 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     k₂tmp = Vector{R}(undef, n_kron2)
     k₁₁₁  = Vector{R}(undef, n_kron3)
     dk₁₁₁ = Vector{R}(undef, n_kron3)
-    k₃tmp = Vector{R}(undef, n_kron3)
 
     # Shock-direction vectors: scaled node shocks, basis shock i, and zero shocks.
     ε̄ₜ = zeros(R, nE)
@@ -547,7 +551,7 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                                                       iₚ,
                                                       a₁, a₁⁰, a₂, a₃, da₁, da₂, da₃,
                                                       k₁₁, k₁₂⁰, k₁₁₁, dk₁₁, dk₁₂⁰, dk₁₁₁,
-                                                      k₂tmp, k₃tmp,
+                                                      k₂tmp,
                                                       ε̄ₜ, εᵢₜ, ε₀,
                                                       𝐒)
         end
@@ -578,7 +582,7 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                 da₃[nₚ + 1] = 0.0
                 copyto!(da₃, nₚ + 2, ε₀, 1, nE)
 
-                # d(aug1 ⊗ aug1) = (d aug1 ⊗ aug1) + (aug1 ⊗ d aug1)
+                # C₂ is symmetric, so d C₂(a₁, a₁) = 2 C₂(da₁, a₁).
                 compressed_kron²!(dk₁₁, da₁, a₁)
 
                 # d(aug1_no_const ⊗ aug2) = (d aug1 ⊗ aug2) + (aug1_no_const ⊗ d aug2)
@@ -586,21 +590,20 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
                 compressed_kron²!(k₂tmp, a₁⁰, da₂)
                 dk₁₂⁰ .+= k₂tmp
 
-                # d(k11 ⊗ aug1) = (d k11 ⊗ aug1) + (k11 ⊗ d aug1)
+                # C₃ is symmetric, so d C₃(a₁, a₁, a₁) = 3 C₃(da₁, a₁, a₁).
                 compressed_kron³!(dk₁₁₁, da₁, a₁, a₁)
-                compressed_kron³!(k₃tmp, a₁, a₁, da₁)
-                ℒ.rmul!(k₃tmp, 2)
-                dk₁₁₁ .+= k₃tmp
 
                 # Plain form: ds₁ᵢ⁺ = S1 * da₁
                 ℒ.mul!(ds₁ᵢ⁺[i], 𝐒[1], da₁)
                 # Plain form: ds₂ᵢ⁺ = S1 * da₂ + 0.5 * S2 * d(a₁⊗a₁)
                 ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[1], da₂)
-                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 0.5, 1.0)
+                # The outer 1/2 cancels the pair derivative's factor of 2.
+                ℒ.mul!(ds₂ᵢ⁺[i], 𝐒[2], dk₁₁, 1.0, 1.0)
                 # Plain form: ds₃ᵢ⁺ = S1 * da₃ + S2 * d(a₁⁰⊗a₂) + (1/6) * S3 * d(a₁⊗a₁⊗a₁)
                 ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[1], da₃)
-                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 0.5, 1.0)
-                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/6, 1.0)
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[2], dk₁₂⁰, 1.0, 1.0)
+                # The outer 1/6 times the cubic derivative's factor of 3 is 1/2.
+                ℒ.mul!(ds₃ᵢ⁺[i], 𝐒[3], dk₁₁₁, 1/2, 1.0)
 
                 @inbounds for v in 1:nᵥ
                     decomposition[v, i, t] += wₖ * (
@@ -1676,15 +1679,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
 
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -2121,15 +2123,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
     
         # The compressed shock-shock-state contraction is assembled below.
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         fill!(init_guess, zero(R))
 
@@ -3395,15 +3396,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
         # The compressed shock-shock-state contraction is assembled below.
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -3847,15 +3847,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
     
         copyto!(𝐒ⁱ²ᵉ, 𝐒²ᵉ)
         ℒ.rdiv!(𝐒ⁱ²ᵉ, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
@@ -4750,12 +4749,15 @@ compressed_kron²_power!(kronstate_vol, state_vol)
     copyto!(jac_x, 𝐒¹ᵉ)
     ℒ.kron!(kron_I_state, I_exo, state_vol)
     ℒ.mul!(jac_x, 𝐒²⁻ᵉ, kron_I_state, 1, 1)
-    jac_x += 𝐒³⁻ᵉ² * compressed_triple_state_pair_to_shock(kronstate_vol,
-                                                            n_aug,
-                                                            shock_offset,
-                                                            n_exo,
-                                                            shock_state_state_indices;
-                                                            index_rows = shock_state_state_rows)
+    compressed_triple_state_pair_to_shock!(kron_buffer3sv,
+                                           kronstate_vol,
+                                           n_aug,
+                                           shock_offset,
+                                           n_exo,
+                                           shock_state_state_indices,
+                                           n_past + 1;
+                                           index_rows = shock_state_state_rows)
+    jac_x += 𝐒³⁻ᵉ² * kron_buffer3sv
     jac_x += 𝐒²ᵉ * compressed_kron²(final_shock, I_exo)
     jac_x += 𝐒³⁻ᵉ * compressed_triple_state_shock_to_shock(state_vol,
                                                             final_shock,
@@ -5598,15 +5600,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ_full)
 
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ_full,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         if m == 0
             x = x_zero
@@ -5832,15 +5833,14 @@ compressed_kron³_power!(kronstate_vol³, state¹⁻_vol)
         ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
 
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ_full,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_past + 1 + n_exo,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices; index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_past + 1 + n_exo,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         if m == 0
             x = x_zero

@@ -20,3 +20,11 @@ The full test suite was not run. A large third-order Gali OBC probe was stopped 
 - [x] Apply same-vector cubic and analytical VJP allocation optimizations.
 - [x] Prototype and assess thread-local particle propagation/scoring.
 - [ ] Add opt-in production particle parallelism after settling RNG, dense-measurement-error, and API semantics.
+
+## Review follow-up
+
+- [x] Restore symmetric Aumann–Shapley derivative multiplicities in compressed coordinates and cover them with full-reference tests.
+- [x] Reuse preallocated compressed state-to-pair and state-pair-to-shock matrices in inversion and reverse-mode paths.
+- [x] Restrict stochastic-steady-state Newton inputs to the required past/mixed rows and state/constant compressed columns.
+- [x] Verify focused kernels, inversion likelihoods, and user-facing stochastic steady states.
+- [ ] Add cached sparse CSC selector patterns only if a follow-up benchmark shows they beat dense workspace reuse in the full filter workload.

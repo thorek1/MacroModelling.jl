@@ -69,3 +69,18 @@ LoopVectorization is not applicable to the branchy triangular cubic kernel; a br
 - Removed every runtime `compressed_pair_indices`/`compressed_triple_indices` call from transition, filtering, inversion, and rrule code; the only remaining calls are one-time cache initialization and the helper definitions.
 - Extended the static audit to reject runtime pair/triple map construction.
 - Package-load/constructor smoke, the compressed-kernel suite (83/83 static-audit checks), and a pruned-third-order RBC model-level map-equivalence smoke all pass.
+
+## Review follow-up: symmetric tangents, SSS filtering, and scratch reuse
+
+- Corrected Aumann–Shapley higher-order tangents: the symmetric compressed pair derivative uses coefficient `1` after the outer `1/2`, the symmetric cubic derivative uses coefficient `1/2` after the outer `1/6`, and mixed pair derivatives retain both compressed terms with coefficient `1`.
+- Added regression checks against full `𝐔₂`/`𝐔₃` directional derivatives, including the repeated-input multiplicities.
+- Added allocation-free `compressed_triple_state_to_pair!` and `compressed_triple_state_pair_to_shock!` kernels and reused existing third-order inversion workspace matrices in repeated forward and reverse-mode call sites. The bang kernels measure only 32 bytes of call overhead after warm-up and do not allocate their output matrices.
+- The selector matrices are structurally sparse (the state-to-pair example has 110 nonzeros out of 1100 entries), but their current consumers accept dense workspace matrices and the sparse alternative would require a cached CSC pattern. The current change removes repeated matrix allocation without changing matrix representation; sparse CSC caching remains a separate optimization candidate.
+- Stochastic-steady-state Newton now receives only past/mixed rows and the state/constant prefix of compressed policy matrices from the calculating interface. The full compressed matrices remain available for returned interfaces and final state evaluation; the public Newton wrapper retains its full-matrix-compatible default behavior for rrules.
+
+Verification for this follow-up:
+
+- `test/test_compressed_kron.jl`: 89/89 checks, including directional derivative identities, bang-helper equivalence, and the static audit.
+- `test/test_inversion_filter_likelihood.jl`: 7/7 checks.
+- User-facing RBC smoke: second-, third-, and pruned-third-order stochastic steady states all returned finite values.
+- `test/test_filter_free_gradients.jl` could not start because `ForwardDiff` is absent from the test environment; no code failure was observed.

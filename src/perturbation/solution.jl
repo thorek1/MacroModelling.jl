@@ -2907,15 +2907,18 @@ function compressed_shock_shock_state_rows(selected_indices,
     return rows
 end
 
-"""Build a compressed matrix for fixing one state coordinate in a cubic term."""
-function compressed_triple_state_to_pair(state::AbstractVector,
-                                         n_global::Int,
-                                         shock_offset::Int,
-                                         n_exo::Int,
-                                         selected_indices;
-                                         index_rows = nothing)
+"""Fill a compressed matrix for fixing one state coordinate in a cubic term."""
+function compressed_triple_state_to_pair!(output::AbstractMatrix,
+                                          state::AbstractVector,
+                                          n_global::Int,
+                                          shock_offset::Int,
+                                          n_exo::Int,
+                                          selected_indices;
+                                          index_rows = nothing)
     n_pair = n_exo * (n_exo + 1) ÷ 2
-    output = zeros(promote_type(eltype(state), Float64), length(selected_indices), n_pair)
+    size(output) == (length(selected_indices), n_pair) ||
+        throw(DimensionMismatch("compressed state-to-pair output has the wrong size"))
+    fill!(output, zero(eltype(output)))
     rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
         selected_indices, shock_offset, length(state), n_exo) : index_rows
     pair_index = 0
@@ -2931,6 +2934,18 @@ function compressed_triple_state_to_pair(state::AbstractVector,
         end
     end
     return output
+end
+
+function compressed_triple_state_to_pair(state::AbstractVector,
+                                         n_global::Int,
+                                         shock_offset::Int,
+                                         n_exo::Int,
+                                         selected_indices;
+                                         index_rows = nothing)
+    n_pair = n_exo * (n_exo + 1) ÷ 2
+    output = zeros(promote_type(eltype(state), Float64), length(selected_indices), n_pair)
+    return compressed_triple_state_to_pair!(output, state, n_global, shock_offset, n_exo,
+                                            selected_indices; index_rows = index_rows)
 end
 
 """Accumulate the VJP of `compressed_triple_state_to_pair` into a state cotangent."""
@@ -3127,17 +3142,33 @@ function compressed_triple_shock_shock_state_to_state_vjp!(dshock::AbstractVecto
     return nothing
 end
 
-"""Build a compressed matrix for fixing two state coordinates in a cubic term."""
-function compressed_triple_state_pair_to_shock(state_pair::AbstractVector,
-                                               n_global::Int,
-                                               shock_offset::Int,
-                                               n_exo::Int,
-                                               selected_indices;
-                                               index_rows = nothing)
+"""Fill a compressed matrix for fixing two state coordinates in a cubic term."""
+function compressed_triple_state_pair_to_shock!(output::AbstractMatrix,
+                                                state_pair::AbstractVector,
+                                                n_global::Int,
+                                                shock_offset::Int,
+                                                n_exo::Int,
+                                                selected_indices;
+                                                index_rows = nothing)
     n_state = round(Int, (sqrt(8 * length(state_pair) + 1) - 1) / 2)
+    return compressed_triple_state_pair_to_shock!(output, state_pair, n_global, shock_offset,
+                                                  n_exo, selected_indices, n_state;
+                                                  index_rows = index_rows)
+end
+
+function compressed_triple_state_pair_to_shock!(output::AbstractMatrix,
+                                                state_pair::AbstractVector,
+                                                n_global::Int,
+                                                shock_offset::Int,
+                                                n_exo::Int,
+                                                selected_indices,
+                                                n_state::Int;
+                                                index_rows = nothing)
     n_state * (n_state + 1) ÷ 2 == length(state_pair) ||
         throw(DimensionMismatch("compressed state-pair vector has an invalid length"))
-    output = zeros(promote_type(eltype(state_pair), Float64), length(selected_indices), n_exo)
+    size(output) == (length(selected_indices), n_exo) ||
+        throw(DimensionMismatch("compressed state-pair-to-shock output has the wrong size"))
+    fill!(output, zero(eltype(output)))
     rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
         selected_indices, shock_offset, n_state, n_exo) : index_rows
     @inbounds for shock_index in 1:n_exo
@@ -3153,6 +3184,19 @@ function compressed_triple_state_pair_to_shock(state_pair::AbstractVector,
         end
     end
     return output
+end
+
+function compressed_triple_state_pair_to_shock(state_pair::AbstractVector,
+                                               n_global::Int,
+                                               shock_offset::Int,
+                                               n_exo::Int,
+                                               selected_indices;
+                                               index_rows = nothing)
+    output = zeros(promote_type(eltype(state_pair), Float64), length(selected_indices), n_exo)
+    n_state = round(Int, (sqrt(8 * length(state_pair) + 1) - 1) / 2)
+    return compressed_triple_state_pair_to_shock!(output, state_pair, n_global, shock_offset,
+                                                  n_exo, selected_indices, n_state;
+                                                  index_rows = index_rows)
 end
 
 """Accumulate the VJP of `compressed_triple_state_pair_to_shock` into a state cotangent."""

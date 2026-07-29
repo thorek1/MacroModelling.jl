@@ -13521,13 +13521,13 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
         # 𝐒ⁱ²ᵉ_full = 𝐒²ᵉ/2 + 𝐒³⁻ᵉ k(II, s¹v) / 2
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        copyto!(kron_buffer4sv,
-                compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_aug,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices;
-                                                index_rows = shock_shock_state_rows))
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_aug,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
         ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         copyto!(state¹⁻_vol_seq[t], state¹⁻_vol)
@@ -15138,28 +15138,25 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         kron_J_s1v = ℒ.kron(J, state¹⁻_vol)
         copyto!(𝐒ⁱ_full, 𝐒¹ᵉ)
         ℒ.mul!(𝐒ⁱ_full, 𝐒²⁻ᵉ, kron_J_s1v, 1, 1)
-        ℒ.mul!(𝐒ⁱ_full,
-               𝐒³⁻ᵉ²,
-               compressed_triple_state_pair_to_shock(kronstate¹⁻_vol,
-                                                      n_aug,
-                                                      n_past + 1,
-                                                      n_exo,
-                                                      shockvar³2_cols),
-               1,
-               1)
+        compressed_triple_state_pair_to_shock!(kron_buffer3sv,
+                                               kronstate¹⁻_vol,
+                                               n_aug,
+                                               n_past + 1,
+                                               n_exo,
+                                               shockvar³2_cols,
+                                               n_past + 1)
+        ℒ.mul!(𝐒ⁱ_full, 𝐒³⁻ᵉ², kron_buffer3sv, 1, 1)
 
         # 𝐒ⁱ²ᵉ_full = 𝐒²ᵉ/2 + 𝐒³⁻ᵉ k(II, s¹v)/2
         copyto!(𝐒ⁱ²ᵉ_full, 𝐒²ᵉ); ℒ.rdiv!(𝐒ⁱ²ᵉ_full, 2)
-        ℒ.mul!(𝐒ⁱ²ᵉ_full,
-               𝐒³⁻ᵉ,
-               compressed_triple_state_to_pair(state¹⁻_vol,
-                                                n_aug,
-                                                n_past + 1,
-                                                n_exo,
-                                                shock_shock_state_indices;
-                                                index_rows = shock_shock_state_rows),
-               1,
-               1)
+        compressed_triple_state_to_pair!(kron_buffer4sv,
+                                         state¹⁻_vol,
+                                         n_aug,
+                                         n_past + 1,
+                                         n_exo,
+                                         shock_shock_state_indices;
+                                         index_rows = shock_shock_state_rows)
+        ℒ.mul!(𝐒ⁱ²ᵉ_full, 𝐒³⁻ᵉ, kron_buffer4sv, 1, 1)
 
         copyto!(state¹⁻_vol_seq[t], state¹⁻_vol)
         𝐒ⁱ_full_seq[t]   .= 𝐒ⁱ_full
@@ -15400,13 +15397,14 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 ∂𝐒¹ᵉ .+= ∂𝐒ⁱ_full
                 kron_J_s1v = ℒ.kron(J, state¹⁻_vol)
                 ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ_full, kron_J_s1v', 1, 1)
-                kron_state_pair_to_shock = compressed_triple_state_pair_to_shock(
-                    kronstate¹⁻_vol,
-                    n_aug,
-                    n_past + 1,
-                    n_exo,
-                    shockvar³2_cols)
-                ℒ.mul!(∂𝐒³⁻ᵉ², ∂𝐒ⁱ_full, kron_state_pair_to_shock', 1, 1)
+                compressed_triple_state_pair_to_shock!(kron_buffer3sv,
+                                                       kronstate¹⁻_vol,
+                                                       n_aug,
+                                                       n_past + 1,
+                                                       n_exo,
+                                                       shockvar³2_cols,
+                                                       n_past + 1)
+                ℒ.mul!(∂𝐒³⁻ᵉ², ∂𝐒ⁱ_full, kron_buffer3sv', 1, 1)
 
                 ∂kronIs1v_a = 𝐒²⁻ᵉ' * ∂𝐒ⁱ_full
                 fill!(∂state¹⁻_vol, 0)
@@ -15428,14 +15426,14 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
 
                 # Propagate ∂𝐒ⁱ²ᵉ_full back: 𝐒ⁱ²ᵉ_full = 𝐒²ᵉ/2 + 𝐒³⁻ᵉ k(II, s¹v)/2
                 ∂𝐒²ᵉ .+= ∂𝐒ⁱ²ᵉ_full ./ 2
-                kron_state_to_pair = compressed_triple_state_to_pair(
-                    state¹⁻_vol,
-                    n_aug,
-                    n_past + 1,
-                    n_exo,
-                    shock_shock_state_indices;
-                    index_rows = shock_shock_state_rows)
-                ℒ.mul!(∂𝐒³⁻ᵉ, ∂𝐒ⁱ²ᵉ_full, kron_state_to_pair', 1, 1)
+                compressed_triple_state_to_pair!(kron_buffer4sv,
+                                                 state¹⁻_vol,
+                                                 n_aug,
+                                                 n_past + 1,
+                                                 n_exo,
+                                                 shock_shock_state_indices;
+                                                 index_rows = shock_shock_state_rows)
+                ℒ.mul!(∂𝐒³⁻ᵉ, ∂𝐒ⁱ²ᵉ_full, kron_buffer4sv', 1, 1)
                 compressed_triple_state_to_pair_vjp!(
                     ∂state¹⁻_vol,
                     𝐒³⁻ᵉ' * ∂𝐒ⁱ²ᵉ_full,
