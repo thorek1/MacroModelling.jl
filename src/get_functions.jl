@@ -4871,11 +4871,12 @@ function get_loglikelihood(𝓂::ℳ,
         if has_missing
             error("The quadratic Kalman filter does not yet support missing observations.")
         end
-        qkf_sys = build_quadratic_kalman_system(𝓂, 𝐒[1], 𝐒[2], obs_indices)
-        run_quadratic_kalman(qkf_sys, data_in_deviations;
-                             measurement_error = measurement_error_H,
-                             presample_periods = presample_periods,
-                             on_failure_loglikelihood = on_failure_loglikelihood)
+        calculate_loglikelihood(Val(:quadratic_kalman), Val(algorithm), obs_indices,
+                                𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces,
+                                presample_periods = presample_periods,
+                                measurement_error = measurement_error_H,
+                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                opts = opts)
     elseif filter == :kalman
         if has_missing
             calculate_loglikelihood_with_missing(Val(:kalman),

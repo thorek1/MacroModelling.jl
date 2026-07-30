@@ -4,6 +4,7 @@ import Random
 import Statistics
 import LinearAlgebra as ℒ
 import ForwardDiff
+import Zygote
 
 # -----------------------------------------------------------------------------
 # Quadratic Kalman filter (Monfort, Renne & Roussellet, 2015) on the pruned
@@ -141,6 +142,14 @@ import ForwardDiff
         fd = [(f(p + h * (1:length(p) .== i)) - f(p - h * (1:length(p) .== i))) / (2h)
               for i in eachindex(p)]
         @test maximum(abs.(g .- fd) ./ max.(abs.(fd), 1.0)) < 1e-5
+
+        # Reverse mode reaches the filter through the hand-written rrule chain:
+        # rrule(calculate_loglikelihood, Val(:quadratic_kalman), …) pushes the
+        # cotangents back onto 𝐒₁/𝐒₂ analytically. It must agree with forward mode.
+        gz = Zygote.gradient(f, p)[1]
+        @test gz !== nothing
+        @test all(isfinite, gz)
+        @test maximum(abs.(gz .- g) ./ max.(abs.(g), 1.0)) < 1e-8
     end
 
     @testset "hand-written reverse mode for the recursion" begin

@@ -1877,7 +1877,9 @@ function rrule(::typeof(get_loglikelihood),
     else
         measurement_error != 0
     end
-    if me_active
+    # The quadratic Kalman filter carries its own hand-written adjoint, which
+    # includes the measurement-error covariance, so the guard does not apply to it.
+    if me_active && filter != :quadratic_kalman
         error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
     end
 
@@ -1963,6 +1965,13 @@ function rrule(::typeof(get_loglikelihood),
     end
 
     # ── step 3: calculate_loglikelihood ──
+    # The quadratic Kalman filter is the only one whose inner rrule takes the
+    # measurement-error covariance; for the others it is inactive (the guard above)
+    # and the kwarg would not be accepted.
+    me_kw = filter == :quadratic_kalman ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
+        NamedTuple()
+
     llh_rrule = if has_missing
         rrule(calculate_loglikelihood_with_missing,
               Val(filter), Val(algorithm), obs_indices,
@@ -1972,7 +1981,8 @@ function rrule(::typeof(get_loglikelihood),
               initial_covariance = initial_covariance,
               filter_algorithm = filter_algorithm,
               opts = opts,
-              on_failure_loglikelihood = on_failure_loglikelihood)
+              on_failure_loglikelihood = on_failure_loglikelihood,
+              me_kw...)
     else
         rrule(calculate_loglikelihood,
               Val(filter), Val(algorithm), obs_indices,
@@ -1982,7 +1992,8 @@ function rrule(::typeof(get_loglikelihood),
               initial_covariance = initial_covariance,
               filter_algorithm = filter_algorithm,
               opts = opts,
-              on_failure_loglikelihood = on_failure_loglikelihood)
+              on_failure_loglikelihood = on_failure_loglikelihood,
+              me_kw...)
     end
 
     if llh_rrule === nothing

@@ -85,8 +85,11 @@ solution, together with the pieces needed for the state-dependent innovation
 covariance. `𝐒₁`/`𝐒₂` are the expanded solution matrices as returned by
 `get_relevant_steady_state_and_state_update(Val(:pruned_second_order), …)`.
 """
-function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_index::Vector{Int})
-    T = 𝓂.constants.post_model_macro
+build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, oi::Vector{Int}) =
+    build_quadratic_kalman_system_from_constants(𝓂.constants, 𝐒₁, 𝐒₂, oi)
+
+function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, observables_index::Vector{Int})
+    T = cons.post_model_macro
     nVars, nPast, nExo = T.nVars, T.nPast_not_future_and_mixed, T.nExo
     past = T.past_not_future_and_mixed_idx
 
@@ -139,7 +142,8 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
     SS   = ℒ.kron(S, S)
     vecI = vec(Matrix{Float64}(ℒ.I(nExo)))
     PP   = ℒ.kron(PS1, PS1)
-    A1   = S1 * Ea[:, 1:nPast] * P
+    EaP  = Ea[:, 1:nPast] * P
+    A1   = S1 * EaP
 
     r1, r2, rq = 1:nr, nr+1:2nr, 2nr+1:nz
 
@@ -164,8 +168,13 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
     QH = Hq * IK * Hq'
     QH = (QH + QH') / 2
 
+    # The constant blocks are returned as well: the reverse-mode rule needs them
+    # to push cotangents from (𝒜, c, QH, g₀, Λ) back onto 𝐒₁ and 𝐒₂.
     return (; nVars, nr, oas, nPast, nExo, na, nq, nz, past, P, S, Ea, S1, S2, PS1, V, Dp, Lp,
-              𝒜, c, 𝒞, QH, G1 = S1 * S, r1)
+              𝒜, c, 𝒞, QH, G1 = S1 * S, r1,
+              r2 = nr+1:2nr, rq = 2nr+1:nz,
+              Eq, Ep, E1, SS, vecI, IK, EaP, Ea1 = Ea[:, nPast+1], EpP = Ep * P,
+              PP, KVV = ℒ.kron(V, V), Hq)
 end
 
 # State-dependent loading of the linear-in-ε part of the innovation, at state z.
@@ -371,5 +380,199 @@ function run_quadratic_kalman(sys,
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
                                       presample_periods, on_failure_loglikelihood)
 end
+
+
+
+# Adjoints of kron(A,B) with respect to each factor.
+function kron_adjoint_A(M, B, m, n, p, q)
+    A = zeros(eltype(M), m, n)
+    @inbounds for i in 1:m, j in 1:n
+        A[i, j] = sum(view(M, (i-1)*p+1:i*p, (j-1)*q+1:j*q) .* B)
+    end
+    return A
+end
+function kron_adjoint_B(M, A, m, n, p, q)
+    B = zeros(eltype(M), p, q)
+    @inbounds for i in 1:m, j in 1:n
+        @views B .+= A[i, j] .* M[(i-1)*p+1:i*p, (j-1)*q+1:j*q]
+    end
+    return B
+end
+
+# Discrete Lyapunov X = A X A' + Q by doubling.
+function qkf_lyapunov(A, Q; iters::Int = 80)
+    X = copy(Q); Ak = copy(A)
+    for _ in 1:iters
+        Xn = Ak * X * Ak' + X; Xn = (Xn + Xn') / 2
+        if maximum(abs, Xn - X) < 1e-15 * max(1.0, maximum(abs, Xn)); X = Xn; break; end
+        X = Xn; Ak = Ak * Ak
+        maximum(abs, Ak) < 1e-16 && break
+    end
+    return (X + X') / 2
+end
+
+qkf_Pz(sys) = sys.P * [Matrix{Float64}(ℒ.I(sys.nr)) zeros(sys.nr, sys.nz - sys.nr)]
+
+"""
+Push the cotangents of the augmented system back onto the solution matrices.
+Covers the build, the ergodic initialisation (including the Lyapunov adjoint) and
+the recursion. Verified against ForwardDiff to ~1e-15 in the test suite.
+"""
+function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_periods, ∂ll)
+    nr, nP, nE, na, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nz
+    r1, r2, rq = sys.r1, sys.r2, sys.rq
+    Lp = Matrix(sys.Lp); Eq = Matrix(sys.Eq); Ep = Matrix(sys.Ep); E1 = Vector(sys.E1)
+    g0, Λ = quadratic_kalman_affine_G(sys)
+    Pz = qkf_Pz(sys)
+
+    z0 = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜) \ sys.c
+    G0 = reshape(g0 + Λ * (Pz * z0), nz, nE)
+    Q0 = G0 * G0' + sys.QH; Q0 = (Q0 + Q0') / 2
+    Σ0 = qkf_lyapunov(sys.𝒜, Q0)
+
+    R = last(rrule(quadratic_kalman_recursion, sys.𝒜, sys.c, sys.QH, g0, Λ, Hm,
+                   Matrix(data_in_deviations), sys.𝒞, Pz, z0, Σ0, nz, nE,
+                   presample_periods, -Inf))(∂ll)
+    𝒜̄ = copy(R[2]); c̄ = copy(R[3]); Q̄H = copy(R[4])
+    ḡ0 = copy(R[5]); Λ̄ = copy(R[6]); Ȳ = copy(R[8])
+    z̄0 = copy(R[11]); Σ̄0 = copy(R[12])
+
+    # Σ0 = 𝒜Σ0𝒜' + Q0  ⇒  X solves X = 𝒜'X𝒜 + Σ̄0
+    X = qkf_lyapunov(Matrix(sys.𝒜'), (Σ̄0 + Σ̄0') / 2)
+    𝒜̄ .+= 2 .* (X * sys.𝒜 * Σ0)
+    Q̄0 = (X + X') / 2
+    Ḡ0 = 2 .* (Q̄0 * G0); Q̄H .+= Q̄0
+    vG0 = vec(Ḡ0); ḡ0 .+= vG0; Λ̄ .+= vG0 * (Pz * z0)'
+    z̄0 .+= Pz' * (Λ' * vG0)
+    λ = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜)' \ z̄0
+    c̄ .+= λ; 𝒜̄ .+= λ * z0'
+
+    S̄1 = zeros(size(sys.S1)); S̄2 = zeros(size(sys.S2))
+    P̄S1 = zeros(size(sys.PS1)); V̄ = zeros(size(sys.V))
+    P̄P = zeros(size(sys.PP)); K̄VV = zeros(size(sys.KVV))
+
+    Ā1 = 𝒜̄[r1, r1] + 𝒜̄[r2, r2]
+    S̄1 .+= Ā1 * sys.EaP'
+    S̄2 .+= 𝒜̄[r2, rq] * Eq' / 2 + 𝒜̄[r2, r1] * sys.EpP' / 2
+    P̄P .+= Lp' * 𝒜̄[rq, rq] * Eq' + Lp' * 𝒜̄[rq, r1] * sys.EpP'
+    S̄1 .+= c̄[r1] * sys.Ea1'
+    S̄2 .+= c̄[r2] * (E1 + sys.SS * sys.vecI)' / 2
+    lc = Lp' * c̄[rq]
+    P̄P .+= lc * E1'; K̄VV .+= lc * sys.vecI'
+
+    Rq = (Q̄H + Q̄H') / 2
+    H̄q = 2 .* (Rq * sys.Hq * sys.IK)
+    S̄2 .+= H̄q[nr+1:2nr, :] * (sys.SS / 2)'
+    K̄VV .+= Lp' * H̄q[2nr+1:end, :]
+
+    function absorb_G!(Ḡ, z)
+        ā = sys.Ea * vcat(sys.P * view(z, r1), 1.0)
+        ū = sys.PS1 * ā
+        Ma = ℒ.kron(ā, sys.S) + ℒ.kron(sys.S, ā)
+        S̄1 .+= Ḡ[r1, :] * sys.S'
+        S̄2 .+= Ḡ[r2, :] * Ma' / 2
+        Gq = Lp' * Ḡ[rq, :]
+        ū̄ = vec(kron_adjoint_A(Gq, sys.V, nP, 1, nP, nE)) .+
+             vec(kron_adjoint_B(Gq, sys.V, nP, nE, nP, 1))
+        V̄ .+= kron_adjoint_B(Gq, reshape(ū, nP, 1), nP, 1, nP, nE) .+
+               kron_adjoint_A(Gq, reshape(ū, nP, 1), nP, nE, nP, 1)
+        P̄S1 .+= ū̄ * ā'
+    end
+    absorb_G!(reshape(ḡ0 .- vec(sum(Λ̄, dims = 2)), nz, nE), zeros(nz))
+    @inbounds for i in 1:nP
+        e = zeros(nz); e[findfirst(!iszero, view(sys.P, i, :))] = 1.0
+        absorb_G!(reshape(Λ̄[:, i], nz, nE), e)
+    end
+
+    P̄S1 .+= kron_adjoint_A(P̄P, sys.PS1, nP, na, nP, na) .+
+             kron_adjoint_B(P̄P, sys.PS1, nP, na, nP, na)
+    V̄  .+= kron_adjoint_A(K̄VV, sys.V, nP, nE, nP, nE) .+
+             kron_adjoint_B(K̄VV, sys.V, nP, nE, nP, nE)
+    P̄S1 .+= V̄ * sys.S'
+    S̄1  .+= sys.P' * P̄S1
+
+    return S̄1, S̄2, Ȳ
+end
+
+
+
+
+# ── standard filter interface ────────────────────────────────────────────────
+# Routing through `calculate_loglikelihood` (rather than a special branch in
+# `get_loglikelihood`) is what lets the existing reverse-mode machinery reach the
+# filter: the top-level rrule looks for `rrule(calculate_loglikelihood, Val(filter), …)`
+# and falls back to a zero gradient when none exists.
+function calculate_loglikelihood(::Val{:quadratic_kalman},
+                                 ::Val{:pruned_second_order},
+                                 observables_index::Vector{Int},
+                                 𝐒,
+                                 data_in_deviations::AbstractMatrix,
+                                 constants,
+                                 state,
+                                 workspaces;
+                                 warmup_iterations::Int = 0,
+                                 presample_periods::Int = 0,
+                                 initial_covariance = :theoretical,
+                                 filter_algorithm::Symbol = :LagrangeNewton,
+                                 lyapunov_algorithm::Symbol = :doubling,
+                                 on_failure_loglikelihood = -Inf,
+                                 measurement_error = nothing,
+                                 opts::CalculationOptions = merge_calculation_options())
+    sys = build_quadratic_kalman_system_from_constants(constants, 𝐒[1], 𝐒[2], observables_index)
+    return run_quadratic_kalman(sys, data_in_deviations;
+                                measurement_error = measurement_error,
+                                presample_periods = presample_periods,
+                                on_failure_loglikelihood = on_failure_loglikelihood)
+end
+
+function rrule(::typeof(calculate_loglikelihood),
+               ::Val{:quadratic_kalman},
+               ::Val{:pruned_second_order},
+               observables_index::Vector{Int},
+               𝐒,
+               data_in_deviations::AbstractMatrix,
+               constants,
+               state,
+               workspaces;
+               warmup_iterations::Int = 0,
+               presample_periods::Int = 0,
+               initial_covariance = :theoretical,
+               filter_algorithm::Symbol = :LagrangeNewton,
+               lyapunov_algorithm::Symbol = :doubling,
+               on_failure_loglikelihood = -Inf,
+               measurement_error = nothing,
+               opts::CalculationOptions = merge_calculation_options())
+    sys = build_quadratic_kalman_system_from_constants(constants, 𝐒[1], 𝐒[2], observables_index)
+    n_obs = size(data_in_deviations, 1)
+    Hm = measurement_error === nothing ? zeros(n_obs, n_obs) :
+         measurement_error isa AbstractMatrix ? Matrix{Float64}(measurement_error) :
+         Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
+    llh = run_quadratic_kalman(sys, data_in_deviations;
+                               measurement_error = measurement_error,
+                               presample_periods = presample_periods,
+                               on_failure_loglikelihood = on_failure_loglikelihood)
+
+    nine(x...) = (NoTangent(), NoTangent(), NoTangent(), NoTangent(), x[1], x[2],
+                  NoTangent(), x[3], NoTangent())
+
+    if !isfinite(llh)
+        return llh, _ -> nine(NoTangent(), NoTangent(), NoTangent())
+    end
+
+    function quadratic_kalman_loglikelihood_pullback(∂llh_bar)
+        ∂llh = unthunk(∂llh_bar)
+        S̄1r, S̄2r, Ȳ = quadratic_kalman_pullback(sys, data_in_deviations, Hm,
+                                                 presample_periods, ∂llh)
+        # scatter the retained rows back onto the full solution matrices
+        ∂𝐒1 = zeros(size(𝐒[1])); ∂𝐒2 = zeros(size(𝐒[2]))
+        ∂𝐒1[sys.oas, :] = S̄1r
+        ∂𝐒2[sys.oas, :] = S̄2r
+        ∂state = [zeros(length(s)) for s in state]
+        return nine([∂𝐒1, ∂𝐒2], Ȳ, ∂state)
+    end
+
+    return llh, quadratic_kalman_loglikelihood_pullback
+end
+
 
 end # @stable
