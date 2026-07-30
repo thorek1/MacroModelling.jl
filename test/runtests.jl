@@ -70,6 +70,8 @@ elseif test_set == "update_equations"
     include("test_update_equations.jl")
 elseif test_set == "jet_hot_paths"
     include("test_jet_hot_paths.jl")
+elseif test_set == "quadratic_kalman"
+    include("test_quadratic_kalman.jl")
 elseif test_set == "particle_filter"
     include("test_particle_filter.jl")
     include("test_particle_filter_sw07.jl")

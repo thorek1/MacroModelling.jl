@@ -192,6 +192,7 @@ include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 include("./filter/particle.jl")
+include("./filter/quadratic_kalman.jl")
 
 
 export @model, @parameters, solve!
