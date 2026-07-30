@@ -219,27 +219,83 @@ left to ordinary AD.
 function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ0, nz::Int, nExo::Int,
                                     presample_periods::Int, on_failure_loglikelihood::Real)
     n_obs, nT = size(Y)
-    Tv = promote_type(eltype(𝒜), eltype(Y), eltype(g0))
-    z = copy(z0); Pc = copy(Σ0)
+    # Promote over every differentiable input, not just a few: the preallocated
+    # buffers below fix the element type, so missing one makes forward-mode AD
+    # fail with respect to exactly that argument.
+    Tv = promote_type(eltype(𝒜), eltype(c), eltype(QH), eltype(g0), eltype(Λ),
+                      eltype(Hm), eltype(Y), eltype(z0), eltype(Σ0))
+
+    # 𝒞 is a selection: row i picks the x₁ and x₂ entries of observable i. Doing
+    # that by indexing rather than by three gemms with a 0/1 matrix removes the
+    # only dense products that scale with n_obs·nz².
+    p1 = [findfirst(!iszero, view(𝒞, i, :)) for i in 1:n_obs]
+    p2 = [findlast(!iszero,  view(𝒞, i, :)) for i in 1:n_obs]
+
+    # Preallocate once per call. The naive version allocated ~18 MB per period,
+    # which cost more than the covariance propagation it was feeding.
+    Pc = Matrix{Tv}(undef, nz, nz); copyto!(Pc, Σ0)
+    Pp = Matrix{Tv}(undef, nz, nz)
+    Tm = Matrix{Tv}(undef, nz, nz)
+    z  = Vector{Tv}(undef, nz); copyto!(z, z0)
+    zp = Vector{Tv}(undef, nz)
+    gv = Vector{Tv}(undef, nz * nExo)
+    x1p = Vector{Tv}(undef, size(Pz, 1))
+    CP = Matrix{Tv}(undef, n_obs, nz)
+    F  = Matrix{Tv}(undef, n_obs, n_obs)
+    Kg = Matrix{Tv}(undef, nz, n_obs)
+    v  = Vector{Tv}(undef, n_obs)
+    Fv = Vector{Tv}(undef, n_obs)
+
     ll = zero(Tv); log2pi = log(2π)
-    for t in 1:nT
-        G = reshape(g0 + Λ * (Pz * z), nz, nExo)
-        Q = G * G' + QH
-        zp = 𝒜 * z + c
-        Pp = 𝒜 * Pc * 𝒜' + Q; Pp = (Pp + Pp') / 2
-        v  = view(Y, :, t) - 𝒞 * zp
-        CP = 𝒞 * Pp
-        F  = CP * 𝒞' + Hm; F = (F + F') / 2
+
+    @inbounds for t in 1:nT
+        # G(z) = reshape(g₀ + Λ(Pz z))
+        ℒ.mul!(x1p, Pz, z)
+        copyto!(gv, g0); ℒ.mul!(gv, Λ, x1p, one(Tv), one(Tv))
+        G = reshape(gv, nz, nExo)
+
+        # Pp = 𝒜 Pc 𝒜' + G G' + QH   (the rank-nExo term as one gemm update)
+        ℒ.mul!(Tm, 𝒜, Pc)
+        ℒ.mul!(Pp, Tm, 𝒜')
+        Pp .+= QH
+        ℒ.mul!(Pp, G, G', one(Tv), one(Tv))
+        for j in 1:nz, i in 1:j
+            m = (Pp[i, j] + Pp[j, i]) / 2; Pp[i, j] = m; Pp[j, i] = m
+        end
+
+        ℒ.mul!(zp, 𝒜, z); zp .+= c
+
+        for i in 1:n_obs
+            v[i] = Y[i, t] - (zp[p1[i]] + zp[p2[i]])
+            for k in 1:nz
+                CP[i, k] = Pp[p1[i], k] + Pp[p2[i], k]
+            end
+        end
+        for i in 1:n_obs, j in 1:n_obs
+            F[i, j] = CP[i, p1[j]] + CP[i, p2[j]] + Hm[i, j]
+        end
+        for i in 1:n_obs, j in 1:i-1
+            m = (F[i, j] + F[j, i]) / 2; F[i, j] = m; F[j, i] = m
+        end
+
         Fc = ℒ.cholesky(F, check = false)
         ℒ.issuccess(Fc) || return Tv(on_failure_loglikelihood)
+
         if t > presample_periods
-            ll -= 0.5 * (ℒ.dot(v, Fc \ v) + ℒ.logdet(Fc) + n_obs * log2pi)
+            copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
+            ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
             isfinite(ll) || return Tv(on_failure_loglikelihood)
         end
-        K = CP' / Fc
-        z = zp + K * v
-        Pc = Pp - K * CP; Pc = (Pc + Pc') / 2
+
+        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP
+        copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
+        copyto!(z, zp); ℒ.mul!(z, Kg, v, one(Tv), one(Tv))
+        copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -one(Tv), one(Tv))
+        for j in 1:nz, i in 1:j
+            m = (Pc[i, j] + Pc[j, i]) / 2; Pc[i, j] = m; Pc[j, i] = m
+        end
     end
+
     return ll
 end
 
