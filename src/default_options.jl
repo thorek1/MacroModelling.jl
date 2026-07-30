@@ -13,7 +13,9 @@ const DEFAULT_PRESAMPLE_PERIODS = 0
 # Each particle-filter variant is its own `filter` value, so the filter is fully
 # identified by a single symbol (no separate "which particle filter" argument).
 const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle)
-const SUPPORTED_FILTERS = (:kalman, :inversion, PARTICLE_FILTERS...)
+# The quadratic Kalman filter applies only to the pruned second-order solution,
+# whose augmented state space is linear (see src/filter/quadratic_kalman.jl).
+const SUPPORTED_FILTERS = (:kalman, :inversion, :quadratic_kalman, PARTICLE_FILTERS...)
 # `:particle` is accepted as a convenience alias for the bootstrap filter.
 const PARTICLE_FILTER_ALIASES = Dict(:particle => :bootstrap_particle)
 # Maps a filter symbol onto the internal variant tag used for dispatch.

@@ -74,8 +74,11 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
     nq = nPast^2                   # length of the Kronecker block
     nz = 2nVars + nq               # augmented state dimension
 
-    S1 = Matrix{Float64}(𝐒₁)
-    S2 = Matrix{Float64}(𝐒₂)
+    # Keep the element type of the solution matrices so ForwardDiff duals flow
+    # through: the selection matrices below stay Float64 and promote on contact.
+    S1 = Matrix(𝐒₁)
+    S2 = Matrix(𝐒₂)
+    Tv = promote_type(eltype(S1), eltype(S2))
 
     # past-state selection, shock selection, and the embedding ā = Ea·[x₁ₚ; 1]
     P = zeros(nPast, nVars)
@@ -110,8 +113,8 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
 
     r1, r2, rq = 1:nVars, nVars+1:2nVars, 2nVars+1:nz
 
-    𝒜 = zeros(nz, nz)
-    c = zeros(nz)
+    𝒜 = zeros(Tv, nz, nz)
+    c = zeros(Tv, nz)
     𝒜[r1, r1] = A1;                     c[r1] = S1 * Ea[:, nPast+1]
     𝒜[r2, r2] = A1
     𝒜[r2, rq] = S2 * Eq / 2
@@ -126,7 +129,7 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
     end
 
     # constant (state-independent) part of the innovation covariance
-    Hq = [zeros(nVars, nExo^2); S2 * SS / 2; ℒ.kron(V, V)]
+    Hq = [zeros(Tv, nVars, nExo^2); S2 * SS / 2; ℒ.kron(V, V)]
     IK = Matrix{Float64}(ℒ.I(nExo^2)) + Matrix(commutation_matrix(nExo))
     QH = Hq * IK * Hq'
     QH = (QH + QH') / 2
@@ -136,8 +139,8 @@ function build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, observables_
 end
 
 # State-dependent loading of the linear-in-ε part of the innovation, at state z.
-function quadratic_kalman_G(sys, z::AbstractVector{Float64})
-    ā = sys.Ea * vcat(sys.P * view(z, sys.r1), 1.0)
+function quadratic_kalman_G(sys, z::AbstractVector{<:Real})
+    ā = sys.Ea * vcat(sys.P * view(z, sys.r1), one(eltype(z)))
     ū = sys.PS1 * ā
     G2 = sys.S2 * (ℒ.kron(ā, sys.S) + ℒ.kron(sys.S, ā)) / 2
     Gq = ℒ.kron(ū, sys.V) + ℒ.kron(sys.V, ū)
@@ -155,7 +158,7 @@ system. The mean solves `(I − 𝒜)z̄ = c` directly and the covariance
 model with roots near unity.
 """
 function run_quadratic_kalman(sys,
-                              data_in_deviations::AbstractMatrix{Float64};
+                              data_in_deviations::AbstractMatrix{<:Real};
                               measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                               presample_periods::Int = 0,
                               on_failure_loglikelihood::Real = -Inf)
@@ -164,15 +167,18 @@ function run_quadratic_kalman(sys,
     n_obs, nT = size(data_in_deviations)
     presample_periods = normalize_presample_periods(presample_periods, nT)
 
+    Tv = promote_type(eltype(𝒜), eltype(data_in_deviations),
+                      measurement_error === nothing ? Float64 : eltype(measurement_error))
+
     Hm = if measurement_error === nothing
-        zeros(n_obs, n_obs)
+        zeros(Tv, n_obs, n_obs)
     elseif measurement_error isa AbstractMatrix
-        Matrix{Float64}(measurement_error)
+        Matrix{Tv}(measurement_error)
     else
-        Matrix{Float64}(ℒ.Diagonal(collect(float.(measurement_error))))
+        Matrix{Tv}(ℒ.Diagonal(collect(measurement_error)))
     end
 
-    z̄ = (Matrix{Float64}(ℒ.I(nz)) - 𝒜) \ c
+    z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
     Gbar = quadratic_kalman_G(sys, z̄)
     Q̄ = Gbar * Gbar' + QH
     Q̄ = (Q̄ + Q̄') / 2
@@ -193,7 +199,7 @@ function run_quadratic_kalman(sys,
 
     z = copy(z̄)
     Pc = copy(Σ)
-    loglik = 0.0
+    loglik = zero(Tv)
     log2pi = log(2π)
 
     for t in 1:nT
@@ -210,11 +216,11 @@ function run_quadratic_kalman(sys,
         F  = (F + F') / 2
 
         Fc = ℒ.cholesky(F, check = false)
-        ℒ.issuccess(Fc) || return Float64(on_failure_loglikelihood)
+        ℒ.issuccess(Fc) || return Tv(on_failure_loglikelihood)
 
         if t > presample_periods
             loglik -= 0.5 * (ℒ.dot(v, Fc \ v) + ℒ.logdet(Fc) + n_obs * log2pi)
-            isfinite(loglik) || return Float64(on_failure_loglikelihood)
+            isfinite(loglik) || return Tv(on_failure_loglikelihood)
         end
 
         K = CP' / Fc

@@ -412,9 +412,16 @@ function normalize_filtering_options(filter::Symbol,
         shock_decomposition = false
     end
 
+    # The quadratic Kalman filter is defined only on the pruned second-order
+    # solution: that is the case in which the augmented state space is linear.
+    if filter == :quadratic_kalman && algorithm != :pruned_second_order
+        @info "The quadratic Kalman filter is only defined for `algorithm = :pruned_second_order`; got `:$(algorithm)`. Setting `filter = :inversion`." maxlog = maxlog
+        filter = :inversion
+    end
+
     # Higher-order solutions are handled by the inversion filter by default, but
     # the particle filters are explicitly valid at every order too.
-    if algorithm != :first_order && filter != :inversion && !is_particle
+    if algorithm != :first_order && filter != :inversion && filter != :quadratic_kalman && !is_particle
         @info "Higher order solution algorithms only support the inversion and particle filters. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
         is_particle = false
@@ -440,6 +447,11 @@ function normalize_filtering_options(filter::Symbol,
     # origin — see `find_shocks`), which is a per-period choice a smoother could in
     # principle redistribute across time; doing so would be a different estimator,
     # not the inversion filter's smoother.
+    if filter == :quadratic_kalman && smooth
+        @info "The quadratic Kalman filter does not provide smoothed estimates. Setting `smooth = false`." maxlog = maxlog
+        smooth = false
+    end
+
     if filter == :inversion && smooth
         @info "The inversion filter identifies the state exactly, so its smoothed and filtered estimates coincide. Setting `smooth = false`." maxlog = maxlog
         smooth = false

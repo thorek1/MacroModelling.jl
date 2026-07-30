@@ -3,6 +3,7 @@ using Test
 import Random
 import Statistics
 import LinearAlgebra as ℒ
+import ForwardDiff
 
 # -----------------------------------------------------------------------------
 # Quadratic Kalman filter (Monfort, Renne & Roussellet, 2015) on the pruned
@@ -109,6 +110,32 @@ import LinearAlgebra as ℒ
         @test isfinite(inv_ll)
         @test qk_tight > qk                    # less measurement error ⇒ higher density
         @test abs(qk_tight - inv_ll) < abs(qk - inv_ll)
+    end
+
+    @testset "public API, gating and derivatives" begin
+        mev = 1e-4
+        qk_api = get_loglikelihood(RBC_qkf, data, p; algorithm = :pruned_second_order,
+                                   filter = :quadratic_kalman, measurement_error = mev)
+        qk_int = MacroModelling.run_quadratic_kalman(sys, Y; measurement_error = fill(mev, length(obs)))
+        @test isapprox(qk_api, qk_int, rtol = 1e-10)
+
+        # the filter is defined only on the pruned second-order solution; asking for
+        # it elsewhere falls back to the inversion filter rather than erroring
+        @test get_loglikelihood(RBC_qkf, data, p; algorithm = :first_order,
+                                filter = :quadratic_kalman) ==
+              get_loglikelihood(RBC_qkf, data, p; algorithm = :first_order, filter = :inversion)
+
+        # The implementation is type generic, so forward-mode AD flows through the
+        # closed-form moment algebra — there is no finite differencing inside the
+        # filter. Checked against central differences on the likelihood itself.
+        f(x) = get_loglikelihood(RBC_qkf, data, x; algorithm = :pruned_second_order,
+                                 filter = :quadratic_kalman, measurement_error = mev)
+        g = ForwardDiff.gradient(f, p)
+        @test all(isfinite, g)
+        h = 1e-6
+        fd = [(f(p + h * (1:length(p) .== i)) - f(p - h * (1:length(p) .== i))) / (2h)
+              for i in eachindex(p)]
+        @test maximum(abs.(g .- fd) ./ max.(abs.(fd), 1.0)) < 1e-5
     end
 
     @testset "reduces to the Kalman filter on a linear model" begin
