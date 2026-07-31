@@ -392,7 +392,10 @@ function run_quadratic_kalman(sys,
                               data_in_deviations::AbstractMatrix{<:Real};
                               measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                               presample_periods::Int = 0,
-                              on_failure_loglikelihood::Real = -Inf)
+                              on_failure_loglikelihood::Real = -Inf,
+                              workspaces = nothing,
+                              lyapunov_algorithm::Symbol = :doubling,
+                              initial_covariance_out::Union{Nothing,Base.RefValue} = nothing)
     nz = sys.nz
     𝒜, c, 𝒞, QH = sys.𝒜, sys.c, sys.𝒞, sys.QH
     n_obs, nT = size(data_in_deviations)
@@ -414,19 +417,13 @@ function run_quadratic_kalman(sys,
     Q̄ = Gbar * Gbar' + QH
     Q̄ = (Q̄ + Q̄') / 2
 
-    Σ = copy(Q̄)
-    Ak = copy(𝒜)
-    for _ in 1:60
-        Σn = Ak * Σ * Ak' + Σ
-        Σn = (Σn + Σn') / 2
-        if maximum(abs, Σn - Σ) < 1e-12 * max(1.0, maximum(abs, Σn))
-            Σ = Σn
-            break
-        end
-        Σ = Σn
-        Ak = Ak * Ak
-        maximum(abs, Ak) < 1e-14 && break
-    end
+    Σ = qkf_lyapunov(𝒜, Q̄; workspaces = workspaces,
+                     lyapunov_algorithm = lyapunov_algorithm)
+
+    # The reverse pass needs this exact matrix again. Handing it back lets the
+    # pullback skip a second identical Lyapunov solve (a residual check on an
+    # exact guess instead of a full doubling run).
+    initial_covariance_out === nothing || (initial_covariance_out[] = Σ)
 
     # Hand off to the taped recursion, which carries the hand-written adjoint.
     g0, Λ = quadratic_kalman_affine_G(sys)
@@ -455,8 +452,35 @@ function kron_adjoint_B(M, A, m, n, p, q)
     return B
 end
 
-# Discrete Lyapunov X = A X A' + Q by doubling.
-function qkf_lyapunov(A, Q; iters::Int = 80)
+# Discrete Lyapunov X = A X A' + Q.
+#
+# Float64 problems go through the package's workspace-backed doubling solver, which
+# reuses its buffers instead of allocating a fresh nz×nz triple product per
+# iteration. AD element types fall back to the self-contained loop below, since
+# `solve_lyapunov_equation` is restricted to `Float64`.
+#
+# `initial_guess` pays off only when the guess is *exact*: the solver checks its
+# residual (two nz³ products) and returns it, ~15× faster than a full solve on
+# SW07. Under even a 1e-6 relative parameter move the check fails and the solve
+# runs anyway, making it a net ~6% loss — so this is worth threading from the
+# forward pass into the reverse pass, which re-solves the identical equation, but
+# *not* worth caching across sampler draws.
+function qkf_lyapunov(A, Q;
+                      workspaces = nothing,
+                      initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0, 0),
+                      lyapunov_algorithm::Symbol = :doubling,
+                      iters::Int = 80)
+    if workspaces !== nothing && eltype(A) === Float64 && eltype(Q) === Float64
+        ws = ensure_lyapunov_workspace!(workspaces, size(A, 1), :second_order)
+        X, converged = solve_lyapunov_equation(Matrix(A), Matrix(Q), ws;
+                                               initial_guess = initial_guess,
+                                               lyapunov_algorithm = lyapunov_algorithm,
+                                               verbose = false)
+        # The solver may hand back one of its own buffers, so symmetrising into a
+        # fresh matrix here doubles as taking ownership of the result.
+        converged && return (X + X') / 2
+    end
+
     X = copy(Q); Ak = copy(A)
     for _ in 1:iters
         Xn = Ak * X * Ak' + X; Xn = (Xn + Xn') / 2
@@ -474,7 +498,10 @@ Push the cotangents of the augmented system back onto the solution matrices.
 Covers the build, the ergodic initialisation (including the Lyapunov adjoint) and
 the recursion. Verified against ForwardDiff to ~1e-15 in the test suite.
 """
-function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_periods, ∂ll)
+function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_periods, ∂ll;
+                                   workspaces = nothing,
+                                   lyapunov_algorithm::Symbol = :doubling,
+                                   initial_covariance::AbstractMatrix{<:AbstractFloat} = zeros(0, 0))
     nr, nP, nE, na, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nz
     r1, r2, rq = sys.r1, sys.r2, sys.rq
     Lp = Matrix(sys.Lp); Eq = Matrix(sys.Eq); Ep = Matrix(sys.Ep); E1 = Vector(sys.E1)
@@ -484,7 +511,9 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     z0 = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜) \ sys.c
     G0 = reshape(g0 + Λ * (Pz * z0), nz, nE)
     Q0 = G0 * G0' + sys.QH; Q0 = (Q0 + Q0') / 2
-    Σ0 = qkf_lyapunov(sys.𝒜, Q0)
+    Σ0 = qkf_lyapunov(sys.𝒜, Q0; workspaces = workspaces,
+                      lyapunov_algorithm = lyapunov_algorithm,
+                      initial_guess = initial_covariance)
 
     R = last(rrule(quadratic_kalman_recursion, sys.𝒜, sys.c, sys.QH, g0, Λ, Hm,
                    Matrix(data_in_deviations), sys.𝒞, Pz, z0, Σ0, nz, nE,
@@ -494,7 +523,8 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     z̄0 = copy(R[11]); Σ̄0 = copy(R[12])
 
     # Σ0 = 𝒜Σ0𝒜' + Q0  ⇒  X solves X = 𝒜'X𝒜 + Σ̄0
-    X = qkf_lyapunov(Matrix(sys.𝒜'), (Σ̄0 + Σ̄0') / 2)
+    X = qkf_lyapunov(Matrix(sys.𝒜'), (Σ̄0 + Σ̄0') / 2; workspaces = workspaces,
+                     lyapunov_algorithm = lyapunov_algorithm)
     𝒜̄ .+= 2 .* (X * sys.𝒜 * Σ0)
     Q̄0 = (X + X') / 2
     Ḡ0 = 2 .* (Q̄0 * G0); Q̄H .+= Q̄0
@@ -578,7 +608,9 @@ function calculate_loglikelihood(::Val{:quadratic_kalman},
     return run_quadratic_kalman(sys, data_in_deviations;
                                 measurement_error = measurement_error,
                                 presample_periods = presample_periods,
-                                on_failure_loglikelihood = on_failure_loglikelihood)
+                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                workspaces = workspaces,
+                                lyapunov_algorithm = lyapunov_algorithm)
 end
 
 function rrule(::typeof(calculate_loglikelihood),
@@ -603,10 +635,14 @@ function rrule(::typeof(calculate_loglikelihood),
     Hm = measurement_error === nothing ? zeros(n_obs, n_obs) :
          measurement_error isa AbstractMatrix ? Matrix{Float64}(measurement_error) :
          Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
+    Σ₀ref = Ref{Matrix{Float64}}()
     llh = run_quadratic_kalman(sys, data_in_deviations;
                                measurement_error = measurement_error,
                                presample_periods = presample_periods,
-                               on_failure_loglikelihood = on_failure_loglikelihood)
+                               on_failure_loglikelihood = on_failure_loglikelihood,
+                               workspaces = workspaces,
+                               lyapunov_algorithm = lyapunov_algorithm,
+                               initial_covariance_out = Σ₀ref)
 
     nine(x...) = (NoTangent(), NoTangent(), NoTangent(), NoTangent(), x[1], x[2],
                   NoTangent(), x[3], NoTangent())
@@ -618,7 +654,11 @@ function rrule(::typeof(calculate_loglikelihood),
     function quadratic_kalman_loglikelihood_pullback(∂llh_bar)
         ∂llh = unthunk(∂llh_bar)
         S̄1r, S̄2r, Ȳ = quadratic_kalman_pullback(sys, data_in_deviations, Hm,
-                                                 presample_periods, ∂llh)
+                                                 presample_periods, ∂llh;
+                                                 workspaces = workspaces,
+                                                 lyapunov_algorithm = lyapunov_algorithm,
+                                                 initial_covariance = isassigned(Σ₀ref) ?
+                                                                      Σ₀ref[] : zeros(0, 0))
         # scatter the retained rows back onto the full solution matrices
         ∂𝐒1 = zeros(size(𝐒[1])); ∂𝐒2 = zeros(size(𝐒[2]))
         ∂𝐒1[sys.oas, :] = S̄1r
