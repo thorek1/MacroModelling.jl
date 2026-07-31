@@ -47,8 +47,10 @@
 # refuse with a message that names the cause instead of appearing to hang.
 const CUBIC_KALMAN_MAX_DIMENSION = 2500
 
-# row-major flatten: rowvec(R)[(i-1)*size(R,2)+r] == R[i,r]
-rowvec(R) = vec(permutedims(R))
+# Several intermediates below are computed as a matrix whose *row-major* flatten
+# is the Kronecker vector wanted — "the rowvec of R" in the comments, meaning the
+# vector v with v[(i-1)*size(R,2)+r] == R[i,r]. The step writes those entries out
+# by indexing rather than materialising the flatten.
 
 # Index maps for the symmetric Kronecker blocks. `a⊗a` is symmetric and `a⊗a⊗a`
 # fully symmetric, so the state carries one entry per sorted multi-index — the
