@@ -92,6 +92,21 @@ import AxisKeys: KeyedArray
     mq, Sq = MacroModelling.cubic_kalman_moments(sys, zt, nodes, wts)
     @test maximum(abs, mq - (𝒜 * zt + c)) < 1e-12
 
+    # 3b. the analytic assembly must reproduce the quadrature exactly — it is a
+    #     closed form for the same integrals, not an approximation of them.
+    basis = MacroModelling.cubic_noise_basis(sys.nExo)
+    @test basis.N == binomial(sys.nExo + 3, 3)
+    # the monomial moment vector and covariance against tensor Gauss-Hermite
+    @test all(abs(basis.m[i] - sum(w * prod(ε .^ basis.exps[i]) for (ε, w) in zip(nodes, wts))) < 1e-10
+              for i in 1:basis.N)
+    𝒜a, ca, c₀, Λ = MacroModelling.build_cubic_kalman_system(sys, basis)
+    @test maximum(abs, 𝒜a - 𝒜) < 1e-9
+    @test maximum(abs, ca - c) < 1e-9
+    # Q(z) = C(z) Ψ C(z)' against the quadrature variance, at a non-trivial z
+    Ca = reshape(c₀ + Λ * zt, sys.nz, basis.N)
+    Qa = Ca * basis.Ψ * Ca'
+    @test maximum(abs, Qa - Sq) / max(1e-12, maximum(abs, Sq)) < 1e-8
+
     Random.seed!(5)
     N = 200_000
     mm = zeros(sys.nz); SS = zeros(sys.nz, sys.nz)

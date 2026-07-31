@@ -96,7 +96,76 @@ function symmetric_triple_maps(n::Int)
     return expand, canonical
 end
 
-# Probabilists' Gauss-Hermite nodes and weights via Golub-Welsch.
+# ── analytic assembly ────────────────────────────────────────────────────────
+#
+# `f(z, ·)` is a polynomial of degree ≤ 3 in ε whose coefficients are affine in z:
+#
+#   f(z, ε) = Σ_α c_α(z) ε^α ,   |α| ≤ 3.
+#
+# Recovering the coefficient matrix C(z) = [c_α(z)]_α once therefore gives both
+# moments in closed form, with no quadrature anywhere:
+#
+#   E[f]   = C(z) m,        m_α  = E[ε^α]
+#   Var(f) = C(z) Ψ C(z)',  Ψ_αβ = E[ε^{α+β}] − E[ε^α] E[ε^β]
+#
+# and because ε is a vector of *independent* standard normals, E[ε^α] factorises
+# into double factorials — no Isserlis pairings needed. This replaces a tensor
+# Gauss-Hermite rule whose node count grew as `npt^nExo`: the coefficient basis
+# has only C(nExo+3, 3) elements (10 for two shocks, 120 for seven).
+
+# E[ε^α] = ∏ᵢ (αᵢ−1)!! when every αᵢ is even, and 0 otherwise.
+double_factorial(n::Int) = n <= 0 ? 1.0 : Float64(prod(n:-2:1))
+gaussian_moment(α) = all(iseven, α) ? prod(double_factorial(a - 1) for a in α) : 0.0
+
+# Exponent vectors α with |α| ≤ maxdeg, in n variables.
+function monomial_exponents(n::Int, maxdeg::Int = 3)
+    out = Vector{Vector{Int}}()
+    cur = zeros(Int, n)
+    function rec(pos, rem)
+        if pos > n
+            push!(out, copy(cur))
+            return
+        end
+        for d in 0:rem
+            cur[pos] = d
+            rec(pos + 1, rem - d)
+        end
+        cur[pos] = 0
+        return
+    end
+    rec(1, maxdeg)
+    return out
+end
+
+"""
+Interpolation data for recovering a degree-≤3 polynomial in `nExo` variables from
+its values: the exponent set, a unisolvent set of evaluation points, the inverse
+Vandermonde, and the Gaussian moment vector and covariance of the monomials.
+"""
+function cubic_noise_basis(nExo::Int; seed::Int = 42)
+    exps = monomial_exponents(nExo, 3)
+    N = length(exps)
+    # Any N points with an invertible Vandermonde will do; Gaussian draws are
+    # unisolvent with probability one, and the conditioning is checked rather
+    # than assumed.
+    rng = Random.Xoshiro(seed)
+    pts = [randn(rng, nExo) for _ in 1:N]
+    V = [prod(pts[p][k]^exps[m][k] for k in 1:nExo) for p in 1:N, m in 1:N]
+    if !isfinite(ℒ.cond(V)) || ℒ.cond(V) > 1e10
+        error("The cubic Kalman filter could not build a well-conditioned polynomial " *
+              "basis for $nExo shocks (condition number $(ℒ.cond(V))). This is a bug; " *
+              "please report it.")
+    end
+    # f(z, ε_p) = C(z) V[p,:]'  ⇒  F = C V'  ⇒  C = F (V')⁻¹
+    W = Matrix(transpose(inv(V)))
+    m = [gaussian_moment(a) for a in exps]
+    Ψ = [gaussian_moment(exps[i] .+ exps[j]) - m[i] * m[j] for i in 1:N, j in 1:N]
+    Ψ = (Ψ + Ψ') / 2
+    return (; exps, pts, W, m, Ψ, N)
+end
+
+# Probabilists' Gauss-Hermite nodes and weights via Golub-Welsch. Retained so the
+# tests can cross-check the analytic assembly against quadrature.
 function gauss_hermite_nodes(n::Int)
     J = ℒ.SymTridiagonal(zeros(n), sqrt.(1:n-1))
     E = ℒ.eigen(J)
@@ -417,15 +486,53 @@ function build_cubic_kalman_transition(sys, nodes, wts; ws = cubic_kalman_worksp
 end
 
 """
+Assemble the whole system analytically: the transition `𝒜, c` and the affine
+noise factor `vec(C(z)) = c₀ + Λz` from which `Q(z) = C(z) Ψ C(z)'`.
+
+Costs `(n_z + 1) · N` evaluations of the step, where `N = C(nExo+3, 3)` — the
+same shape of work the quadrature build did, but with a node count that grows
+polynomially in the number of shocks instead of exponentially. Afterwards no
+quadrature is needed at all, per period or otherwise.
+"""
+function build_cubic_kalman_system(sys, basis; ws = cubic_kalman_workspace(sys))
+    nz, N = sys.nz, basis.N
+    Fm = Matrix{Float64}(undef, nz, N)
+    coefficients_at = function (z)
+        @inbounds for (p, ε) in enumerate(basis.pts)
+            cubic_kalman_step!(view(Fm, :, p), sys, z, ε, ws)
+        end
+        return Fm * basis.W          # nz × N
+    end
+
+    C0 = coefficients_at(zeros(nz))
+    c₀ = vec(C0)
+    Λ = Matrix{Float64}(undef, nz * N, nz)
+    𝒜 = Matrix{Float64}(undef, nz, nz)
+    c = C0 * basis.m
+    e = zeros(nz)
+    for j in 1:nz
+        fill!(e, 0.0)
+        e[j] = 1.0
+        ΔC = coefficients_at(e)
+        ΔC .-= C0
+        Λ[:, j] = vec(ΔC)
+        # E[f] = C(z) m is affine in z, so column j of 𝒜 is ΔC·m.
+        ℒ.mul!(view(𝒜, :, j), ΔC, basis.m)
+    end
+    return 𝒜, c, c₀, Λ
+end
+
+"""
 Kalman recursion on the cubic augmented state. Mirrors `run_quadratic_kalman`:
 the noise covariance is rebuilt from the current state estimate every period,
-because it depends on the state exactly as `G(z)G(z)'` does at second order.
+because it depends on the state exactly as `G(z)G(z)'` does at second order —
+here as `C(z) Ψ C(z)'`, with `C` affine in `z`, so a period costs one matvec and
+two gemms rather than a quadrature sweep.
 """
 function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
                           measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                           presample_periods::Int = 0,
                           on_failure_loglikelihood::Real = -Inf,
-                          quadrature_points::Int = 4,
                           workspaces = nothing,
                           lyapunov_algorithm::Symbol = :doubling)
     nz = sys.nz
@@ -440,14 +547,31 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
         Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
     end
 
-    nodes, wts = gauss_hermite_tensor(sys.nExo, quadrature_points)
     ws = cubic_kalman_workspace(sys)
-    𝒜, c = build_cubic_kalman_transition(sys, nodes, wts; ws = ws)
+    basis = cubic_noise_basis(sys.nExo)
+    𝒜, c, c₀, Λ = build_cubic_kalman_system(sys, basis; ws = ws)
+    N, Ψ = basis.N, basis.Ψ
+
+    cvec = Vector{Float64}(undef, nz * N)
+    CΨ = Matrix{Float64}(undef, nz, N)
+    Q = Matrix{Float64}(undef, nz, nz)
+    # Q(z) = C(z) Ψ C(z)' with vec(C) = c₀ + Λz.
+    noise_covariance! = function (Q, z)
+        copyto!(cvec, c₀)
+        ℒ.mul!(cvec, Λ, z, 1.0, 1.0)
+        C = reshape(cvec, nz, N)
+        ℒ.mul!(CΨ, C, Ψ)
+        ℒ.mul!(Q, CΨ, C')
+        for j in 1:nz, i in 1:j
+            m = (Q[i, j] + Q[j, i]) / 2
+            Q[i, j] = m; Q[j, i] = m
+        end
+        return Q
+    end
 
     z = (Matrix{Float64}(ℒ.I(nz)) - 𝒜) \ c
-    qbuf = Matrix{Float64}(undef, nz, length(nodes))
-    _, Q̄ = cubic_kalman_moments(sys, z, nodes, wts; buf = qbuf, ws = ws)
-    Σ = qkf_lyapunov(𝒜, Q̄; workspaces = workspaces, lyapunov_algorithm = lyapunov_algorithm)
+    Σ = qkf_lyapunov(𝒜, noise_covariance!(Q, z); workspaces = workspaces,
+                     lyapunov_algorithm = lyapunov_algorithm)
 
     # Preallocate the recursion's working matrices once, as the quadratic filter
     # does: the covariance propagation is the whole cost, and allocating an nz×nz
@@ -466,7 +590,7 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     ll = 0.0
     log2pi = log(2π)
     @inbounds for t in 1:nT
-        _, Q = cubic_kalman_moments(sys, z, nodes, wts; buf = qbuf, ws = ws)
+        noise_covariance!(Q, z)
 
         # Pp = 𝒜 Pc 𝒜' + Q
         ℒ.mul!(Tm, 𝒜, Pc)
