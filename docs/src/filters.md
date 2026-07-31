@@ -394,6 +394,58 @@ Without pruning there is no such representation: ``x_t`` is quadratic in ``x_{t-
 ``x_t\otimes x_t`` is quartic, needing ``x^{\otimes4}``, then ``x^{\otimes8}`` — the
 hierarchy never closes. Pruning truncates it at exactly one rung.
 
+### Side by side with the linear Kalman filter
+
+It is the *same* recursion. Both filters run predict → innovate → update → accumulate, and
+both score the innovation with the identical Gaussian formula. Setting
+``\mathbf{S}_2 = 0`` collapses the quadratic filter onto the linear one exactly (this is a
+test in the suite). The differences are entirely in what is being propagated.
+
+```
+linear Kalman (src/filter/kalman.jl)      quadratic Kalman (src/filter/quadratic_kalman.jl)
+─────────────────────────────────────     ────────────────────────────────────────────────
+                                          G   = reshape(g₀ + Λ(P_z z))    ← state-dependent
+P̂  = A P A' + 𝐁                           P̂   = 𝒜 P 𝒜' + G G' + Q_H
+û  = A u                                  ẑ   = 𝒜 z + c                  ← non-zero drift
+v  = yₜ − C û                             v   = yₜ − 𝒞 ẑ
+F  = C P̂ C' + H                           F   = 𝒞 P̂ 𝒞' + H
+ll += log|F| + v'F⁻¹v                     ll -= ½(v'F⁻¹v + log|F| + n log 2π)
+K  = P̂ C' F⁻¹                             K   = P̂ 𝒞' F⁻¹
+u  = û + K v                              z   = ẑ + K v
+P  = P̂ − K C P̂                            P   = P̂ − K 𝒞 P̂
+```
+
+| | linear Kalman | quadratic Kalman |
+|---|---|---|
+| state carried | ``x_t`` | ``z_t = [x_1;\ x_2;\ \mathrm{vech}(x_{1,p}\otimes x_{1,p})]`` |
+| dimension (SW07) | 34 | 446 |
+| transition | ``x' = Ax + B\varepsilon`` | ``z' = \mathcal{A}z + c + w(z,\varepsilon)`` |
+| drift ``c`` | zero — certainty equivalence empties ``\mathbf{S}_1``'s constant column | non-zero — carries the risk correction |
+| noise covariance | ``\mathbf{B} = BB'``, **constant** | ``G(z)G(z)' + Q_H``, **depends on the state** |
+| innovation | ``B\varepsilon`` — Gaussian | ``G\varepsilon + H(\varepsilon\otimes\varepsilon - \mathrm{vec}\,I)`` — **not** Gaussian |
+| observation | ``y = Cx``, general ``C`` | ``y = (x_1+x_2)[\text{obs}]`` — a selection of two blocks |
+| solve per period | LU of ``F`` (``n_{obs}^3``) | Cholesky of ``F`` (``n_{obs}^3``) |
+| dominant cost | ``2n^3`` | ``2n_z^3`` — about ``2250\times`` more at SW07 sizes |
+| exact? | yes, for a linear Gaussian model | no — a moment-matching approximation |
+
+Three of these carry real consequences.
+
+**The noise covariance moved inside the loop.** In the linear filter ``\mathbf{B} = BB'`` is
+built once and added every period. In the quadratic filter the innovation loading ``G``
+is affine in ``z``, so ``Q`` must be rebuilt from the current state estimate at each ``t``.
+That is precisely the conditional heteroskedasticity a second-order solution adds — the
+model's shock impact depends on where the state is — and it is why the filter is not merely
+a linear filter on a bigger vector.
+
+**The innovation is no longer Gaussian.** ``\varepsilon\otimes\varepsilon`` is a
+``\chi^2``-type object; matching only its first two moments discards every higher cumulant.
+The linear filter has nothing to discard, which is why it is exact and this one is not; the
+next section works through what survives the approximation.
+
+**The cost is cubic in a squared dimension.** ``n_z`` grows like ``n_{past}^2/2``, so the
+``O(n_z^3)`` covariance propagation grows like ``n_{past}^6``. This is the single fact that
+governs when the filter is usable.
+
 ### What is exact, and what is not
 
 The transition is exactly linear and the conditional first two moments are closed form.
