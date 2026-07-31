@@ -407,10 +407,10 @@ threw(f) = try; f(); false; catch; true; end
     end
 
     @testset "Filter selection and automatic measurement error" begin
-        # `:particle` is an alias for the bootstrap filter: same RNG ⇒ same value
+        # `:particle` is an alias for the guided filter: same RNG ⇒ same value
         @test get_loglikelihood(RBC_pf, data, p; filter = :particle, algorithm = :first_order,
                                 measurement_error = me^2, n_particles = 2_000, particle_rng = Random.Xoshiro(5)) ==
-              get_loglikelihood(RBC_pf, data, p; filter = :bootstrap_particle, algorithm = :first_order,
+              get_loglikelihood(RBC_pf, data, p; filter = :guided_particle, algorithm = :first_order,
                                 measurement_error = me^2, n_particles = 2_000, particle_rng = Random.Xoshiro(5))
         # `:auto` leaves the Kalman filter without measurement error
         @test get_loglikelihood(RBC_pf, data, p; filter = :kalman) ==

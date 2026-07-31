@@ -1299,8 +1299,7 @@ buffers start empty and are sized on demand by `ensure_particle_workspace!`.
 function Particle_workspace(::Type{TT} = Float64) where {TT <: Real}
     particle_workspace{TT}(
         0, 0, 0,                                             # nVars, nExo, n_particles
-        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # X, X2, Anc
-        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # Anc2, St, St2
+        Matrix{TT}[],                                        # pools
         zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # E, E2, Eprop
         zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # W, Wn, logdens
         zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # logw, lam, dv
@@ -1319,12 +1318,7 @@ function ensure_particle_workspace!(workspaces::workspaces, nVars::Int, nExo::In
     ws = workspaces.particle
 
     if ws.nVars != nVars || ws.n_particles != n_particles
-        ws.X    = Matrix{Float64}(undef, nVars, n_particles)
-        ws.X2   = Matrix{Float64}(undef, nVars, n_particles)
-        ws.Anc  = Matrix{Float64}(undef, nVars, n_particles)
-        ws.Anc2 = Matrix{Float64}(undef, nVars, n_particles)
-        ws.St   = Matrix{Float64}(undef, nVars, n_particles)
-        ws.St2  = Matrix{Float64}(undef, nVars, n_particles)
+        empty!(ws.pools)   # a dimension change invalidates every state buffer
         ws.nVars = nVars
     end
 
@@ -1349,6 +1343,20 @@ function ensure_particle_workspace!(workspaces::workspaces, nVars::Int, nExo::In
     end
 
     return ws
+end
+
+"""
+    ensure_particle_pools!(ws, n)
+
+Guarantee that the workspace holds at least `n` `nVars × n_particles` state
+buffers and return the pool vector. The particle filters take these in groups of
+one per pruned state component, so `n` is `n_groups * n_components`.
+"""
+function ensure_particle_pools!(ws::particle_workspace{Float64}, n::Int)
+    while length(ws.pools) < n
+        push!(ws.pools, Matrix{Float64}(undef, ws.nVars, ws.n_particles))
+    end
+    return ws.pools
 end
 
 """

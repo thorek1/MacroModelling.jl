@@ -1211,10 +1211,13 @@ and lazily (re)allocated by `ensure_particle_workspace!` — inside a sampler th
 likelihood is evaluated thousands of times at the same dimensions, so these
 buffers are allocated once for the whole run rather than once per evaluation.
 
-Six `nVars × n_particles` and three `nExo × n_particles` matrices cover the
-simultaneous needs of every variant: the bootstrap filter uses the fewest, the
-tempered filter the most (ancestors, states, Metropolis proposals, and the
-swap partners for each).
+A cloud is stored as `nVars × n_particles` matrices — one per pruned state
+component, so one matrix at first, second and third order, two at pruned second
+order and three at pruned third order — which is what lets the whole swarm be
+propagated with a handful of BLAS `gemm` calls. `pools` is a flat vector of such
+matrices handed out in groups of `n_components` by `ensure_particle_pools!`; the
+bootstrap filter needs the fewest groups, the tempered filter the most
+(ancestors, states, Metropolis proposals, and the swap partners for each).
 """
 mutable struct particle_workspace{T <: Real}
     # Dimensions (for reallocation checks)
@@ -1222,13 +1225,8 @@ mutable struct particle_workspace{T <: Real}
     nExo::Int
     n_particles::Int
 
-    # nVars × n_particles state clouds
-    X::Matrix{T}
-    X2::Matrix{T}
-    Anc::Matrix{T}
-    Anc2::Matrix{T}
-    St::Matrix{T}
-    St2::Matrix{T}
+    # nVars × n_particles state-component buffers, handed out in groups
+    pools::Vector{Matrix{T}}
 
     # nExo × n_particles shock clouds
     E::Matrix{T}

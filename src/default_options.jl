@@ -12,14 +12,19 @@ const DEFAULT_PRESAMPLE_PERIODS = 0
 # ── Filter registry ──────────────────────────────────────────────────────────
 # Each particle-filter variant is its own `filter` value, so the filter is fully
 # identified by a single symbol (no separate "which particle filter" argument).
-const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle)
+const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle, :guided_particle)
 const SUPPORTED_FILTERS = (:kalman, :inversion, PARTICLE_FILTERS...)
-# `:particle` is accepted as a convenience alias for the bootstrap filter.
-const PARTICLE_FILTER_ALIASES = Dict(:particle => :bootstrap_particle)
+# `:particle` is accepted as a convenience alias for the variant a user asking for
+# "a particle filter" should get. That is the guided filter: it draws each shock from
+# its own conditional rather than blindly, which on a Smets-Wouters-sized problem is
+# both an order of magnitude cheaper and several times more accurate than the
+# bootstrap filter the alias used to point at.
+const PARTICLE_FILTER_ALIASES = Dict(:particle => :guided_particle)
 # Maps a filter symbol onto the internal variant tag used for dispatch.
 const PARTICLE_FILTER_VARIANT = Dict(:bootstrap_particle => :bootstrap,
                                      :auxiliary_particle => :auxiliary,
-                                     :tempered_particle  => :tempered)
+                                     :tempered_particle  => :tempered,
+                                     :guided_particle    => :guided)
 
 # ── Measurement error ────────────────────────────────────────────────────────
 # `measurement_error` is the covariance H of ηₜ ~ N(0, H) in yₜ = C xₜ + ηₜ. It is
@@ -51,11 +56,59 @@ const DEFAULT_N_PARTICLES = 10_000
 const DEFAULT_PARTICLE_RESAMPLING = :systematic
 const DEFAULT_PARTICLE_RESAMPLING_THRESHOLD = 0.5
 const DEFAULT_PARTICLE_INITIAL_STATE_SCALING = 1.0
-# Tempered particle filter (Herbst & Schorfheide, 2019) controls
-const DEFAULT_TEMPERING_TARGET_RATIO = 2.0
-const DEFAULT_TEMPERING_MH_STEPS = 1
+# Tempering controls, shared by `:tempered_particle` and `:guided_particle`.
+#
+# Both are set more aggressively than Herbst & Schorfheide's own values (ratio 2,
+# one MH step) because for the *tempered* filter the mutation, not the particle
+# count, is what binds. Measured on the euro-area problem at 4 000 particles:
+#
+#   ratio  mh   tempered: seed sd   log-likelihood sd   cost
+#    2.0    2         0.199               147.8         1.0x
+#    2.0    4         0.144                85.9         1.7x
+#    1.5    2         0.161                67.6         1.3x
+#    1.5    4         0.106                39.1         2.3x
+#
+# The two compound, both improve the likelihood as well as the estimates, and both
+# do so more per unit of compute than raising `n_particles`.
+#
+# The *guided* filter is insensitive to `tempering_mh_steps`: over 32 paired seeds
+# its dispersion was 0.097 / 0.092 / 0.095 / 0.091 / 0.097 at 0 / 1 / 2 / 4 / 8
+# steps — a spread well inside the measurement's own ~13% standard error — while
+# the cost ran from 2.4 s to 9.2 s. Four is kept because the knob is shared and the
+# asymmetry is stark: over-spending on the guided filter costs about 40% of its
+# (already small) runtime, while under-spending on the tempered filter costs a
+# factor of two in accuracy. A guided-filter user who wants that 40% back can set
+# `tempering_mh_steps = 1` with no measured loss.
+const DEFAULT_TEMPERING_TARGET_RATIO = 1.5
+const DEFAULT_TEMPERING_MH_STEPS = 4
+# The guided filter's own value. It mutates against a bridge that starts from a good
+# proposal rather than from the prior, so it needs far less of it than the tempered
+# filter does.
+#
+# Two is chosen on the *likelihood*, which is the measurement that discriminates. The
+# estimates do not: over 32 paired seeds their dispersion was 0.100 / 0.095 / 0.093 /
+# 0.091 / 0.097 at 0 / 1 / 2 / 4 / 8 steps, flat inside the ~13% standard error, which
+# would argue for the cheapest value. The log likelihood is not flat, and 32 paired
+# seeds put the minimum squarely at two steps at both perturbation orders (dispersion,
+# and `sd·√time` in brackets, on the euro-area problem at 4 000 particles):
+#
+#            mh = 1        mh = 2        mh = 4
+#   1st ord  31.4 (32.9)   24.2 (28.9)   27.3 (39.0)
+#   pruned2  34.4 (62.6)   24.9 (50.6)   35.0 (84.9)
+#
+# A caution for anyone re-running this: the log-likelihood dispersion is a far noisier
+# statistic than the estimates one — it is the log of an average of heavy-tailed
+# weights, and two *unpaired* runs of one configuration gave 22.5 and 55.1. Only
+# paired seeds, and plenty of them, separate these.
+const DEFAULT_GUIDED_MH_STEPS = 2
+# Which of the two a call gets, from the filter it selected.
+const DEFAULT_TEMPERING_MH_STEPS_SELECTOR = filter -> get(PARTICLE_FILTER_ALIASES, filter, filter) == :guided_particle ? DEFAULT_GUIDED_MH_STEPS : DEFAULT_TEMPERING_MH_STEPS
 const DEFAULT_TEMPERING_MAX_STAGES = 100
-const DEFAULT_TEMPERING_MH_SCALE = 0.3
+# Starting value for the Metropolis mutation step, in units of the stage's own
+# posterior scale (the proposal is preconditioned by it, see `src/filter/particle.jl`).
+# 2.38/sqrt(d) is the textbook optimum for a d-dimensional random walk; the filter
+# adapts from here towards a 25 % acceptance rate, so this only sets where it starts.
+const DEFAULT_TEMPERING_MH_SCALE = 1.0
 
 const DEFAULT_DATA_IN_LEVELS = true
 const DEFAULT_LEVELS = true
