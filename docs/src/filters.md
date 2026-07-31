@@ -360,6 +360,177 @@ One wrinkle worth knowing. The states match the **smoothed** Kalman estimates, n
 
 The third row is the particle filters' correctness check, and is exactly what the package's tests do: on a linear model the particle log-likelihood must approach the Kalman value as ``N`` grows, approaching it *from below* because of the Jensen bias.
 
+## The quadratic Kalman filter
+
+`filter = :quadratic_kalman`, available only for `algorithm = :pruned_second_order`.
+
+### The idea
+
+A pruned second-order solution is *exactly linear* in an augmented state. Writing the
+package's own recursion,
+
+```math
+\begin{aligned}
+\mathrm{aug}_1 &= [x_{1,t-1}[\text{past}];\ 1;\ \varepsilon_t], \\
+x_{1,t} &= \mathbf{S}_1\,\mathrm{aug}_1, \\
+x_{2,t} &= \mathbf{S}_1\,[x_{2,t-1}[\text{past}];0;0] + \tfrac12\mathbf{S}_2(\mathrm{aug}_1\otimes\mathrm{aug}_1),
+\end{aligned}
+```
+
+the quadratic term uses only the *first-order* piece ``x_1``. That is what pruning buys:
+stacking
+
+```math
+z_t = [\,x_{1,t};\ x_{2,t};\ x_{1,t}[\text{past}]\otimes x_{1,t}[\text{past}]\,]
+```
+
+makes every block affine in ``z_{t-1}``, because ``\mathrm{aug}_1\otimes\mathrm{aug}_1``
+expands into terms that are quadratic in ``x_{1,t-1}[\text{past}]`` (carried by the third
+block), linear in it, or constant. The observation ``y_t = (x_1+x_2)[\text{observables}]``
+is a plain selection, so the system is linear and a Kalman filter applies. This is
+Kollmann (2015).
+
+Without pruning there is no such representation: ``x_t`` is quadratic in ``x_{t-1}``, so
+``x_t\otimes x_t`` is quartic, needing ``x^{\otimes4}``, then ``x^{\otimes8}`` — the
+hierarchy never closes. Pruning truncates it at exactly one rung.
+
+### What is exact, and what is not
+
+The transition is exactly linear and the conditional first two moments are closed form.
+Writing ``\mathrm{aug}_1 = \bar a + S\varepsilon``, every block of the innovation is
+
+```math
+w = G\varepsilon + H(\varepsilon\otimes\varepsilon - \mathrm{vec}\,I),
+```
+
+linear plus centred-quadratic in ``\varepsilon``. Gaussian third moments vanish, so the two
+parts are uncorrelated and, using
+``E[(\varepsilon\otimes\varepsilon)(\varepsilon\otimes\varepsilon)'] = \mathrm{vec}(I)\mathrm{vec}(I)' + I + K``,
+
+```math
+\mathrm{Var}(w) = GG' + H(I+K)H',
+```
+
+with ``K`` the commutation matrix. ``H`` is constant; ``G`` depends on the state and is
+evaluated at the filtered mean.
+
+What is approximated is the conditional *distribution*. ``\varepsilon\otimes\varepsilon`` is a
+squared Gaussian — skewed, not Gaussian — so the recursion delivers the best **linear**
+projection rather than the exact conditional mean.
+
+### The bias, and where it comes from
+
+Given ``z_{t-1}``, the true next state is determined by ``\varepsilon``, so the exact
+conditional distribution lives on a curved ``n_\varepsilon``-dimensional surface. A Kalman
+filter can only carry a Gaussian ellipsoid, and fitting one to that surface needs more
+directions than the surface has:
+
+```math
+\mathrm{rank}(Q) = n_\varepsilon + \tfrac{n_\varepsilon(n_\varepsilon+1)}{2}.
+```
+
+| model | ``n_\varepsilon`` | true dimension | rank(Q) | excess |
+|---|---|---|---|---|
+| small RBC | 2 | 2 | 5 | 3 |
+| Smets-Wouters (2007) | 7 | 7 | 33 | 26 |
+
+The excess directions are **fictitious uncertainty**, an artefact of the Gaussian
+approximation. Two things make them permanent. First, they do not come from ``\mathbf{S}_2``
+— zeroing its ``\varepsilon\otimes\varepsilon`` block leaves the rank unchanged. They come from
+``\mathrm{kron}(V,V)`` in the *first-order* solution: since
+``x_1[\text{past}] = (\text{deterministic}) + V\varepsilon``, the state
+``q = x_1[\text{past}]\otimes x_1[\text{past}]`` inherits ``V\varepsilon\otimes V\varepsilon``
+whatever ``\mathbf{S}_2`` is. The quadratic noise is intrinsic to carrying a Kronecker term
+as a state. Second, the observation has **zero loading on** ``q`` — the data never sees that
+block directly, so it can never shrink the fictitious uncertainty. It persists and leaks into
+the predicted observables, which is why the likelihood error does *not* vanish as the
+measurement error goes to zero.
+
+Measured against the inversion filter, which is the **exact** likelihood here (as many shocks
+as observables, no measurement error, so it is a deterministic change of variables):
+
+| measurement-error variance | quadratic Kalman | exact | gap |
+|---|---|---|---|
+| ``10^{-5}`` | 211.2451 | 213.6137 | ``-2.37`` |
+| ``10^{-6}`` | 212.0289 | 213.6137 | ``-1.58`` |
+| ``10^{-8}`` | 212.0937 | 213.6137 | ``-1.52`` |
+| ``10^{-10}`` | 212.0943 | 213.6137 | ``-1.52`` |
+
+It converges to a persistent gap rather than to the truth. The size is governed by
+``n_\varepsilon(n_\varepsilon+1)/(2\,n_{obs})`` — 1.5 for the RBC, 4.0 for Smets-Wouters — and by
+persistence: raising ``\rho`` from 0.4/0.6 to 0.98 on the same model multiplies the error
+per period by 13. It is *not* governed by the size of the second-order terms, which is a
+natural but wrong guess.
+
+### What that means for usability
+
+The bias falls almost entirely on the **level** of the likelihood, not on its shape. Profiling
+against the exact likelihood, the gap varies by only about 0.2 log points across a parameter
+grid, and the mode is unchanged:
+
+| parameter | truth | argmax, exact | argmax, quadratic Kalman |
+|---|---|---|---|
+| shock std | 0.02 | 0.021 | 0.021 |
+| persistence | 0.4 | 0.39 | 0.39 |
+
+And the filter does the job it was designed for. Latent-state accuracy, as a fraction of each
+state's own standard deviation: ``1.4\times10^{-5}`` and ``7\times10^{-7}`` for the two observed
+variables, 2.8% for capital, and about 11% for the two unobserved shock processes.
+
+**Use it for**: latent state and shock estimates at pruned second order — that is what it is
+for, it is deterministic, and it is far faster than a particle filter. Point estimation, where
+the mode is essentially unaffected.
+
+**Do not use it for**: model comparison, marginal likelihoods or Bayes factors — the level
+error differs across models, since it scales with the shock-to-observable ratio. Reported
+standard errors without checking curvature first, since the bias is not exactly constant.
+Models with many shocks per observable or near-unit persistence, where the error per period
+grows sharply.
+
+**Alternatives when the likelihood level matters**: the inversion filter is exact when shocks
+and observables balance and there is no measurement error; a particle filter is consistent at
+any order; and a sigma-point filter on the *unpruned* solution (Andreasen, 2013) avoids the
+augmented state altogether.
+
+!!! note "This is not the quadratic Kalman filter of Monfort, Renne & Roussellet"
+    That method targets a *linear* Gaussian transition with a **quadratic measurement**
+    equation, where the data loads directly on the Kronecker block and therefore shrinks its
+    uncertainty every period — which is why the original paper reports large gains over the
+    extended and unscented filters. A pruned DSGE is the mirror image: the quadratic terms are
+    in the transition and the observation is a plain selection with zero loading on the
+    Kronecker block. The machinery is shared, the regime is not.
+
+### Cost
+
+The augmented dimension is ``2n_r + n_{past}(n_{past}+1)/2``, where ``n_r`` counts the retained
+rows (past states plus observables) and the Kronecker block is carried compressed as a
+``\mathrm{vech}``. On Smets-Wouters that is 446. The covariance recursion is ``O(n_z^3)`` and
+dominates everything else — per period, measured:
+
+| operation | cost | ms | share |
+|---|---|---|---|
+| ``\mathcal{A}P_c`` | ``n_z^3`` (88.7M flops) | 1.09 | 42% |
+| ``(\mathcal{A}P_c)\mathcal{A}'`` | ``n_z^3`` (88.7M flops) | 1.26 | 49% |
+| symmetrisation ×2 | ``n_z^2`` | 0.10 | 4% |
+| ``P_p - K\,CP`` | ``n_z^2 n_{obs}`` | 0.03 | 1% |
+| ``GG'`` | ``n_z^2 n_\varepsilon`` | 0.03 | 1% |
+| ``\mathcal{C}P_p`` | ``n_{obs}n_z^2`` | 0.06 | 2% |
+| build ``G`` | ``n_z n_\varepsilon n_{past}`` | 0.02 | 1% |
+
+The two matrix triple-products are 91% of the loop. By contrast the inversion filter solves an
+``n_\varepsilon \times n_\varepsilon`` system per period — ``7^3`` against ``446^3``, a factor of
+about ``2.6\times10^5`` in flops on the dominant term. That gap is structural: it is the price
+of propagating a covariance over the Kronecker-augmented state, and no amount of tuning removes
+it. Sparsity does not help either — ``\mathcal{A}`` is about 50% dense, and a sparse
+representation measures 10× *slower* than the dense one.
+
+**References:** Kollmann (2015), *Computational Economics* 45, 239–260 — the filter implemented
+here. Andreasen, Fernández-Villaverde & Rubio-Ramírez (2018) — the pruned state-space
+representation. Monfort, Renne & Roussellet (2015), *Journal of Econometrics* 187, 43–56 — the
+quadratic Kalman filter for quadratic measurement equations. Andreasen (2013), *Journal of
+Applied Econometrics* 28, 929–955 — the central difference Kalman filter, the unpruned
+alternative.
+
 ## The filter-free likelihood
 
 There is a fourth option that is not a `filter` value at all, because it does not filter: instead of integrating the shocks out, it treats them as **parameters** and asks you to supply them.
