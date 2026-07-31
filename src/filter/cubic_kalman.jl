@@ -225,12 +225,28 @@ function cubic_derived_matrices(S1, S2, Pm, nPast::Int, nExo::Int, na::Int)
 end
 
 """
-Adjoint of `cubic_derived_matrices`: fold cotangents on the derived blocks back
-onto `S1` and `S2`. `MM = kron(M, M)` is resolved onto `M` first, so it must be
-accumulated before this is called.
+Fold every intermediate cotangent back onto `S1`, `S2` and `S3`: the live-column
+accumulators the step adjoint writes, and the derived blocks of
+`cubic_derived_matrices`. `MM = kron(M, M)` is resolved onto `M` first, so it must
+be accumulated before this is called.
 """
-function cubic_derived_pullback!(∂S1, ∂S2, ∂M, ∂mc, ∂V, ∂Wq, ∂Wl_t, ∂Bc, ∂MM, M,
-                                 Pm, nPast::Int, nExo::Int, na::Int)
+function cubic_derived_pullback!(∂, sys)
+    (; M, Pm, nPast, nExo, na) = sys
+    ∂S1, ∂S2 = ∂.S1, ∂.S2
+    ∂M, ∂mc, ∂V = ∂.M, ∂.mc, ∂.V
+    ∂Wq, ∂Wl_t, ∂Bc, ∂MM = ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.MM
+
+    # live-column cotangents accumulated by the step adjoint
+    @inbounds for (r, j) in enumerate(sys.k2cols)
+        @views ∂S2[:, j] .+= ∂.S2k2[:, r]
+    end
+    @inbounds for (r, j) in enumerate(sys.k12cols)
+        @views ∂S2[:, j] .+= ∂.S2k12[:, r]
+    end
+    @inbounds for (r, j) in enumerate(sys.k3cols)
+        @views ∂.S3[:, j] .+= ∂.S3k3[:, r]
+    end
+
     # MM = kron(M, M)
     ∂M = ∂M .+ kron_adjoint_A(∂MM, M, nPast, nPast, nPast, nPast) .+
                kron_adjoint_B(∂MM, M, nPast, nPast, nPast, nPast)
@@ -315,6 +331,37 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     ntail = 1 + nExo
     M, mc, V, B2, Wq, Wl_t, Bc, MM = cubic_derived_matrices(S1, S2, Pm, nPast, nExo, na)
 
+    # The Kronecker inputs are contracted against 𝐒₂ and 𝐒₃, whose columns are
+    # largely structurally zero — a third-order solution has no cross-derivative
+    # for most index triples. Keeping only the live columns shrinks both the
+    # vector that has to be built and the (memory-bound, very wide) product that
+    # consumes it; on a four-shock model that is 536 of 1331 columns for 𝐒₃, and
+    # `S3 * K3` alone was half the cost of a step.
+    # Liveness is taken from the *structural* pattern of the sparse solution
+    # matrices, not from numerical zeros of a densified copy: a column that is
+    # merely zero at this parameter draw may be nonzero at the next one, and
+    # dropping it would silently zero a real derivative. Reading the stored
+    # pattern is also what the rest of the package assumes about 𝐒.
+    S2sp = 𝐒₂[oas, :]
+    S3sp = 𝐒₃[oas, :]
+    live(A, cols) = A isa SparseArrays.AbstractSparseMatrix ?
+        [j for j in cols if A.colptr[j+1] > A.colptr[j]] :
+        [j for j in cols if any(!iszero, view(A, :, j))]
+
+    k2cols = live(S2sp, 1:na*na)
+    k2_ij = [(fld(j - 1, na) + 1, mod(j - 1, na) + 1) for j in k2cols]
+    S2k2 = S2[:, k2cols]
+
+    k12all = [(i-1)*na + j for i in 1:na for j in 1:nPast]
+    k12cols = live(S2sp, k12all)
+    k12_ij = [(fld(j - 1, na) + 1, mod(j - 1, na) + 1) for j in k12cols]
+    S2k12 = S2[:, k12cols]
+
+    k3cols = live(S3sp, 1:na*na*na)
+    k3_ijk = [(fld(j - 1, na * na) + 1, mod(fld(j - 1, na), na) + 1, mod(j - 1, na) + 1)
+              for j in k3cols]
+    S3k3 = S3[:, k3cols]
+
     # Observation rows are a selection of the x₁, x₂ and x₃ blocks; carrying the
     # three positions lets the recursion index instead of running a gemm with a
     # 0/1 matrix, as the quadratic filter does with its two.
@@ -332,7 +379,8 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C, op1, op2, op3,
             r1, r2, r3, i11, i12, i111, nq11, nq12, nq111,
             exp2, can2, exp3, can3, can2_ij, can3_ijk,
-            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail)
+            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail,
+            k2cols, k2_ij, S2k2, k12cols, k12_ij, S2k12, k3cols, k3_ijk, S3k3)
 end
 
 """
@@ -349,7 +397,8 @@ function cubic_kalman_workspace(sys, Tv = eltype(sys.S1))
             q11 = zeros(nP2), q12 = zeros(nP2), q111 = zeros(nPast^3),
             tail = zeros(ntail), tt = zeros(ntail * ntail),
             aug1 = zeros(na), aug1h = zeros(na), aug2 = zeros(na), aug3 = zeros(na),
-            K2 = zeros(na * na), K12 = zeros(na * na), K3 = zeros(na * na * na),
+            K2 = zeros(length(sys.k2cols)), K12 = zeros(length(sys.k12cols)),
+            K3 = zeros(length(sys.k3cols)),
             x1n = zeros(nr), x2n = zeros(nr), x3n = zeros(nr),
             u = zeros(nPast), v = zeros(nPast), bn = zeros(nPast), wc = zeros(nPast),
             Q11 = zeros(nPast, nPast), Q12 = zeros(nPast, nPast), Q111 = zeros(nPast, nP2),
@@ -402,16 +451,15 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
         aug1[nP+1+i] = ε[i]; aug1h[nP+1+i] = ε[i]; aug2[nP+1+i] = 0.0; aug3[nP+1+i] = 0.0
     end
 
-    # Kronecker inputs, with the all-past blocks read from the state.
-    @inbounds for i in 1:na, j in 1:na
-        K2[(i-1)*na+j] = (i <= nP && j <= nP) ? q11[(i-1)*nP+j] : aug1[i] * aug1[j]
+    # Kronecker inputs, with the all-past blocks read from the state, and only at
+    # the columns 𝐒₂ and 𝐒₃ actually reach.
+    @inbounds for (r, (i, j)) in enumerate(sys.k2_ij)
+        K2[r] = (i <= nP && j <= nP) ? q11[(i-1)*nP+j] : aug1[i] * aug1[j]
     end
-    fill!(K12, 0.0)
-    @inbounds for i in 1:na, j in 1:nP
-        K12[(i-1)*na+j] = (i <= nP) ? q12[(i-1)*nP+j] : aug1h[i] * aug2[j]
+    @inbounds for (r, (i, j)) in enumerate(sys.k12_ij)
+        K12[r] = (i <= nP) ? q12[(i-1)*nP+j] : aug1h[i] * aug2[j]
     end
-    @inbounds for i in 1:na, j in 1:na, k in 1:na
-        r = ((i-1)*na + (j-1)) * na + k
+    @inbounds for (r, (i, j, k)) in enumerate(sys.k3_ijk)
         ci = i <= nP; cj = j <= nP; ck = k <= nP
         n = ci + cj + ck
         K3[r] = if n == 3
@@ -430,8 +478,9 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
     end
 
     ℒ.mul!(x1n, S1, aug1)
-    ℒ.mul!(x2n, S1, aug2); ℒ.mul!(x2n, S2, K2, 0.5, 1.0)
-    ℒ.mul!(x3n, S1, aug3); ℒ.mul!(x3n, S2, K12, 1.0, 1.0); ℒ.mul!(x3n, S3, K3, 1/6, 1.0)
+    ℒ.mul!(x2n, S1, aug2); ℒ.mul!(x2n, sys.S2k2, K2, 0.5, 1.0)
+    ℒ.mul!(x3n, S1, aug3); ℒ.mul!(x3n, sys.S2k12, K12, 1.0, 1.0)
+    ℒ.mul!(x3n, sys.S3k3, K3, 1/6, 1.0)
 
     # New Kronecker blocks, kept affine in z.
     ℒ.mul!(u, M, a)                    # z-dependent, linear in a
@@ -599,10 +648,13 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     ∂x2n = ∂out[nr+1:2nr] .+ Pm' * ∂bn
     ∂x3n = ∂out[2nr+1:3nr]
 
-    # x1n = S1 aug1 ; x2n = S1 aug2 + ½ S2 K2 ; x3n = S1 aug3 + S2 K12 + ⅙ S3 K3
+    # x1n = S1 aug1 ; x2n = S1 aug2 + ½ S2 K2 ; x3n = S1 aug3 + S2 K12 + ⅙ S3 K3.
+    # The 𝐒₂/𝐒₃ cotangents accumulate on the live columns and are scattered back
+    # once, in `cubic_derived_pullback!`.
     ∂.S1 .+= ∂x1n * aug1' .+ ∂x2n * aug2' .+ ∂x3n * aug3'
-    ∂.S2 .+= (∂x2n * K2') ./ 2 .+ ∂x3n * K12'
-    ∂.S3 .+= (∂x3n * K3') ./ 6
+    ∂.S2k2 .+= (∂x2n * K2') ./ 2
+    ∂.S2k12 .+= ∂x3n * K12'
+    ∂.S3k3 .+= (∂x3n * K3') ./ 6
     return ∂
 end
 
@@ -612,7 +664,9 @@ function cubic_kalman_cotangents(sys)
     (; S1 = zeros(T, size(sys.S1)), S2 = zeros(T, size(sys.S2)), S3 = zeros(T, size(sys.S3)),
        M = zeros(T, size(sys.M)), mc = zeros(T, length(sys.mc)), V = zeros(T, size(sys.V)),
        Wq = zeros(T, size(sys.Wq)), Wl_t = [zeros(T, size(w)) for w in sys.Wl_t],
-       Bc = zeros(T, size(sys.Bc)), MM = zeros(T, size(sys.MM)))
+       Bc = zeros(T, size(sys.Bc)), MM = zeros(T, size(sys.MM)),
+       S2k2 = zeros(T, size(sys.S2k2)), S2k12 = zeros(T, size(sys.S2k12)),
+       S3k3 = zeros(T, size(sys.S3k3)))
 end
 
 # Allocating convenience wrapper, used by the tests.
@@ -710,29 +764,35 @@ function build_cubic_kalman_system_pullback!(∂, sys, basis, ∂𝒜, ∂c, ∂
     nz, N = sys.nz, basis.N
     m, W = basis.m, basis.W
 
-    # C(0) is hit by c, by c₀, and negatively by every ΔC_j.
-    ∂C0 = ∂c * m' .+ reshape(∂c₀, nz, N)
-    @inbounds for j in 1:nz
-        ∂C0 .-= view(∂𝒜, :, j) * m' .+ reshape(view(∂Λ, :, j), nz, N)
-    end
+    # C(0) is hit by c, by c₀, and negatively by every ΔC_j. Both of those sums
+    # collapse — Σⱼ ∂𝒜[:,j] m' = (Σⱼ ∂𝒜[:,j]) m' and reshape is linear — so this
+    # is one pass rather than n_z, each of which allocated an n_z×N array.
+    ones_nz = ones(eltype(∂𝒜), nz)
+    ∂C0 = ∂c * m' .+ reshape(∂c₀, nz, N) .-
+          (∂𝒜 * ones_nz) * m' .- reshape(∂Λ * ones_nz, nz, N)
 
-    ∂F = ∂C0 * W'
+    # ∂F = ∂ΔC W' with ∂ΔC = ∂𝒜[:,j] m' + reshape(∂Λ[:,j]); the first term is
+    # rank one and contracts to an outer product with W m, so nothing per-`j`
+    # needs to be materialised.
+    Wm = W * m
+    ∂F = Matrix{eltype(∂𝒜)}(undef, nz, N)
     zj = zeros(nz)
+
+    ℒ.mul!(∂F, ∂C0, W')
     @inbounds for (p, ε) in enumerate(basis.pts)
         cubic_kalman_step_pullback!(∂, sys, zj, ε, view(∂F, :, p), ws)
     end
 
     @inbounds for j in 1:nz
-        ∂ΔC = view(∂𝒜, :, j) * m' .+ reshape(view(∂Λ, :, j), nz, N)
-        ∂F = ∂ΔC * W'
+        ℒ.mul!(∂F, reshape(view(∂Λ, :, j), nz, N), W')
+        ℒ.mul!(∂F, view(∂𝒜, :, j), Wm', one(eltype(∂F)), one(eltype(∂F)))
         fill!(zj, 0.0); zj[j] = 1.0
         for (p, ε) in enumerate(basis.pts)
             cubic_kalman_step_pullback!(∂, sys, zj, ε, view(∂F, :, p), ws)
         end
     end
 
-    cubic_derived_pullback!(∂.S1, ∂.S2, ∂.M, ∂.mc, ∂.V, ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.MM,
-                            sys.M, sys.Pm, sys.nPast, sys.nExo, sys.na)
+    cubic_derived_pullback!(∂, sys)
     return ∂
 end
 

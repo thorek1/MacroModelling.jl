@@ -176,13 +176,14 @@ import AxisKeys: KeyedArray
             S2 = reshape(θ[n1+1:n1+n2], size(sys.S2))
             S3 = reshape(θ[n1+n2+1:end], size(sys.S3))
             M, mc, V, B2, Wq, Wl_t, Bc, MM = MacroModelling.cubic_derived_matrices(S1, S2, Pm, nP, nE, na)
-            merge(sys, (; S1, S2, S3, M, mc, V, B2, Wq, Wl_t, Bc, MM, Tv = eltype(θ)))
+            # the live-column slices are views of S2/S3 and must follow them
+            merge(sys, (; S1, S2, S3, M, mc, V, B2, Wq, Wl_t, Bc, MM,
+                        S2k2 = S2[:, sys.k2cols], S2k12 = S2[:, sys.k12cols],
+                        S3k3 = S3[:, sys.k3cols]))
         end
         θ0 = vcat(vec(sys.S1), vec(sys.S2), vec(sys.S3))
         function fold(∂)
-            MacroModelling.cubic_derived_pullback!(∂.S1, ∂.S2, ∂.M, ∂.mc, ∂.V,
-                                                   ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.MM,
-                                                   sys.M, Pm, nP, nE, na)
+            MacroModelling.cubic_derived_pullback!(∂, sys)
             return vcat(vec(∂.S1), vec(∂.S2), vec(∂.S3))
         end
 

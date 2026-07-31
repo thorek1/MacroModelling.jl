@@ -670,6 +670,21 @@ also where a tensor Gauss-Hermite rule is left behind — its node count grows a
 basis. The quadrature path is retained and the analytic assembly is tested against it rather
 than assumed.
 
+Assembling the system costs ``(n_z+1)N`` evaluations of the step, and essentially nothing
+else, so the step is where the sparsity is worth spending. Its dominant term is the
+contraction of the Kronecker input ``K_3`` against ``\mathbf{S}_3`` — a very wide, very
+sparse matrix (``8\times1331`` on a four-shock model), which made it memory-bound and half
+the cost of a step. Only the *structurally* nonzero columns are kept — 536 of 1331 there —
+which shrinks both the vector that has to be built and the product that consumes it.
+Liveness comes from the stored pattern of the sparse solution matrices rather than from
+numerical zeros of a densified copy: a column that merely happens to vanish at one parameter
+draw may be nonzero at the next, and dropping it would silently zero a real derivative.
+
+``\Psi`` is sparser still (9% dense, block-diagonal by monomial parity, since
+``\mathbb{E}[\varepsilon^\gamma] = 0`` unless every exponent is even) but exploiting that
+is not worth it: it appears only in the smaller of the two products forming ``Q``, and its
+rank is ``N-1``, so factoring it removes just the constant monomial.
+
 ### Derivatives
 
 Both modes work and both match central differences to ``\sim10^{-10}``.
