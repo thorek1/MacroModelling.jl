@@ -617,29 +617,41 @@ Validated on an RBC model (2 shocks, 3 past states) against a converged bootstra
 filter: **181.78 against 181.43 over 60 periods, a gap of 0.006 per period** — smaller than
 the quadratic filter's 0.025 on the comparable model.
 
-!!! warning "It only fits small models"
-    The augmented dimension is ``3n_r + 2n_{past}^2 + n_{past}^3``, and the covariance
-    recursion is ``O(n_z^3)`` — so cost grows as ``n_{past}^9``.
+``q_{11}`` and ``q_{111}`` are symmetric, so both are carried compressed — one entry per
+sorted multi-index, the same ``\mathrm{vech}`` idea the quadratic filter uses, applied by
+indexing rather than through duplication and elimination matrices. That takes the augmented
+dimension from ``3n_r + 2n_{past}^2 + n_{past}^3`` down to
 
-    | ``n_{past}`` | ``n_z`` | ms/period | verdict |
-    |---|---|---|---|
-    | 3 | 60 | <0.1 | fine |
-    | 8 | 676 | 6 | fine |
-    | 10 | 1245 | 39 | usable |
-    | 12 | 2070 | 177 | marginal |
-    | 15 | 3891 | 1178 | no |
-    | 27 (Smets-Wouters) | 21243 | 191725 | hopeless — 3.6 GB per matrix |
+```math
+n_z = 3n_r + \tfrac{n_{past}(n_{past}+1)}{2} + n_{past}^2 + \tfrac{n_{past}(n_{past}+1)(n_{past}+2)}{6},
+```
+
+which is roughly a sixth of the ``n_{past}^3`` block and, since the recursion is
+``O(n_z^3)``, worth two orders of magnitude in flops on a mid-sized model.
+
+!!! warning "It still only fits small models"
+    Cost grows as ``n_{past}^9`` regardless of the constant factor.
+
+    | ``n_{past}`` | ``n_z`` (compressed) | was | est. ms/period | verdict |
+    |---|---|---|---|---|
+    | 3 | 40 | 60 | <0.1 | fine |
+    | 8 | 256 | 676 | 0.3 | fine |
+    | 10 | 420 | 1245 | 1.5 | fine |
+    | 12 | 640 | 2070 | 5 | usable |
+    | 15 | 1091 | 3891 | 26 | usable |
+    | 20 | 2231 | 8881 | 222 | marginal |
+    | 27 (Smets-Wouters) | 4863 | 21243 | 2300 | no — 190 MB per matrix |
 
     `build_cubic_kalman_system_from_constants` refuses above
     `CUBIC_KALMAN_MAX_DIMENSION` (2500) rather than appearing to hang. For anything
     larger use the inversion filter or a particle filter.
 
-Compared with the quadratic filter this one is a straightforward implementation: the
-transition is recovered by Gauss-Hermite quadrature (exact — the integrands are degree six)
-rather than assembled analytically, there is no ``\mathrm{vech}`` compression of the
-Kronecker blocks, and no hand-written `rrule`, so it is not differentiable in reverse mode.
-Those are the three things to add if the filter is ever wanted at scale — though the
-``n_{past}^9`` wall limits how much they can buy.
+The step function is allocation-free, the recursion runs on preallocated buffers with
+in-place BLAS, the observation is applied by indexing its three selected rows rather than by
+a gemm, and the quadrature contracts its nodes with a single gemm — all as in the quadratic
+filter. Two things are not carried over: the transition is recovered by Gauss-Hermite
+quadrature (exact, since the integrands are degree six) rather than assembled analytically,
+and there is no hand-written `rrule`, so the filter is not differentiable in reverse mode.
 
 ## The filter-free likelihood
 

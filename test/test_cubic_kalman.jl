@@ -37,7 +37,19 @@ import AxisKeys: KeyedArray
     obs_idx = convert(Vector{Int}, indexin(obs, ssn))
 
     sys = MacroModelling.build_cubic_kalman_system_from_constants(RBC_ckf.constants, 𝐒[1], 𝐒[2], 𝐒[3], obs_idx)
-    @test sys.nz == 3sys.nr + 2sys.nPast^2 + sys.nPast^3
+    nP = sys.nPast
+    # q₁₁ and q₁₁₁ are carried compressed (symmetric); q₁₂ = a⊗b is not.
+    @test sys.nz == 3sys.nr + nP * (nP + 1) ÷ 2 + nP^2 + nP * (nP + 1) * (nP + 2) ÷ 6
+
+    # the compression maps must round-trip a genuine symmetric Kronecker product
+    let a = randn(nP)
+        q11 = ℒ.kron(a, a)
+        q111 = ℒ.kron(ℒ.kron(a, a), a)
+        @test q11[sys.can2][sys.exp2] ≈ q11
+        @test q111[sys.can3][sys.exp3] ≈ q111
+        @test length(sys.can2) == nP * (nP + 1) ÷ 2
+        @test length(sys.can3) == nP * (nP + 1) * (nP + 2) ÷ 6
+    end
 
     Random.seed!(3)
     ε = randn(sys.nExo)
@@ -52,8 +64,11 @@ import AxisKeys: KeyedArray
 
     # 2. on a consistent state it reproduces the pruned third-order recursion,
     #    including the Kronecker blocks, with every product recomputed directly
+    # The reference forms every Kronecker product directly and only then
+    # compresses, so it exercises the compressed algebra rather than assuming it.
     consistent(x1, x2, x3) = (a = sys.Pm * x1; b = sys.Pm * x2;
-                              vcat(x1, x2, x3, ℒ.kron(a, a), ℒ.kron(a, b), ℒ.kron(ℒ.kron(a, a), a)))
+                              vcat(x1, x2, x3, ℒ.kron(a, a)[sys.can2], ℒ.kron(a, b),
+                                   ℒ.kron(ℒ.kron(a, a), a)[sys.can3]))
     x1 = 0.01 .* randn(sys.nr)
     x2 = 0.005 .* randn(sys.nr)
     x3 = 0.002 .* randn(sys.nr)

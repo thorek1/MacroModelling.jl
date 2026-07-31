@@ -37,9 +37,10 @@
 # Gaussian, and the filter matches only its first two moments. See
 # `docs/src/filters.md`.
 #
-# Cost. The augmented dimension is 3n_r + 2n_past² + n_past³, so the O(n_z³)
-# covariance recursion scales as n_past⁹. That confines the filter to small
-# models — see `CUBIC_KALMAN_MAX_DIMENSION` below.
+# Cost. q₁₁ and q₁₁₁ are symmetric and carried compressed, giving an augmented
+# dimension of 3n_r + n_past(n_past+1)/2 + n_past² + n_past(n_past+1)(n_past+2)/6.
+# The O(n_z³) covariance recursion still scales as n_past⁹, so the filter stays
+# confined to small models — see `CUBIC_KALMAN_MAX_DIMENSION` below.
 
 # The covariance recursion is two n_z×n_z triple products per period. Beyond this
 # dimension a single period costs seconds and a single matrix hundreds of MB, so
@@ -48,6 +49,50 @@ const CUBIC_KALMAN_MAX_DIMENSION = 2500
 
 # row-major flatten: rowvec(R)[(i-1)*size(R,2)+r] == R[i,r]
 rowvec(R) = vec(permutedims(R))
+
+# Index maps for the symmetric Kronecker blocks. `a⊗a` is symmetric and `a⊗a⊗a`
+# fully symmetric, so the state carries one entry per sorted multi-index — the
+# same vech idea the quadratic filter uses, but applied by indexing rather than
+# by multiplying with duplication and elimination matrices, which would cost more
+# than the compression saves. `expand` maps a full Kronecker position onto its
+# compressed slot; `canonical` maps a slot back onto one representative position,
+# which is exact precisely because the compressed blocks are symmetric.
+function symmetric_pair_maps(n::Int)
+    slot = Dict{NTuple{2,Int},Int}()
+    m = 0
+    for i in 1:n, j in i:n
+        m += 1
+        slot[(i, j)] = m
+    end
+    expand = Vector{Int}(undef, n * n)
+    @inbounds for i in 1:n, j in 1:n
+        expand[(i-1)*n+j] = slot[minmax(i, j)]
+    end
+    canonical = Vector{Int}(undef, m)
+    @inbounds for i in 1:n, j in i:n
+        canonical[slot[(i, j)]] = (i-1)*n + j
+    end
+    return expand, canonical
+end
+
+function symmetric_triple_maps(n::Int)
+    slot = Dict{NTuple{3,Int},Int}()
+    m = 0
+    for i in 1:n, j in i:n, k in j:n
+        m += 1
+        slot[(i, j, k)] = m
+    end
+    expand = Vector{Int}(undef, n^3)
+    @inbounds for i in 1:n, j in 1:n, k in 1:n
+        s = sort!([i, j, k])
+        expand[((i-1)*n + (j-1))*n + k] = slot[(s[1], s[2], s[3])]
+    end
+    canonical = Vector{Int}(undef, m)
+    @inbounds for i in 1:n, j in i:n, k in j:n
+        canonical[slot[(i, j, k)]] = ((i-1)*n + (j-1))*n + k
+    end
+    return expand, canonical
+end
 
 # Probabilists' Gauss-Hermite nodes and weights via Golub-Welsch.
 function gauss_hermite_nodes(n::Int)
@@ -87,12 +132,15 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     pos = Dict(v => i for (i, v) in enumerate(oas))
 
     na = nPast + 1 + nExo
-    nq11, nq12, nq111 = nPast^2, nPast^2, nPast^3
+    # q₁₁ and q₁₁₁ are carried compressed; q₁₂ = a⊗b has no symmetry to exploit.
+    exp2, can2 = symmetric_pair_maps(nPast)
+    exp3, can3 = symmetric_triple_maps(nPast)
+    nq11, nq12, nq111 = length(can2), nPast^2, length(can3)
     nz = 3nr + nq11 + nq12 + nq111
 
     if nz > CUBIC_KALMAN_MAX_DIMENSION
         error("The cubic Kalman filter needs an augmented state of dimension " *
-              "$nz (= 3·$nr + 2·$(nPast)² + $(nPast)³) for this model, and its " *
+              "$nz (= 3·$nr + $nq11 + $nq12 + $nq111) for this model, and its " *
               "covariance recursion is O(n_z³) per period. The limit is " *
               "$CUBIC_KALMAN_MAX_DIMENSION (`CUBIC_KALMAN_MAX_DIMENSION`). " *
               "Use `filter = :inversion` or a particle filter instead.")
@@ -141,9 +189,46 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     Bc = B2[:, [(i-1)*na + j for i in nPast+1:na for j in nPast+1:na]]
     MM = ℒ.kron(M, M)
 
-    return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C,
+    # Observation rows are a selection of the x₁, x₂ and x₃ blocks; carrying the
+    # three positions lets the recursion index instead of running a gemm with a
+    # 0/1 matrix, as the quadratic filter does with its two.
+    op1 = [pos[j] for j in observables_index]
+    op2 = op1 .+ nr
+    op3 = op1 .+ 2nr
+
+    # Decoded multi-indices of the canonical entries, so the step can write the
+    # compressed blocks directly instead of materialising the full nPast³ vector.
+    can2_ij = [(fld(r - 1, nPast) + 1, mod(r - 1, nPast) + 1) for r in can2]
+    can3_ijk = [(fld(r - 1, nPast * nPast) + 1,
+                 mod(fld(r - 1, nPast), nPast) + 1,
+                 mod(r - 1, nPast) + 1) for r in can3]
+
+    return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C, op1, op2, op3,
             r1, r2, r3, i11, i12, i111, nq11, nq12, nq111,
+            exp2, can2, exp3, can3, can2_ij, can3_ijk,
             M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail)
+end
+
+"""
+Preallocated buffers for `cubic_kalman_step!`. The step is called
+`(n_z + 1) · n_nodes` times to build the transition and `n_nodes` times per
+period, and it is entirely allocation-bound — it does a few hundred flops but
+allocated ~13 kB per call before these buffers existed.
+"""
+function cubic_kalman_workspace(sys)
+    (; nr, nPast, na, ntail) = sys
+    nP2 = nPast * nPast
+    return (; a = zeros(nPast), b = zeros(nPast), p = zeros(nPast),
+            q11 = zeros(nP2), q12 = zeros(nP2), q111 = zeros(nPast^3),
+            tail = zeros(ntail), tt = zeros(ntail * ntail),
+            aug1 = zeros(na), aug1h = zeros(na), aug2 = zeros(na), aug3 = zeros(na),
+            K2 = zeros(na * na), K12 = zeros(na * na), K3 = zeros(na * na * na),
+            x1n = zeros(nr), x2n = zeros(nr), x3n = zeros(nr),
+            u = zeros(nPast), v = zeros(nPast), bn = zeros(nPast), wc = zeros(nPast),
+            Q11 = zeros(nPast, nPast), Q12 = zeros(nPast, nPast), Q111 = zeros(nPast, nP2),
+            R2 = zeros(nPast, nPast), Tmp = zeros(nPast, nPast),
+            MQ111 = zeros(nPast, nP2), R3 = zeros(nPast, nP2),
+            Wl = zeros(nPast, nPast), t2 = zeros(nP2), vv = zeros(nP2))
 end
 
 """
@@ -151,114 +236,180 @@ One step of the augmented map, `z ↦ f(z, ε)`. Affine in `z` by construction:
 every product of two `z`-dependent quantities is read off an existing block
 rather than recomputed.
 """
-function cubic_kalman_step(sys, z::AbstractVector, ε::AbstractVector)
-    (; nPast, nExo, na, S1, S2, S3, Pm, r1, r2, r3, i11, i12, i111,
-       M, mc, V, Wq, Wl_t, Bc, MM, ntail) = sys
-    a = Pm * view(z, r1)
-    b = Pm * view(z, r2)
-    p = Pm * view(z, r3)
-    q11 = collect(view(z, i11))
-    q12 = collect(view(z, i12))
-    q111 = collect(view(z, i111))
+function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::AbstractVector, ws)
+    (; nr, nPast, nExo, na, S1, S2, S3, Pm, r1, r2, r3, i11, i12, i111,
+       exp2, can2_ij, can3_ijk, M, mc, V, Wq, Wl_t, Bc, MM, ntail) = sys
+    (; a, b, p, q11, q12, q111, tail, tt, aug1, aug1h, aug2, aug3, K2, K12, K3,
+       x1n, x2n, x3n, u, v, bn, wc, Q11, Q12, Q111, R2, Tmp, MQ111, R3, Wl, t2, vv) = ws
+    nP = nPast
+    nP2 = nP * nP
 
-    tail = vcat(one(eltype(ε)), ε)
-    aug1 = vcat(a, 1.0, ε)
-    aug1h = vcat(a, 0.0, ε)
-    aug2 = vcat(b, 0.0, zeros(nExo))
-    aug3 = vcat(p, 0.0, zeros(nExo))
+    ℒ.mul!(a, Pm, view(z, r1))
+    ℒ.mul!(b, Pm, view(z, r2))
+    ℒ.mul!(p, Pm, view(z, r3))
+
+    # The symmetric blocks arrive compressed; expand them so the algebra below is
+    # written on plain Kronecker products.
+    o11 = first(i11) - 1
+    o111 = first(i111) - 1
+    @inbounds for r in eachindex(q11)
+        q11[r] = z[o11+exp2[r]]
+    end
+    @inbounds for r in eachindex(q111)
+        q111[r] = z[o111+sys.exp3[r]]
+    end
+    @inbounds for (r, k) in enumerate(i12)
+        q12[r] = z[k]
+    end
+
+    tail[1] = one(eltype(tail))
+    @inbounds for i in 1:nExo
+        tail[1+i] = ε[i]
+    end
+    @inbounds for i in 1:nP
+        aug1[i] = a[i]; aug1h[i] = a[i]; aug2[i] = b[i]; aug3[i] = p[i]
+    end
+    aug1[nP+1] = 1.0; aug1h[nP+1] = 0.0; aug2[nP+1] = 0.0; aug3[nP+1] = 0.0
+    @inbounds for i in 1:nExo
+        aug1[nP+1+i] = ε[i]; aug1h[nP+1+i] = ε[i]; aug2[nP+1+i] = 0.0; aug3[nP+1+i] = 0.0
+    end
 
     # Kronecker inputs, with the all-past blocks read from the state.
-    K2 = Vector{Float64}(undef, na * na)
     @inbounds for i in 1:na, j in 1:na
-        K2[(i-1)*na+j] = (i <= nPast && j <= nPast) ? q11[(i-1)*nPast+j] : aug1[i] * aug1[j]
+        K2[(i-1)*na+j] = (i <= nP && j <= nP) ? q11[(i-1)*nP+j] : aug1[i] * aug1[j]
     end
-    K12 = zeros(na * na)
-    @inbounds for i in 1:na, j in 1:nPast
-        K12[(i-1)*na+j] = (i <= nPast) ? q12[(i-1)*nPast+j] : aug1h[i] * aug2[j]
+    fill!(K12, 0.0)
+    @inbounds for i in 1:na, j in 1:nP
+        K12[(i-1)*na+j] = (i <= nP) ? q12[(i-1)*nP+j] : aug1h[i] * aug2[j]
     end
-    K3 = Vector{Float64}(undef, na * na * na)
     @inbounds for i in 1:na, j in 1:na, k in 1:na
         r = ((i-1)*na + (j-1)) * na + k
-        ci = i <= nPast; cj = j <= nPast; ck = k <= nPast
+        ci = i <= nP; cj = j <= nP; ck = k <= nP
         n = ci + cj + ck
         K3[r] = if n == 3
-            q111[((i-1)*nPast + (j-1))*nPast + k]
+            q111[((i-1)*nP + (j-1))*nP + k]
         elseif n == 2
             if ci && cj
-                q11[(i-1)*nPast+j] * aug1[k]
+                q11[(i-1)*nP+j] * aug1[k]
             elseif ci && ck
-                q11[(i-1)*nPast+k] * aug1[j]
+                q11[(i-1)*nP+k] * aug1[j]
             else
-                q11[(j-1)*nPast+k] * aug1[i]
+                q11[(j-1)*nP+k] * aug1[i]
             end
         else
             aug1[i] * aug1[j] * aug1[k]
         end
     end
 
-    x1n = S1 * aug1
-    x2n = S1 * aug2 + S2 * K2 / 2
-    x3n = S1 * aug3 + S2 * K12 + S3 * K3 / 6
+    ℒ.mul!(x1n, S1, aug1)
+    ℒ.mul!(x2n, S1, aug2); ℒ.mul!(x2n, S2, K2, 0.5, 1.0)
+    ℒ.mul!(x3n, S1, aug3); ℒ.mul!(x3n, S2, K12, 1.0, 1.0); ℒ.mul!(x3n, S3, K3, 1/6, 1.0)
 
     # New Kronecker blocks, kept affine in z.
-    u = M * a                      # z-dependent, linear in a
-    v = mc + V * ε                 # z-independent
-    bn = Pm * x2n                  # affine in z
-    Q11 = Matrix(reshape(q11, nPast, nPast)')
-    Q12 = Matrix(reshape(q12, nPast, nPast)')
-    Q111 = Matrix(reshape(q111, nPast * nPast, nPast)')
+    ℒ.mul!(u, M, a)                    # z-dependent, linear in a
+    copyto!(v, mc); ℒ.mul!(v, V, ε, 1.0, 1.0)   # z-independent
+    ℒ.mul!(bn, Pm, x2n)                # affine in z
 
-    t2 = rowvec(M * Q11 * M')      # = u⊗u = (M⊗M) q₁₁
-    q11n = t2 + ℒ.kron(u, v) + ℒ.kron(v, u) + ℒ.kron(v, v)
-
-    Wl = zeros(nPast, nPast)
-    for t in 1:ntail
-        Wl .+= tail[t] .* Wl_t[t]
+    @inbounds for j in 1:nP, s in 1:nP
+        Q11[j, s] = q11[(j-1)*nP+s]
+        Q12[j, s] = q12[(j-1)*nP+s]
     end
-    wc = Bc * ℒ.kron(tail, tail)
-    q12n = rowvec(M * Q12 * M') +      # u⊗(M b)    = (M⊗M) q₁₂
-           rowvec(M * Q111 * Wq') +    # u⊗(Wq q₁₁) = (M⊗Wq) q₁₁₁
-           rowvec(M * Q11 * Wl') +     # u⊗(Wl a)   = (M⊗Wl) q₁₁
-           ℒ.kron(u, wc) + ℒ.kron(v, bn)
-
-    vv = ℒ.kron(v, v)
-    q111n = rowvec(M * Q111 * MM') +          # u⊗u⊗u
-            ℒ.kron(t2, v) + ℒ.kron(v, t2) +   # u⊗u⊗v , v⊗u⊗u
-            ℒ.kron(u, vv) + ℒ.kron(vv, u) +   # u⊗v⊗v , v⊗v⊗u
-            ℒ.kron(vv, v)                     # v⊗v⊗v
-    @inbounds for i in 1:nPast, j in 1:nPast, k in 1:nPast
-        r = ((i-1)*nPast + (j-1)) * nPast + k
-        q111n[r] += t2[(i-1)*nPast+k] * v[j]  # u⊗v⊗u
-        q111n[r] += v[i] * u[j] * v[k]        # v⊗u⊗v
+    @inbounds for j in 1:nP, s in 1:nP2
+        Q111[j, s] = q111[(j-1)*nP2+s]
     end
 
-    return vcat(x1n, x2n, x3n, q11n, q12n, q111n)
+    ℒ.mul!(Tmp, M, Q11); ℒ.mul!(R2, Tmp, M')     # M Q₁₁ M' — its rowvec is u⊗u
+    @inbounds for i in 1:nP, r in 1:nP
+        t2[(i-1)*nP+r] = R2[i, r]
+    end
+    @inbounds for i in 1:nP, j in 1:nP
+        vv[(i-1)*nP+j] = v[i] * v[j]
+    end
+
+    fill!(Wl, 0.0)
+    @inbounds for t in 1:ntail
+        ℒ.axpy!(tail[t], Wl_t[t], Wl)
+    end
+    @inbounds for i in 1:ntail, j in 1:ntail
+        tt[(i-1)*ntail+j] = tail[i] * tail[j]
+    end
+    ℒ.mul!(wc, Bc, tt)
+
+    # R2 ← M Q₁₂ M' + (M Q₁₁₁) Wq' + (M Q₁₁) Wl'; its rowvec is the z-dependent
+    # part of q₁₂', and Tmp still holds M Q₁₁ from above.
+    ℒ.mul!(MQ111, M, Q111)
+    ℒ.mul!(R2, Tmp, Wl')
+    ℒ.mul!(R2, MQ111, Wq', 1.0, 1.0)
+    ℒ.mul!(Tmp, M, Q12)
+    ℒ.mul!(R2, Tmp, M', 1.0, 1.0)
+
+    ℒ.mul!(R3, MQ111, MM')             # u⊗u⊗u = (M⊗M⊗M) q₁₁₁
+
+    @inbounds for i in 1:nr
+        out[i] = x1n[i]; out[nr+i] = x2n[i]; out[2nr+i] = x3n[i]
+    end
+    # q₁₁' and q₁₁₁' are symmetric, so only the canonical entries are formed.
+    @inbounds for (s, (i, j)) in enumerate(can2_ij)
+        out[o11+s] = t2[(i-1)*nP+j] + u[i]*v[j] + v[i]*u[j] + v[i]*v[j]
+    end
+    @inbounds for i in 1:nP, j in 1:nP
+        out[first(i12)-1 + (i-1)*nP+j] = R2[i, j] + u[i]*wc[j] + v[i]*bn[j]
+    end
+    @inbounds for (s, (i, j, k)) in enumerate(can3_ijk)
+        out[o111+s] = R3[i, (j-1)*nP+k] +          # u⊗u⊗u
+                      t2[(i-1)*nP+j] * v[k] +      # u⊗u⊗v
+                      v[i] * t2[(j-1)*nP+k] +      # v⊗u⊗u
+                      t2[(i-1)*nP+k] * v[j] +      # u⊗v⊗u
+                      u[i] * vv[(j-1)*nP+k] +      # u⊗v⊗v
+                      vv[(i-1)*nP+j] * u[k] +      # v⊗v⊗u
+                      v[i] * u[j] * v[k] +         # v⊗u⊗v
+                      vv[(i-1)*nP+j] * v[k]        # v⊗v⊗v
+    end
+    return out
+end
+
+# Allocating convenience wrapper, used by the tests.
+function cubic_kalman_step(sys, z::AbstractVector, ε::AbstractVector, ws = cubic_kalman_workspace(sys))
+    return cubic_kalman_step!(Vector{Float64}(undef, sys.nz), sys, z, ε, ws)
 end
 
 # E[f(z,·)] and Var(f(z,·)) under ε ~ N(0,I), exactly.
-function cubic_kalman_moments(sys, z, nodes, wts)
-    m = zeros(sys.nz)
-    S = zeros(sys.nz, sys.nz)
-    for (ε, w) in zip(nodes, wts)
-        fz = cubic_kalman_step(sys, z, ε)
-        m .+= w .* fz
-        ℒ.mul!(S, fz, fz', w, one(w))
+#
+# The node evaluations are stacked into one matrix and contracted with a single
+# gemm rather than accumulated as `nnodes` rank-one updates: same arithmetic, but
+# it runs at BLAS-3 rather than BLAS-2 speed. `buf` may be supplied to reuse the
+# stacking buffer across periods.
+function cubic_kalman_moments(sys, z, nodes, wts; buf = nothing, ws = cubic_kalman_workspace(sys))
+    nz = sys.nz
+    Fm = buf === nothing ? Matrix{Float64}(undef, nz, length(nodes)) : buf
+    @inbounds for (n, ε) in enumerate(nodes)
+        cubic_kalman_step!(view(Fm, :, n), sys, z, ε, ws)
     end
-    S .-= m * m'
+    m = Fm * wts
+    S = (Fm .* wts') * Fm'
+    ℒ.mul!(S, m, m', -one(eltype(S)), one(eltype(S)))
     return m, (S + S') / 2
 end
 
 # The step is affine, so the transition matrix and drift are recovered exactly
 # from evaluations at the origin and at each basis vector.
-function build_cubic_kalman_transition(sys, nodes, wts)
-    c, _ = cubic_kalman_moments(sys, zeros(sys.nz), nodes, wts)
+function build_cubic_kalman_transition(sys, nodes, wts; ws = cubic_kalman_workspace(sys))
+    # Only the mean is needed here, so skip the variance the moment routine would
+    # otherwise form — an nz×nz gemm per basis vector, nz+1 of them.
+    Fm = Matrix{Float64}(undef, sys.nz, length(nodes))
+    mean_at = function (z)
+        @inbounds for (n, ε) in enumerate(nodes)
+            cubic_kalman_step!(view(Fm, :, n), sys, z, ε, ws)
+        end
+        return Fm * wts
+    end
+    c = mean_at(zeros(sys.nz))
     𝒜 = zeros(sys.nz, sys.nz)
     e = zeros(sys.nz)
     for j in 1:sys.nz
         fill!(e, 0.0)
         e[j] = 1.0
-        mj, _ = cubic_kalman_moments(sys, e, nodes, wts)
-        𝒜[:, j] = mj - c
+        𝒜[:, j] = mean_at(e) - c
     end
     return 𝒜, c
 end
@@ -275,7 +426,7 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
                           quadrature_points::Int = 4,
                           workspaces = nothing,
                           lyapunov_algorithm::Symbol = :doubling)
-    nz, C = sys.nz, sys.C
+    nz = sys.nz
     n_obs, nT = size(data_in_deviations)
     presample_periods = normalize_presample_periods(presample_periods, nT)
 
@@ -288,35 +439,77 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     end
 
     nodes, wts = gauss_hermite_tensor(sys.nExo, quadrature_points)
-    𝒜, c = build_cubic_kalman_transition(sys, nodes, wts)
+    ws = cubic_kalman_workspace(sys)
+    𝒜, c = build_cubic_kalman_transition(sys, nodes, wts; ws = ws)
 
     z = (Matrix{Float64}(ℒ.I(nz)) - 𝒜) \ c
-    _, Q̄ = cubic_kalman_moments(sys, z, nodes, wts)
+    qbuf = Matrix{Float64}(undef, nz, length(nodes))
+    _, Q̄ = cubic_kalman_moments(sys, z, nodes, wts; buf = qbuf, ws = ws)
     Σ = qkf_lyapunov(𝒜, Q̄; workspaces = workspaces, lyapunov_algorithm = lyapunov_algorithm)
 
-    ll = 0.0
-    for t in 1:nT
-        _, Q = cubic_kalman_moments(sys, z, nodes, wts)
-        zp = 𝒜 * z + c
-        Pp = 𝒜 * Σ * 𝒜' + Q
-        Pp = (Pp + Pp') / 2
+    # Preallocate the recursion's working matrices once, as the quadratic filter
+    # does: the covariance propagation is the whole cost, and allocating an nz×nz
+    # temporary per period competes with it directly.
+    op1, op2, op3 = sys.op1, sys.op2, sys.op3
+    Pp = Matrix{Float64}(undef, nz, nz)
+    Tm = Matrix{Float64}(undef, nz, nz)
+    Pc = Matrix{Float64}(undef, nz, nz); copyto!(Pc, Σ)
+    zp = Vector{Float64}(undef, nz)
+    CP = Matrix{Float64}(undef, n_obs, nz)
+    F = Matrix{Float64}(undef, n_obs, n_obs)
+    Kg = Matrix{Float64}(undef, nz, n_obs)
+    v = Vector{Float64}(undef, n_obs)
+    Fv = Vector{Float64}(undef, n_obs)
 
-        v = data_in_deviations[:, t] - C * zp
-        F = C * Pp * C' + Hm
-        F = (F + F') / 2
+    ll = 0.0
+    log2pi = log(2π)
+    @inbounds for t in 1:nT
+        _, Q = cubic_kalman_moments(sys, z, nodes, wts; buf = qbuf, ws = ws)
+
+        # Pp = 𝒜 Pc 𝒜' + Q
+        ℒ.mul!(Tm, 𝒜, Pc)
+        ℒ.mul!(Pp, Tm, 𝒜')
+        Pp .+= Q
+        for j in 1:nz, i in 1:j
+            m = (Pp[i, j] + Pp[j, i]) / 2
+            Pp[i, j] = m; Pp[j, i] = m
+        end
+
+        ℒ.mul!(zp, 𝒜, z); zp .+= c
+
+        # yₜ = (x₁ + x₂ + x₃)[observables] — three selected rows, so index rather
+        # than multiply by C.
+        for i in 1:n_obs
+            v[i] = data_in_deviations[i, t] - (zp[op1[i]] + zp[op2[i]] + zp[op3[i]])
+            for k in 1:nz
+                CP[i, k] = Pp[op1[i], k] + Pp[op2[i], k] + Pp[op3[i], k]
+            end
+        end
+        for i in 1:n_obs, j in 1:n_obs
+            F[i, j] = CP[i, op1[j]] + CP[i, op2[j]] + CP[i, op3[j]] + Hm[i, j]
+        end
+        for i in 1:n_obs, j in 1:i-1
+            m = (F[i, j] + F[j, i]) / 2
+            F[i, j] = m; F[j, i] = m
+        end
 
         Fc = ℒ.cholesky(F, check = false)
         ℒ.issuccess(Fc) || return on_failure_loglikelihood
 
         if t > presample_periods
-            ll -= 0.5 * (ℒ.dot(v, Fc \ v) + ℒ.logdet(Fc) + n_obs * log(2π))
+            copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
+            ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
             isfinite(ll) || return on_failure_loglikelihood
         end
 
-        Kg = Pp * C' / Fc
-        z = zp + Kg * v
-        Σ = Pp - Kg * C * Pp
-        Σ = (Σ + Σ') / 2
+        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP
+        copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
+        copyto!(z, zp); ℒ.mul!(z, Kg, v, 1.0, 1.0)
+        copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -1.0, 1.0)
+        for j in 1:nz, i in 1:j
+            m = (Pc[i, j] + Pc[j, i]) / 2
+            Pc[i, j] = m; Pc[j, i] = m
+        end
     end
     return ll
 end
