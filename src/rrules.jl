@@ -1877,17 +1877,10 @@ function rrule(::typeof(get_loglikelihood),
     else
         measurement_error != 0
     end
-    # The quadratic Kalman filter carries its own hand-written adjoint, which
-    # includes the measurement-error covariance, so the guard does not apply to it.
-    if me_active && filter != :quadratic_kalman
+    # The quadratic and cubic Kalman filters carry their own hand-written adjoints,
+    # which include the measurement-error covariance, so the guard skips them.
+    if me_active && filter ∉ (:quadratic_kalman, :cubic_kalman)
         error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
-    end
-
-    # The cubic Kalman filter has no hand-written adjoint. Without this guard the
-    # `llh_rrule === nothing` branch below would hand back an all-zero gradient
-    # and no error at all, which a sampler would happily run on.
-    if filter == :cubic_kalman
-        error("Reverse-mode automatic differentiation of the cubic Kalman filter (`filter = :cubic_kalman`) is not supported. Use forward-mode AD (e.g. `AutoForwardDiff`), which is exact for this filter and matches finite differences to ~1e-11, or a gradient-free sampler.")
     end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1972,10 +1965,10 @@ function rrule(::typeof(get_loglikelihood),
     end
 
     # ── step 3: calculate_loglikelihood ──
-    # The quadratic Kalman filter is the only one whose inner rrule takes the
-    # measurement-error covariance; for the others it is inactive (the guard above)
-    # and the kwarg would not be accepted.
-    me_kw = filter == :quadratic_kalman ?
+    # The quadratic and cubic Kalman filters are the ones whose inner rrules take
+    # the measurement-error covariance; for the others it is inactive (the guard
+    # above) and the kwarg would not be accepted.
+    me_kw = filter ∈ (:quadratic_kalman, :cubic_kalman) ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
         NamedTuple()
 

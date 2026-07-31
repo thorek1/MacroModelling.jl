@@ -143,20 +143,78 @@ import AxisKeys: KeyedArray
     # The particle filter's log-likelihood is downward-biased by about Var/2.
     @test abs(ll_ckf - (m + (sum(x -> (x - m)^2, ll_pf) / (length(ll_pf) - 1)) / 2)) < 0.05 * T
 
-    # 4b. forward-mode AD is exact; reverse mode must *fail loudly* rather than
-    #     fall through to the generic zero-gradient path, which a sampler would
-    #     run on without noticing.
+    # 4b. gradients. Both modes are checked against central differences, and
+    #     reverse mode is checked on every measurement-error shape — a wrong `H`
+    #     reaching the adjoint but not the primal gives a finite, plausible, wrong
+    #     gradient rather than an error.
     f = p -> get_loglikelihood(RBC_ckf, data, p; algorithm = :pruned_third_order,
                                filter = :cubic_kalman, measurement_error = mev)
-    g_ad = ForwardDiff.gradient(f, pars)
     g_fd = FiniteDifferences.grad(central_fdm(5, 1), f, pars)[1]
-    @test maximum(abs.(g_ad .- g_fd) ./ max.(1.0, abs.(g_fd))) < 1e-7
-    @test !all(iszero, g_ad)
-    # without measurement error the unrelated measurement-error guard cannot be
-    # what fires, so this pins the cubic-filter guard specifically
+    @test !all(iszero, g_fd)
+    @test maximum(abs.(ForwardDiff.gradient(f, pars) .- g_fd) ./ max.(1.0, abs.(g_fd))) < 1e-7
+    @test maximum(abs.(Zygote.gradient(f, pars)[1] .- g_fd) ./ max.(1.0, abs.(g_fd))) < 1e-7
+
     f_nome = p -> get_loglikelihood(RBC_ckf, data, p; algorithm = :pruned_third_order,
                                     filter = :cubic_kalman)
-    @test_throws ErrorException Zygote.gradient(f_nome, pars)
+    g_fd_nome = FiniteDifferences.grad(central_fdm(5, 1), f_nome, pars)[1]
+    @test maximum(abs.(Zygote.gradient(f_nome, pars)[1] .- g_fd_nome) ./ max.(1.0, abs.(g_fd_nome))) < 1e-6
+
+    mev_mat = [3e-5 1e-5; 1e-5 4e-5]     # non-diagonal covariance
+    f_mat = p -> get_loglikelihood(RBC_ckf, data, p; algorithm = :pruned_third_order,
+                                   filter = :cubic_kalman, measurement_error = mev_mat)
+    g_fd_mat = FiniteDifferences.grad(central_fdm(5, 1), f_mat, pars)[1]
+    @test maximum(abs.(Zygote.gradient(f_mat, pars)[1] .- g_fd_mat) ./ max.(1.0, abs.(g_fd_mat))) < 1e-6
+
+    # 4c. the two hand-written adjoints the chain rests on, checked in isolation
+    #     against ForwardDiff so a regression localises instead of just moving the
+    #     end-to-end number.
+    let ws = MacroModelling.cubic_kalman_workspace(sys), Pm = sys.Pm,
+        nP = sys.nPast, nE = sys.nExo, na = sys.na,
+        n1 = length(sys.S1), n2 = length(sys.S2), n3 = length(sys.S3)
+        function rebuild(θ)
+            S1 = reshape(θ[1:n1], size(sys.S1))
+            S2 = reshape(θ[n1+1:n1+n2], size(sys.S2))
+            S3 = reshape(θ[n1+n2+1:end], size(sys.S3))
+            M, mc, V, B2, Wq, Wl_t, Bc, MM = MacroModelling.cubic_derived_matrices(S1, S2, Pm, nP, nE, na)
+            merge(sys, (; S1, S2, S3, M, mc, V, B2, Wq, Wl_t, Bc, MM, Tv = eltype(θ)))
+        end
+        θ0 = vcat(vec(sys.S1), vec(sys.S2), vec(sys.S3))
+        function fold(∂)
+            MacroModelling.cubic_derived_pullback!(∂.S1, ∂.S2, ∂.M, ∂.mc, ∂.V,
+                                                   ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.MM,
+                                                   sys.M, Pm, nP, nE, na)
+            return vcat(vec(∂.S1), vec(∂.S2), vec(∂.S3))
+        end
+
+        # the step's adjoint
+        zr = 0.05 .* randn(sys.nz); εr = randn(nE); ∂out = randn(sys.nz)
+        function step_scalar(θ)
+            s2 = rebuild(θ)
+            w2 = MacroModelling.cubic_kalman_workspace(s2, eltype(θ))
+            out = MacroModelling.cubic_kalman_step!(Vector{eltype(θ)}(undef, sys.nz), s2, zr, εr, w2)
+            return ℒ.dot(∂out, out)
+        end
+        ∂s = MacroModelling.cubic_kalman_cotangents(sys)
+        MacroModelling.cubic_kalman_step_pullback!(∂s, sys, zr, εr, ∂out, ws)
+        gs = ForwardDiff.gradient(step_scalar, θ0)
+        @test maximum(abs, fold(∂s) - gs) / max(1e-12, maximum(abs, gs)) < 1e-10
+
+        # The build's adjoint. Unlike the step's, it folds the derived-block
+        # cotangents onto S1/S2 itself, so no `fold` here.
+        w𝒜 = randn(sys.nz, sys.nz); wc = randn(sys.nz)
+        wc0 = randn(sys.nz * basis.N); wΛ = randn(sys.nz * basis.N, sys.nz)
+        function build_scalar(θ)
+            s2 = rebuild(θ)
+            w2 = MacroModelling.cubic_kalman_workspace(s2, eltype(θ))
+            A, cc, c0, L = MacroModelling.build_cubic_kalman_system(s2, basis; ws = w2)
+            return ℒ.dot(w𝒜, A) + ℒ.dot(wc, cc) + ℒ.dot(wc0, c0) + ℒ.dot(wΛ, L)
+        end
+        ∂b = MacroModelling.cubic_kalman_cotangents(sys)
+        MacroModelling.build_cubic_kalman_system_pullback!(∂b, sys, basis, w𝒜, wc, wc0, wΛ; ws = ws)
+        gb = ForwardDiff.gradient(build_scalar, θ0)
+        gb_mine = vcat(vec(∂b.S1), vec(∂b.S2), vec(∂b.S3))
+        @test maximum(abs, gb_mine - gb) / max(1e-12, maximum(abs, gb)) < 1e-10
+    end
 
     # 5. gating: the filter is only defined on the pruned third-order solution.
     #    At any other order it falls back to the inversion filter, which admits

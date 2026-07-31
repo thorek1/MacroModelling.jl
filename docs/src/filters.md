@@ -672,14 +672,32 @@ than assumed.
 
 ### Derivatives
 
-Forward mode is exact: `ForwardDiff` matches central differences to ``\sim10^{-11}``. Since
-the filter is confined to small models anyway, that is the appropriate mode — a gradient
-costs a handful of primal passes, each a few milliseconds.
+Both modes work and both match central differences to ``\sim10^{-10}``.
 
-There is no hand-written `rrule`, so **reverse mode raises an error**. This matters more than
-it sounds: without that guard the generic fallback returns an all-zero gradient and no
-warning at all, which a sampler will happily run on. Use `AutoForwardDiff`, or a
-gradient-free sampler.
+Reverse mode has a hand-written adjoint, as the quadratic filter does. It composes three
+pieces, each verified against `ForwardDiff` in isolation so a regression localises rather
+than merely moving the end-to-end number:
+
+| piece | what it does |
+|---|---|
+| step adjoint | ``\partial f(z,\varepsilon)`` onto ``\mathbf{S}_1,\mathbf{S}_2,\mathbf{S}_3`` and the derived blocks |
+| build adjoint | ``\partial(\mathcal{A}, c, c_0, \Lambda)`` replayed over the same ``(n_z+1)N`` points the forward pass visited |
+| recursion adjoint | the Kalman loop, with ``Q = C\Psi C'`` in place of the quadratic filter's ``GG' + Q_H`` |
+
+Everything the step builds from ``z`` and ``\varepsilon`` alone — ``\mathrm{aug}``, ``K_2``,
+``K_{12}``, ``K_3``, the ``Q`` blocks — is constant for the adjoint, so only the paths
+through the solution matrices carry cotangents.
+
+Cost, on the RBC test model with seven parameters:
+
+| | time | relative |
+|---|---|---|
+| primal | 2.3 ms | — |
+| reverse (`Zygote`) | 12.0 ms | 5.3× primal, **independent of parameter count** |
+| forward (`ForwardDiff`) | 44.3 ms | 19.5× primal, growing linearly in parameters |
+
+Reverse mode is therefore the default choice, and the gap widens with every parameter added.
+Forward mode remains available and is a useful independent check.
 
 ## The filter-free likelihood
 
