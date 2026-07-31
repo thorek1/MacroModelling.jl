@@ -1,0 +1,119 @@
+using MacroModelling
+using Test
+using Random
+import LinearAlgebra as ℒ
+import AxisKeys: KeyedArray
+
+# The cubic Kalman filter rests on one property: the pruned third-order recursion
+# is exactly affine in the augmented state z = [x₁; x₂; x₃; a⊗a; a⊗b; a⊗a⊗a].
+# These tests check that property directly, then the moments built on top of it,
+# then the likelihood against a converged particle filter.
+
+@testset "Cubic Kalman filter" begin
+    opts = MacroModelling.merge_calculation_options()
+
+    @model RBC_ckf begin
+        1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+        c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+        q[0] = exp(z[0]) * k[-1]^α * exp(g[0])
+        z[0] = ρz * z[-1] + std_z * eps_z[x]
+        g[0] = ρg * g[-1] + std_g * eps_g[x]
+    end
+    @parameters RBC_ckf begin
+        std_z = 0.02
+        std_g = 0.02
+        ρz = 0.4
+        ρg = 0.6
+        δ = 0.02
+        α = 0.5
+        β = 0.95
+    end
+
+    MacroModelling.solve!(RBC_ckf, algorithm = :pruned_third_order, dynamics = true, opts = opts)
+    pars = RBC_ckf.parameter_values
+    _, _, 𝐒, _, _ = MacroModelling.get_relevant_steady_state_and_state_update(Val(:pruned_third_order), pars, RBC_ckf, opts = opts)
+    ssn = RBC_ckf.constants.post_complete_parameters.SS_and_pars_names
+    obs = [:c, :q]
+    obs_idx = convert(Vector{Int}, indexin(obs, ssn))
+
+    sys = MacroModelling.build_cubic_kalman_system_from_constants(RBC_ckf.constants, 𝐒[1], 𝐒[2], 𝐒[3], obs_idx)
+    @test sys.nz == 3sys.nr + 2sys.nPast^2 + sys.nPast^3
+
+    Random.seed!(3)
+    ε = randn(sys.nExo)
+
+    # 1. the step is affine in z — the property the whole filter depends on
+    z1 = randn(sys.nz)
+    z2 = randn(sys.nz)
+    λ = 0.41
+    lhs = MacroModelling.cubic_kalman_step(sys, λ .* z1 .+ (1 - λ) .* z2, ε)
+    rhs = λ .* MacroModelling.cubic_kalman_step(sys, z1, ε) .+ (1 - λ) .* MacroModelling.cubic_kalman_step(sys, z2, ε)
+    @test maximum(abs, lhs - rhs) < 1e-12
+
+    # 2. on a consistent state it reproduces the pruned third-order recursion,
+    #    including the Kronecker blocks, with every product recomputed directly
+    consistent(x1, x2, x3) = (a = sys.Pm * x1; b = sys.Pm * x2;
+                              vcat(x1, x2, x3, ℒ.kron(a, a), ℒ.kron(a, b), ℒ.kron(ℒ.kron(a, a), a)))
+    x1 = 0.01 .* randn(sys.nr)
+    x2 = 0.005 .* randn(sys.nr)
+    x3 = 0.002 .* randn(sys.nr)
+    a = sys.Pm * x1; b = sys.Pm * x2; p = sys.Pm * x3
+    aug1 = vcat(a, 1.0, ε); aug1h = vcat(a, 0.0, ε)
+    aug2 = vcat(b, 0.0, zeros(sys.nExo)); aug3 = vcat(p, 0.0, zeros(sys.nExo))
+    reference = consistent(sys.S1 * aug1,
+                           sys.S1 * aug2 + sys.S2 * ℒ.kron(aug1, aug1) / 2,
+                           sys.S1 * aug3 + sys.S2 * ℒ.kron(aug1h, aug2) + sys.S3 * ℒ.kron(ℒ.kron(aug1, aug1), aug1) / 6)
+    stepped = MacroModelling.cubic_kalman_step(sys, consistent(x1, x2, x3), ε)
+    @test maximum(abs, stepped - reference) < 1e-12
+    @test maximum(abs, stepped[sys.i11] - reference[sys.i11]) < 1e-12
+    @test maximum(abs, stepped[sys.i12] - reference[sys.i12]) < 1e-12
+    @test maximum(abs, stepped[sys.i111] - reference[sys.i111]) < 1e-12
+
+    # 3. the recovered transition reproduces the conditional mean exactly, and
+    #    both quadrature moments agree with Monte Carlo
+    nodes, wts = MacroModelling.gauss_hermite_tensor(sys.nExo, 4)
+    𝒜, c = MacroModelling.build_cubic_kalman_transition(sys, nodes, wts)
+    zt = 0.01 .* randn(sys.nz)
+    mq, Sq = MacroModelling.cubic_kalman_moments(sys, zt, nodes, wts)
+    @test maximum(abs, mq - (𝒜 * zt + c)) < 1e-12
+
+    Random.seed!(5)
+    N = 200_000
+    mm = zeros(sys.nz); SS = zeros(sys.nz, sys.nz)
+    for _ in 1:N
+        fz = MacroModelling.cubic_kalman_step(sys, zt, randn(sys.nExo))
+        mm .+= fz
+        SS .+= fz * fz'
+    end
+    mm ./= N; SS ./= N; SS .-= mm * mm'
+    @test maximum(abs, mq - mm) / max(1e-12, maximum(abs, mq)) < 0.02
+    @test maximum(abs, Sq - SS) / max(1e-12, maximum(abs, Sq)) < 0.05
+
+    # 4. the likelihood matches a converged bootstrap particle filter
+    Random.seed!(101)
+    T = 60
+    sim = get_irf(RBC_ckf, algorithm = :pruned_third_order, periods = T, shocks = :simulate, levels = false)
+    Y = Matrix(sim(obs, :, :simulate))
+    sd_obs = [sqrt(sum(abs2, Y[i, :] .- sum(Y[i, :]) / T) / (T - 1)) for i in eachindex(obs)]
+    mev = (0.2 .* sd_obs) .^ 2
+    NSSS = get_steady_state(RBC_ckf, derivatives = false)
+    data = KeyedArray(Y .+ [NSSS(v) for v in obs]; Variable = obs, Time = 1:T)
+
+    ll_ckf = get_loglikelihood(RBC_ckf, data, pars; algorithm = :pruned_third_order,
+                               filter = :cubic_kalman, measurement_error = mev)
+    @test isfinite(ll_ckf)
+
+    ll_pf = [get_loglikelihood(RBC_ckf, data, pars; algorithm = :pruned_third_order,
+                               filter = :bootstrap_particle, measurement_error = mev,
+                               n_particles = 80_000, particle_rng = Random.Xoshiro(s)) for s in 1:4]
+    m = sum(ll_pf) / length(ll_pf)
+    # The particle filter's log-likelihood is downward-biased by about Var/2.
+    @test abs(ll_ckf - (m + (sum(x -> (x - m)^2, ll_pf) / (length(ll_pf) - 1)) / 2)) < 0.05 * T
+
+    # 5. gating: the filter is only defined on the pruned third-order solution.
+    #    At any other order it falls back to the inversion filter, which admits
+    #    no measurement error — so none is passed here.
+    ll_wrong = get_loglikelihood(RBC_ckf, data, pars; algorithm = :pruned_second_order,
+                                 filter = :cubic_kalman)
+    @test isfinite(ll_wrong)
+end

@@ -4877,6 +4877,18 @@ function get_loglikelihood(𝓂::ℳ,
                                 measurement_error = measurement_error_H,
                                 on_failure_loglikelihood = on_failure_loglikelihood,
                                 opts = opts)
+    elseif filter == :cubic_kalman
+        # Same idea one order up: the pruned third-order solution is linear in a
+        # larger augmented state. See src/filter/cubic_kalman.jl.
+        if has_missing
+            error("The cubic Kalman filter does not yet support missing observations.")
+        end
+        calculate_loglikelihood(Val(:cubic_kalman), Val(algorithm), obs_indices,
+                                𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces,
+                                presample_periods = presample_periods,
+                                measurement_error = measurement_error_H,
+                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                opts = opts)
     elseif filter == :kalman
         if has_missing
             calculate_loglikelihood_with_missing(Val(:kalman),

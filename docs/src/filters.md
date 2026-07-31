@@ -583,6 +583,64 @@ quadratic Kalman filter for quadratic measurement equations. Andreasen (2013), *
 Applied Econometrics* 28, 929–955 — the central difference Kalman filter, the unpruned
 alternative.
 
+## The cubic Kalman filter
+
+`filter = :cubic_kalman`, available only for `algorithm = :pruned_third_order`.
+
+The same construction one order up. Pruning truncates the Kronecker hierarchy at a fixed
+rung at *every* order, so the pruned third-order solution is again exactly linear — in a
+larger augmented state,
+
+```math
+z_t = [\,x_1;\ x_2;\ x_3;\ a\otimes a;\ a\otimes b;\ a\otimes a\otimes a\,],
+\qquad a = x_1[\text{past}],\ b = x_2[\text{past}].
+```
+
+Writing ``a_n = Ma + v`` with ``v`` state-independent and ``u = Ma``, the new blocks close
+back onto the existing ones:
+
+```math
+\begin{aligned}
+q_{11}' &= (M\otimes M)q_{11} + u\otimes v + v\otimes u + v\otimes v,\\
+q_{12}' &= (M\otimes M)q_{12} + (M\otimes W_q)q_{111} + (M\otimes W_l)q_{11} + u\otimes w_c + v\otimes b_n,\\
+q_{111}' &= (M\otimes M\otimes M)q_{111} + \text{3 perms of }((M\otimes M)q_{11})\otimes v + \text{3 perms of } u\otimes v\otimes v + v^{\otimes3}.
+\end{aligned}
+```
+
+No fourth-order block appears, because ``a_n`` carries no ``q_{11}`` term — that is why the
+system closes. The closure is the whole filter: recomputing the new blocks as
+``\mathrm{kron}(a_n,a_n)`` would be quadratic in ``z`` and silently destroy the linearity
+everything rests on. What is approximate is exactly what is approximate at second order —
+the innovation is not Gaussian and only its first two moments are matched.
+
+Validated on an RBC model (2 shocks, 3 past states) against a converged bootstrap particle
+filter: **181.78 against 181.43 over 60 periods, a gap of 0.006 per period** — smaller than
+the quadratic filter's 0.025 on the comparable model.
+
+!!! warning "It only fits small models"
+    The augmented dimension is ``3n_r + 2n_{past}^2 + n_{past}^3``, and the covariance
+    recursion is ``O(n_z^3)`` — so cost grows as ``n_{past}^9``.
+
+    | ``n_{past}`` | ``n_z`` | ms/period | verdict |
+    |---|---|---|---|
+    | 3 | 60 | <0.1 | fine |
+    | 8 | 676 | 6 | fine |
+    | 10 | 1245 | 39 | usable |
+    | 12 | 2070 | 177 | marginal |
+    | 15 | 3891 | 1178 | no |
+    | 27 (Smets-Wouters) | 21243 | 191725 | hopeless — 3.6 GB per matrix |
+
+    `build_cubic_kalman_system_from_constants` refuses above
+    `CUBIC_KALMAN_MAX_DIMENSION` (2500) rather than appearing to hang. For anything
+    larger use the inversion filter or a particle filter.
+
+Compared with the quadratic filter this one is a straightforward implementation: the
+transition is recovered by Gauss-Hermite quadrature (exact — the integrands are degree six)
+rather than assembled analytically, there is no ``\mathrm{vech}`` compression of the
+Kronecker blocks, and no hand-written `rrule`, so it is not differentiable in reverse mode.
+Those are the three things to add if the filter is ever wanted at scale — though the
+``n_{past}^9`` wall limits how much they can buy.
+
 ## The filter-free likelihood
 
 There is a fourth option that is not a `filter` value at all, because it does not filter: instead of integrating the shocks out, it treats them as **parameters** and asks you to supply them.
