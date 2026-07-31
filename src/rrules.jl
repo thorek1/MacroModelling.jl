@@ -1883,6 +1883,13 @@ function rrule(::typeof(get_loglikelihood),
         error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
     end
 
+    # The cubic Kalman filter has no hand-written adjoint. Without this guard the
+    # `llh_rrule === nothing` branch below would hand back an all-zero gradient
+    # and no error at all, which a sampler would happily run on.
+    if filter == :cubic_kalman
+        error("Reverse-mode automatic differentiation of the cubic Kalman filter (`filter = :cubic_kalman`) is not supported. Use forward-mode AD (e.g. `AutoForwardDiff`), which is exact for this filter and matches finite differences to ~1e-11, or a gradient-free sampler.")
+    end
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],

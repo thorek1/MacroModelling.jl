@@ -217,9 +217,13 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
               "Use `filter = :inversion` or a particle filter instead.")
     end
 
-    S1 = Matrix(𝐒₁)[oas, :]
-    S2 = Matrix(𝐒₂)[oas, :]
-    S3 = Matrix(𝐒₃)[oas, :]
+    # Carry the solution matrices' element type so ForwardDiff duals flow through
+    # the whole assembly; the 0/1 selection matrices stay Float64 and promote on
+    # contact.
+    Tv = promote_type(eltype(𝐒₁), eltype(𝐒₂), eltype(𝐒₃))
+    S1 = Matrix{Tv}(Matrix(𝐒₁)[oas, :])
+    S2 = Matrix{Tv}(Matrix(𝐒₂)[oas, :])
+    S3 = Matrix{Tv}(Matrix(𝐒₃)[oas, :])
 
     Pm = zeros(nPast, nr)
     for (i, j) in enumerate(past)
@@ -249,11 +253,11 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     # (tail,tail) parts so each can be routed onto the right state block.
     B2 = Pm * S2 / 2
     ntail = 1 + nExo
-    Wq = zeros(nPast, nPast * nPast)
+    Wq = zeros(Tv, nPast, nPast * nPast)
     for i in 1:nPast, j in 1:nPast
         Wq[:, (i-1)*nPast+j] = B2[:, (i-1)*na+j]
     end
-    Wl_t = [zeros(nPast, nPast) for _ in 1:ntail]
+    Wl_t = [zeros(Tv, nPast, nPast) for _ in 1:ntail]
     for t in 1:ntail, k in 1:nPast
         Wl_t[t][:, k] = B2[:, (k-1)*na+nPast+t] + B2[:, (nPast+t-1)*na+k]
     end
@@ -277,7 +281,7 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C, op1, op2, op3,
             r1, r2, r3, i11, i12, i111, nq11, nq12, nq111,
             exp2, can2, exp3, can3, can2_ij, can3_ijk,
-            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail)
+            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail, Tv)
 end
 
 """
@@ -286,9 +290,10 @@ Preallocated buffers for `cubic_kalman_step!`. The step is called
 period, and it is entirely allocation-bound — it does a few hundred flops but
 allocated ~13 kB per call before these buffers existed.
 """
-function cubic_kalman_workspace(sys)
+function cubic_kalman_workspace(sys, Tv = sys.Tv)
     (; nr, nPast, na, ntail) = sys
     nP2 = nPast * nPast
+    zeros(n...) = Base.zeros(Tv, n...)
     return (; a = zeros(nPast), b = zeros(nPast), p = zeros(nPast),
             q11 = zeros(nP2), q12 = zeros(nP2), q111 = zeros(nPast^3),
             tail = zeros(ntail), tt = zeros(ntail * ntail),
@@ -441,7 +446,7 @@ end
 
 # Allocating convenience wrapper, used by the tests.
 function cubic_kalman_step(sys, z::AbstractVector, ε::AbstractVector, ws = cubic_kalman_workspace(sys))
-    return cubic_kalman_step!(Vector{Float64}(undef, sys.nz), sys, z, ε, ws)
+    return cubic_kalman_step!(Vector{sys.Tv}(undef, sys.nz), sys, z, ε, ws)
 end
 
 # E[f(z,·)] and Var(f(z,·)) under ε ~ N(0,I), exactly.
@@ -452,7 +457,7 @@ end
 # stacking buffer across periods.
 function cubic_kalman_moments(sys, z, nodes, wts; buf = nothing, ws = cubic_kalman_workspace(sys))
     nz = sys.nz
-    Fm = buf === nothing ? Matrix{Float64}(undef, nz, length(nodes)) : buf
+    Fm = buf === nothing ? Matrix{sys.Tv}(undef, nz, length(nodes)) : buf
     @inbounds for (n, ε) in enumerate(nodes)
         cubic_kalman_step!(view(Fm, :, n), sys, z, ε, ws)
     end
@@ -467,7 +472,7 @@ end
 function build_cubic_kalman_transition(sys, nodes, wts; ws = cubic_kalman_workspace(sys))
     # Only the mean is needed here, so skip the variance the moment routine would
     # otherwise form — an nz×nz gemm per basis vector, nz+1 of them.
-    Fm = Matrix{Float64}(undef, sys.nz, length(nodes))
+    Fm = Matrix{sys.Tv}(undef, sys.nz, length(nodes))
     mean_at = function (z)
         @inbounds for (n, ε) in enumerate(nodes)
             cubic_kalman_step!(view(Fm, :, n), sys, z, ε, ws)
@@ -495,8 +500,8 @@ polynomially in the number of shocks instead of exponentially. Afterwards no
 quadrature is needed at all, per period or otherwise.
 """
 function build_cubic_kalman_system(sys, basis; ws = cubic_kalman_workspace(sys))
-    nz, N = sys.nz, basis.N
-    Fm = Matrix{Float64}(undef, nz, N)
+    nz, N, Tv = sys.nz, basis.N, sys.Tv
+    Fm = Matrix{Tv}(undef, nz, N)
     coefficients_at = function (z)
         @inbounds for (p, ε) in enumerate(basis.pts)
             cubic_kalman_step!(view(Fm, :, p), sys, z, ε, ws)
@@ -504,15 +509,15 @@ function build_cubic_kalman_system(sys, basis; ws = cubic_kalman_workspace(sys))
         return Fm * basis.W          # nz × N
     end
 
-    C0 = coefficients_at(zeros(nz))
+    C0 = coefficients_at(zeros(Tv, nz))
     c₀ = vec(C0)
-    Λ = Matrix{Float64}(undef, nz * N, nz)
-    𝒜 = Matrix{Float64}(undef, nz, nz)
+    Λ = Matrix{Tv}(undef, nz * N, nz)
+    𝒜 = Matrix{Tv}(undef, nz, nz)
     c = C0 * basis.m
-    e = zeros(nz)
+    e = zeros(Tv, nz)
     for j in 1:nz
-        fill!(e, 0.0)
-        e[j] = 1.0
+        fill!(e, zero(Tv))
+        e[j] = one(Tv)
         ΔC = coefficients_at(e)
         ΔC .-= C0
         Λ[:, j] = vec(ΔC)
@@ -539,26 +544,32 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     n_obs, nT = size(data_in_deviations)
     presample_periods = normalize_presample_periods(presample_periods, nT)
 
+    # Promote over every differentiable input. The preallocated buffers below fix
+    # the element type, so missing one makes forward-mode AD fail with respect to
+    # exactly that argument.
+    Tv = promote_type(sys.Tv, eltype(data_in_deviations),
+                      measurement_error === nothing ? Float64 : eltype(measurement_error))
+
     Hm = if measurement_error === nothing
-        zeros(n_obs, n_obs)
+        zeros(Tv, n_obs, n_obs)
     elseif measurement_error isa AbstractMatrix
-        Matrix{Float64}(measurement_error)
+        Matrix{Tv}(measurement_error)
     else
-        Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
+        Matrix{Tv}(ℒ.Diagonal(collect(measurement_error)))
     end
 
-    ws = cubic_kalman_workspace(sys)
+    ws = cubic_kalman_workspace(sys, Tv)
     basis = cubic_noise_basis(sys.nExo)
     𝒜, c, c₀, Λ = build_cubic_kalman_system(sys, basis; ws = ws)
     N, Ψ = basis.N, basis.Ψ
 
-    cvec = Vector{Float64}(undef, nz * N)
-    CΨ = Matrix{Float64}(undef, nz, N)
-    Q = Matrix{Float64}(undef, nz, nz)
+    cvec = Vector{Tv}(undef, nz * N)
+    CΨ = Matrix{Tv}(undef, nz, N)
+    Q = Matrix{Tv}(undef, nz, nz)
     # Q(z) = C(z) Ψ C(z)' with vec(C) = c₀ + Λz.
     noise_covariance! = function (Q, z)
         copyto!(cvec, c₀)
-        ℒ.mul!(cvec, Λ, z, 1.0, 1.0)
+        ℒ.mul!(cvec, Λ, z, one(Tv), one(Tv))
         C = reshape(cvec, nz, N)
         ℒ.mul!(CΨ, C, Ψ)
         ℒ.mul!(Q, CΨ, C')
@@ -569,7 +580,7 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
         return Q
     end
 
-    z = (Matrix{Float64}(ℒ.I(nz)) - 𝒜) \ c
+    z = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
     Σ = qkf_lyapunov(𝒜, noise_covariance!(Q, z); workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
 
@@ -577,17 +588,17 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     # does: the covariance propagation is the whole cost, and allocating an nz×nz
     # temporary per period competes with it directly.
     op1, op2, op3 = sys.op1, sys.op2, sys.op3
-    Pp = Matrix{Float64}(undef, nz, nz)
-    Tm = Matrix{Float64}(undef, nz, nz)
-    Pc = Matrix{Float64}(undef, nz, nz); copyto!(Pc, Σ)
-    zp = Vector{Float64}(undef, nz)
-    CP = Matrix{Float64}(undef, n_obs, nz)
-    F = Matrix{Float64}(undef, n_obs, n_obs)
-    Kg = Matrix{Float64}(undef, nz, n_obs)
-    v = Vector{Float64}(undef, n_obs)
-    Fv = Vector{Float64}(undef, n_obs)
+    Pp = Matrix{Tv}(undef, nz, nz)
+    Tm = Matrix{Tv}(undef, nz, nz)
+    Pc = Matrix{Tv}(undef, nz, nz); copyto!(Pc, Σ)
+    zp = Vector{Tv}(undef, nz)
+    CP = Matrix{Tv}(undef, n_obs, nz)
+    F = Matrix{Tv}(undef, n_obs, n_obs)
+    Kg = Matrix{Tv}(undef, nz, n_obs)
+    v = Vector{Tv}(undef, n_obs)
+    Fv = Vector{Tv}(undef, n_obs)
 
-    ll = 0.0
+    ll = zero(Tv)
     log2pi = log(2π)
     @inbounds for t in 1:nT
         noise_covariance!(Q, z)
@@ -628,10 +639,15 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
             isfinite(ll) || return on_failure_loglikelihood
         end
 
-        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP
-        copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
-        copyto!(z, zp); ℒ.mul!(z, Kg, v, 1.0, 1.0)
-        copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -1.0, 1.0)
+        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP.  `rdiv!` has no Cholesky
+        # method for dual element types, so the AD path solves and transposes.
+        if Tv === Float64
+            copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
+        else
+            Kg = Matrix((Fc \ CP)')
+        end
+        copyto!(z, zp); ℒ.mul!(z, Kg, v, one(Tv), one(Tv))
+        copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -one(Tv), one(Tv))
         for j in 1:nz, i in 1:j
             m = (Pc[i, j] + Pc[j, i]) / 2
             Pc[i, j] = m; Pc[j, i] = m

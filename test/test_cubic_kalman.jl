@@ -1,6 +1,9 @@
 using MacroModelling
 using Test
 using Random
+using ForwardDiff
+using FiniteDifferences
+using Zygote
 import LinearAlgebra as ℒ
 import AxisKeys: KeyedArray
 
@@ -139,6 +142,21 @@ import AxisKeys: KeyedArray
     m = sum(ll_pf) / length(ll_pf)
     # The particle filter's log-likelihood is downward-biased by about Var/2.
     @test abs(ll_ckf - (m + (sum(x -> (x - m)^2, ll_pf) / (length(ll_pf) - 1)) / 2)) < 0.05 * T
+
+    # 4b. forward-mode AD is exact; reverse mode must *fail loudly* rather than
+    #     fall through to the generic zero-gradient path, which a sampler would
+    #     run on without noticing.
+    f = p -> get_loglikelihood(RBC_ckf, data, p; algorithm = :pruned_third_order,
+                               filter = :cubic_kalman, measurement_error = mev)
+    g_ad = ForwardDiff.gradient(f, pars)
+    g_fd = FiniteDifferences.grad(central_fdm(5, 1), f, pars)[1]
+    @test maximum(abs.(g_ad .- g_fd) ./ max.(1.0, abs.(g_fd))) < 1e-7
+    @test !all(iszero, g_ad)
+    # without measurement error the unrelated measurement-error guard cannot be
+    # what fires, so this pins the cubic-filter guard specifically
+    f_nome = p -> get_loglikelihood(RBC_ckf, data, p; algorithm = :pruned_third_order,
+                                    filter = :cubic_kalman)
+    @test_throws ErrorException Zygote.gradient(f_nome, pars)
 
     # 5. gating: the filter is only defined on the pruned third-order solution.
     #    At any other order it falls back to the inversion filter, which admits

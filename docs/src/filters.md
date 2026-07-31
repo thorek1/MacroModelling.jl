@@ -646,12 +646,40 @@ which is roughly a sixth of the ``n_{past}^3`` block and, since the recursion is
     `CUBIC_KALMAN_MAX_DIMENSION` (2500) rather than appearing to hang. For anything
     larger use the inversion filter or a particle filter.
 
-The step function is allocation-free, the recursion runs on preallocated buffers with
-in-place BLAS, the observation is applied by indexing its three selected rows rather than by
-a gemm, and the quadrature contracts its nodes with a single gemm — all as in the quadratic
-filter. Two things are not carried over: the transition is recovered by Gauss-Hermite
-quadrature (exact, since the integrands are degree six) rather than assembled analytically,
-and there is no hand-written `rrule`, so the filter is not differentiable in reverse mode.
+### Assembly, and why there is no quadrature
+
+``f(z,\cdot)`` is a polynomial of degree ``\le 3`` in ``\varepsilon`` whose coefficients are
+affine in ``z``. Recovering that coefficient matrix ``C(z)`` once gives both moments in
+closed form:
+
+```math
+\mathbb{E}[f] = C(z)\,m,\qquad
+\mathrm{Var}(f) = C(z)\,\Psi\,C(z)',
+```
+
+with ``m_\alpha = \mathbb{E}[\varepsilon^\alpha]`` and
+``\Psi_{\alpha\beta} = \mathbb{E}[\varepsilon^{\alpha+\beta}] - \mathbb{E}[\varepsilon^\alpha]\mathbb{E}[\varepsilon^\beta]``.
+Because the shocks are *independent* standard normals, ``\mathbb{E}[\varepsilon^\alpha]``
+factorises into double factorials, so ``\Psi`` is a closed form rather than a sum over
+Isserlis pairings. This is the exact analogue of the quadratic filter's affine ``G(z)`` with
+``Q = GG'``: a period costs one matvec and two gemms, not a quadrature sweep.
+
+``C(z)`` is recovered by interpolation on ``\binom{n_\varepsilon+3}{3}`` points, which is
+also where a tensor Gauss-Hermite rule is left behind — its node count grows as
+``\mathrm{npt}^{n_\varepsilon}`` (16384 for seven shocks) against 120 for the coefficient
+basis. The quadrature path is retained and the analytic assembly is tested against it rather
+than assumed.
+
+### Derivatives
+
+Forward mode is exact: `ForwardDiff` matches central differences to ``\sim10^{-11}``. Since
+the filter is confined to small models anyway, that is the appropriate mode — a gradient
+costs a handful of primal passes, each a few milliseconds.
+
+There is no hand-written `rrule`, so **reverse mode raises an error**. This matters more than
+it sounds: without that guard the generic fallback returns an all-zero gradient and no
+warning at all, which a sampler will happily run on. Use `AutoForwardDiff`, or a
+gradient-free sampler.
 
 ## The filter-free likelihood
 
