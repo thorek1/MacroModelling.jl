@@ -4508,7 +4508,7 @@ compressed_kron²_power!(kronaug_state₁, aug_state₁)
     fill!(y_pred, zero(R))
     ℒ.mul!(y_pred, 𝐒¹⁻ᵛ, state₁_vol)
     ℒ.mul!(y_pred, 𝐒¹⁻, state₂, 1, 1)
-    ℒ.kron!(kronstate₁_vol, state₁_vol, state₁_vol)
+    compressed_kron²_power!(kronstate₁_vol, state₁_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵛ, kronstate₁_vol, 1/2, 1)
     ℒ.mul!(y_pred, 𝐒¹ᵉ, final_shock, 1, 1)
 
@@ -4667,8 +4667,6 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     kron_aug3 = ws.kron_kron_aug_state
     kron_shock_state = ws.kron_shock_state
     kron_shock_shock = ws.kron_buffer
-    kron_shock_state2 = ws.kron_shock_state2
-    kron_shock2_state = ws.kron_shock2_state
     kron_shock3 = ws.kron_buffer²
     kron_I_state = ws.kron_buffer_state
 
@@ -4708,10 +4706,22 @@ compressed_kron²_power!(kronaug_state, aug_state)
     state_vol[end] = one(R)
     final_shock = view(warmup_shocks, :, n_warm)
 
+    # Compressed triple coordinates mixing shocks and states. The index sets and
+    # their row maps mirror third_order_warmup_observation_and_jacobian_pullback!.
+    shock_offset = n_past + 1
+    shock_state_state_indices = sort!([compressed_triple_index(shock_offset + q, i, j)
+                                       for q in 1:n_exo for i in 1:n_state_vol for j in 1:i])
+    shock_state_state_rows = compressed_shock_state_state_rows(shock_state_state_indices,
+                                                               shock_offset, n_state_vol, n_exo)
+    shock_shock_state_indices = sort!([compressed_triple_index(shock_offset + i, shock_offset + j, k)
+                                       for i in 1:n_exo for j in 1:i for k in 1:n_state_vol])
+    shock_shock_state_rows = compressed_shock_shock_state_rows(shock_shock_state_indices,
+                                                              shock_offset, n_state_vol, n_exo)
+
     fill!(y_pred, zero(R))
     ℒ.mul!(y_pred, 𝐒¹⁻ᵛ, state_vol)
 
-compressed_kron²_power!(kronstate_vol, state_vol)
+    compressed_kron²_power!(kronstate_vol, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵛ, kronstate_vol, 1/2, 1)
 
     compressed_kron³_power!(kronstate_vol3, state_vol)
@@ -4722,13 +4732,19 @@ compressed_kron²_power!(kronstate_vol, state_vol)
     ℒ.kron!(kron_shock_state, final_shock, state_vol)
     ℒ.mul!(y_pred, 𝐒²⁻ᵉ, kron_shock_state, 1, 1)
 
-    ℒ.kron!(kron_shock_state2, final_shock, kronstate_vol)
+    kron_shock_state2 = compressed_triple_shock_state_state(final_shock, state_vol,
+                                                            shock_offset,
+                                                            shock_state_state_indices;
+                                                            index_rows = shock_state_state_rows)
     ℒ.mul!(y_pred, 𝐒³⁻ᵉ², kron_shock_state2, 1/2, 1)
 
-    ℒ.kron!(kron_shock_shock, final_shock, final_shock)
+    compressed_kron²_power!(kron_shock_shock, final_shock)
     ℒ.mul!(y_pred, 𝐒²ᵉ, kron_shock_shock, 1/2, 1)
 
-    ℒ.kron!(kron_shock2_state, kron_shock_shock, state_vol)
+    kron_shock2_state = compressed_triple_shock_shock_state(final_shock, state_vol,
+                                                            shock_offset,
+                                                            shock_shock_state_indices;
+                                                            index_rows = shock_shock_state_rows)
     ℒ.mul!(y_pred, 𝐒³⁻ᵉ, kron_shock2_state, 1/2, 1)
 
     compressed_kron³_power!(kron_shock3, final_shock)
@@ -4744,20 +4760,21 @@ compressed_kron²_power!(kronstate_vol, state_vol)
                                                                     shock_offset,
                                                                     shock_state_state_indices;
                                                                     index_rows = shock_state_state_rows)
-    jac_y_state += 𝐒³⁻ᵉ * ℒ.kron(kron_shock_shock, I_state_vol) / 2
+    jac_y_state += 𝐒³⁻ᵉ * compressed_triple_shock_shock_state_to_state(final_shock,
+                                                                        state_vol,
+                                                                        shock_offset,
+                                                                        shock_shock_state_indices;
+                                                                        index_rows = shock_shock_state_rows) / 2
 
     copyto!(jac_x, 𝐒¹ᵉ)
     ℒ.kron!(kron_I_state, I_exo, state_vol)
     ℒ.mul!(jac_x, 𝐒²⁻ᵉ, kron_I_state, 1, 1)
-    compressed_triple_state_pair_to_shock!(kron_buffer3sv,
-                                           kronstate_vol,
-                                           n_aug,
-                                           shock_offset,
-                                           n_exo,
-                                           shock_state_state_indices,
-                                           n_past + 1;
-                                           index_rows = shock_state_state_rows)
-    jac_x += 𝐒³⁻ᵉ² * kron_buffer3sv
+    jac_x += 𝐒³⁻ᵉ² * compressed_triple_state_pair_to_shock(kronstate_vol,
+                                                            n_aug,
+                                                            shock_offset,
+                                                            n_exo,
+                                                            shock_state_state_indices;
+                                                            index_rows = shock_state_state_rows)
     jac_x += 𝐒²ᵉ * compressed_kron²(final_shock, I_exo)
     jac_x += 𝐒³⁻ᵉ * compressed_triple_state_shock_to_shock(state_vol,
                                                             final_shock,

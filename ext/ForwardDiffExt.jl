@@ -1192,13 +1192,17 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     # parameter direction. RHS is differentiation of the KKT residual:
     #   g_x = tmp'·λ - 2x   →  d g_x = (d_Si + 2·d_Si2e·kron(I,x))' · λ
     #   g_λ = si - Si·x - Si2e·kron(x,x)
+    # 𝐒ⁱ²ᵉ lives in the compressed shock-pair basis, so the shock kron terms
+    # must be compressed too (mirrors the primal find_shocks).
     n_x = length(x_f)
     n_obs = size(Si_f, 1)
-    kIx = ℒ.kron(J, x_f)
+    kIx = MacroModelling.compressed_kron²(x_f, J)
     tmp = Si_f + 2 * Si2e_f * kIx
     λ = tmp' \ (2 .* x_f)
-    A_mat = reshape(2 * Si2e_f' * λ, n_x, n_x) - 2 * J
-    kxx = ℒ.kron(x_f, x_f)
+    A_mat = zeros(V, n_x, n_x)
+    MacroModelling.compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
+    A_mat .-= 2 .* Matrix(ℒ.I(n_x))
+    kxx = MacroModelling.compressed_kron²_power(x_f)
 
     fXλp = [A_mat   tmp';
             -tmp    zeros(V, n_obs, n_obs)]
@@ -1277,16 +1281,21 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     # fXλp = [A tmp'; -tmp 0] with
     #   A = reshape((2·Si2e + 6·Si3e·kron(I,kIx))'·λ, n_x, n_x) - 2I
     #   tmp = Si + 2·Si2e·kron(I,x) + 3·Si3e·kron(I,kron(x,x))
+    # 𝐒ⁱ²ᵉ/𝐒ⁱ³ᵉ live in the compressed shock pair/triple bases, so the shock
+    # kron terms must be compressed too (mirrors the primal find_shocks).
     n_x = length(x_f)
     n_obs = size(Si_f, 1)
-    kxx  = ℒ.kron(x_f, x_f)
-    kxxx = ℒ.kron(x_f, kxx)
-    kIx  = ℒ.kron(J, x_f)
-    kIxx = ℒ.kron(J, kxx)
+    kxx  = MacroModelling.compressed_kron²_power(x_f)
+    kxxx = MacroModelling.compressed_kron³_power(x_f)
+    kIx  = MacroModelling.compressed_kron²(x_f, J)
+    kIxx = MacroModelling.compressed_kron³(x_f, x_f, J)
 
     tmp = Si_f + 2 * Si2e_f * kIx + 3 * Si3e_f * kIxx
     λ = tmp' \ (2 .* x_f)
-    A_mat = reshape((2 * Si2e_f + 6 * Si3e_f * ℒ.kron(J, kIx))' * λ, n_x, n_x) - 2 * J
+    A_mat = zeros(V, n_x, n_x)
+    MacroModelling.compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
+    MacroModelling.compressed_triple_hessian!(A_mat, 6 .* (Si3e_f' * λ), x_f)
+    A_mat .-= 2 .* Matrix(ℒ.I(n_x))
 
     fXλp = [A_mat   tmp';
             -tmp    zeros(V, n_obs, n_obs)]

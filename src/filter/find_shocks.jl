@@ -1091,7 +1091,9 @@ function find_shocks(::Val{:LagrangeNewton},
         # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
                 # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]
         
-        ℒ.mul!(tmp_coeff, 𝐒ⁱ²ᵉ', λ)
+        # ∇²[coeff'·compressed_kron²_power(x)] is 2·compressed_pair_hessian!(coeff),
+        # so the pair coefficients carry the factor 2 (as in the 2nd-order method).
+        ℒ.mul!(tmp_coeff, 𝐒ⁱ²ᵉ', λ, 2, 0)
         compressed_pair_hessian!(tmp, tmp_coeff)
         ℒ.mul!(tmp3_coeff, 𝐒ⁱ³ᵉ', λ, 6, 0)
         compressed_triple_hessian!(tmp, tmp3_coeff, x)
