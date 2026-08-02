@@ -44,22 +44,16 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
     ensure_conditional_forecast_constants!(constants; third_order = third_order)
 
-    shock_idxs = so.shock_idxs
-    shock²_idxs = so.shock²_idxs
-    shockvar²_idxs = so.shockvar²_idxs
-    var_vol²_idxs = so.var_vol²_idxs
-    var²_idxs = so.var²_idxs
-    shockvar_idxs = sparse(ℒ.kron(so.e_in_s⁺, so.s_in_s)).nzind
+    shockvar_no_vol_cols = so.shockvar_no_vol_cols
+    shockvar²_cols = so.shockvar²_cols
+    shock²_cols = so.shock²_cols
+    var_vol²_cols = so.var_vol²_cols
+    var²_cols = so.var²_cols
 
-    var_vol³_idxs = to.var_vol³_idxs
-    shock_idxs2 = to.shock_idxs2
-    shock_idxs3 = to.shock_idxs3
-    shock³_idxs = to.shock³_idxs
-    shockvar1_idxs = to.shockvar1_idxs
-    shockvar2_idxs = to.shockvar2_idxs
-    shockvar3_idxs = to.shockvar3_idxs
-    shockvar³2_idxs = to.shockvar³2_idxs
-    shockvar³_idxs = to.shockvar³_idxs
+    var_vol³_cols = to.var_vol³_cols
+    shockvar³2_cols = to.shockvar³2_cols
+    shockvar³_cols = to.shockvar³_cols
+    shock³_cols = to.shock³_cols
 
     fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)
 
@@ -70,12 +64,15 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     J = ℒ.I(n_exo)
 
     nPast = T.nPast_not_future_and_mixed
+    n_global = nPast + 1 + n_exo
     third_order_pruning = third_order && pruning
     ensure_find_shocks_state_buffers!(ws, n_exo, nPast;
                                       third_order = third_order,
                                       third_order_pruning = third_order_pruning)
     kron_state_vol = ws.kron_state_vol
     kron_I_state = ws.kron_I_state
+
+    n_exo² = n_exo * (n_exo + 1) ÷ 2
 
     if isnothing(𝐒₃)
         # Second order (pruned or non-pruned)
@@ -94,13 +91,13 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
             if isnothing(𝐒₂)
                 𝐒ⁱ = copy(𝐒¹ᵉ)
-                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
+                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo²)
             else
-                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
-                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_cols]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_cols]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_cols]
 
-                ℒ.kron!(kron_state_vol, state_vol, state_vol)
+                compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
                 ℒ.kron!(kron_I_state, J, state_vol)
@@ -119,13 +116,13 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
 
             if isnothing(𝐒₂)
                 𝐒ⁱ = copy(𝐒¹ᵉ)
-                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
+                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo²)
             else
-                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
-                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_cols]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_cols]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_cols]
 
-                ℒ.kron!(kron_state_vol, state_vol, state_vol)
+                compressed_kron²_power!(kron_state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
                 ℒ.kron!(kron_I_state, J, state_vol)
@@ -137,8 +134,6 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         𝐒ⁱ³ᵉ = nothing
     else # third_order
         # Third order (pruned or non-pruned)
-        II = sparse(ℒ.I(n_exo^2))
-
         if pruning
             state₁ = initial_state[1][T.past_not_future_and_mixed_idx]
             state₂ = initial_state[2][T.past_not_future_and_mixed_idx]
@@ -149,31 +144,31 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
             𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
 
-            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
-            𝐒²⁻ = @views 𝐒₂[cond_var_idx, var²_idxs]
-            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
-            𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, shockvar_idxs]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_cols]
+            𝐒²⁻ = @views 𝐒₂[cond_var_idx, var²_cols]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_cols]
+            𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, shockvar_no_vol_cols]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_cols]
 
-            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
-            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
-            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_cols]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_cols]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_cols]
+                𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_cols]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
             ℒ.mul!(shock_independent, 𝐒¹⁻, state₃, -1, 1)
 
-            ℒ.kron!(kron_state_vol, state_vol, state_vol)
+            compressed_kron²_power!(kron_state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
             kron_state₁₂ = ws.kron_state₁₂
-            ℒ.kron!(kron_state₁₂, state₁, state₂)
+            compressed_kron²!(kron_state₁₂, state₁, state₂)
             ℒ.mul!(shock_independent, 𝐒²⁻, kron_state₁₂, -1, 1)
 
             kron_state_vol3 = ws.kron_state_vol3
-            ℒ.kron!(kron_state_vol3, state_vol, kron_state_vol)
+            compressed_kron³_power!(kron_state_vol3, state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
             ℒ.kron!(kron_I_state, J, state_vol)
@@ -187,7 +182,12 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒²⁻ᵛᵉ * kron_I_state₂ +
             𝐒³⁻ᵉ² * kron_I_state_state / 2
 
-            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
+            𝐒³⁻ᵉ_state = compressed_triple_state_to_pair(state_vol,
+                                                          n_global,
+                                                          nPast + 1,
+                                                          n_exo,
+                                                          shockvar³_cols)
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * 𝐒³⁻ᵉ_state
             𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
         else
             state = initial_state[T.past_not_future_and_mixed_idx]
@@ -196,23 +196,23 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
             𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
 
-            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
-            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_cols]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_cols]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_cols]
 
-            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
-            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
-            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_cols]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_cols]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_cols]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_cols]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
 
-            ℒ.kron!(kron_state_vol, state_vol, state_vol)
+            compressed_kron²_power!(kron_state_vol, state_vol)
             ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
 
             kron_state_vol3 = ws.kron_state_vol3
-            ℒ.kron!(kron_state_vol3, state_vol, kron_state_vol)
+            compressed_kron³_power!(kron_state_vol3, state_vol)
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
 
             ℒ.kron!(kron_I_state, J, state_vol)
@@ -223,7 +223,12 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒²⁻ᵉ * kron_I_state +
             𝐒³⁻ᵉ² * kron_I_state_state / 2
 
-            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
+            𝐒³⁻ᵉ_state = compressed_triple_state_to_pair(state_vol,
+                                                          n_global,
+                                                          nPast + 1,
+                                                          n_exo,
+                                                          shockvar³_cols)
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * 𝐒³⁻ᵉ_state
             𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
         end
     end
@@ -930,14 +935,16 @@ function find_shocks(::Val{:LagrangeNewton},
     
     fxλp = zeros(R, length(xλ), length(xλ))
 
-    tmp = zeros(R, size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    n_shock = size(𝐒ⁱ, 2)
+    tmp = zeros(R, n_shock, n_shock)
+    tmp_coeff = zeros(R, length(kron_buffer))
 
-    lI = R(-2) * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    lI = R(-2) * Matrix(ℒ.I(n_shock))
 
     iter = 0
     @inbounds for i in 1:max_iter
         iter = i
-        ℒ.kron!(kron_buffer2, J, x)
+        compressed_kron²!(kron_buffer2, x, J)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
         ℒ.axpby!(1, 𝐒ⁱ, 2, ∂x)
@@ -952,7 +959,8 @@ function find_shocks(::Val{:LagrangeNewton},
         # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))' * λ - 2 * x
                 # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x))]
 
-        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ)
+        ℒ.mul!(tmp_coeff, 𝐒ⁱ²ᵉ', λ)
+        compressed_pair_hessian!(tmp, tmp_coeff)
         ℒ.axpby!(1, lI, 2, tmp)
 
         fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
@@ -989,7 +997,7 @@ function find_shocks(::Val{:LagrangeNewton},
         # λ = xλ[size(𝐒ⁱ, 2)+1:end]
         copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
-        ℒ.kron!(kron_buffer, x, x)
+        compressed_kron²_power!(kron_buffer, x)
 
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
 
@@ -1054,21 +1062,20 @@ function find_shocks(::Val{:LagrangeNewton},
     
     fxλp = zeros(R, length(xλ), length(xλ))
 
-    tmp = zeros(R, size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    n_shock = size(𝐒ⁱ, 2)
+    tmp = zeros(R, n_shock, n_shock)
+    tmp_coeff = zeros(R, length(kron_buffer))
+    tmp3_coeff = zeros(R, size(𝐒ⁱ³ᵉ, 2))
 
-    tmp2 = zeros(R, size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
-
-    II = sparse(ℒ.I(length(x)^2))
-
-    lI = R(-2) * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    lI = R(-2) * Matrix(ℒ.I(n_shock))
     
     iter = 0
     @inbounds for i in 1:max_iter
         iter = i
         # Initialize x ⊗ x for the current iterate before using kron_buffer in Jacobian terms.
-        ℒ.kron!(kron_buffer, x, x)
-        ℒ.kron!(kron_buffer2, J, x)
-        ℒ.kron!(kron_buffer3, J, kron_buffer)
+        compressed_kron²_power!(kron_buffer, x)
+        compressed_kron²!(kron_buffer2, x, J)
+        compressed_kron³!(kron_buffer3, x, x, J)
 
         copy!(∂x, 𝐒ⁱ)
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
@@ -1084,12 +1091,13 @@ function find_shocks(::Val{:LagrangeNewton},
         # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
                 # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]
         
-        x_kron_II!(kron_buffer4, x)
-        # ℒ.kron!(kron_buffer4, II, x)
-        ℒ.mul!(tmp2, 𝐒ⁱ³ᵉ, kron_buffer4)
-        ℒ.mul!(tmp, tmp2', λ)
-        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, 6)
-        ℒ.axpy!(1,lI,tmp)
+        # ∇²[coeff'·compressed_kron²_power(x)] is 2·compressed_pair_hessian!(coeff),
+        # so the pair coefficients carry the factor 2 (as in the 2nd-order method).
+        ℒ.mul!(tmp_coeff, 𝐒ⁱ²ᵉ', λ, 2, 0)
+        compressed_pair_hessian!(tmp, tmp_coeff)
+        ℒ.mul!(tmp3_coeff, 𝐒ⁱ³ᵉ', λ, 6, 0)
+        compressed_triple_hessian!(tmp, tmp3_coeff, x)
+        ℒ.axpy!(1, lI, tmp)
 
         fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
         
@@ -1119,9 +1127,9 @@ function find_shocks(::Val{:LagrangeNewton},
         # λ = xλ[size(𝐒ⁱ, 2)+1:end]
         copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
-        ℒ.kron!(kron_buffer, x, x)
+        compressed_kron²_power!(kron_buffer, x)
 
-        ℒ.kron!(kron_buffer², x, kron_buffer)
+        compressed_kron³_power!(kron_buffer², x)
 
         ℒ.mul!(x̂, 𝐒ⁱ, x)
 

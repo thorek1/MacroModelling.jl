@@ -189,6 +189,7 @@ include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
 
 include("./filter/find_shocks.jl")
+include("./filter/decomposition.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 include("./filter/particle.jl")
@@ -1268,20 +1269,6 @@ function get_and_check_observables(T::post_model_macro, data::KeyedArray)::Vecto
     sort!(observables_symbols)
     
     return observables_symbols
-end
-
-function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
-    n = length(x)
-    m = size(buffer,2)
-
-    # @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
-    # @assert size(buffer, 2) == n^2 "Buffer must have n columns."
-
-    @inbounds for j in 1:m
-         for i in 1:n
-            buffer[(j - 1) * n + i, j] = x[i]
-        end
-    end
 end
 
 # Dead code: bivariate_moment, product_moments, multiplicate, generateSumVectors — never called anywhere
@@ -2428,7 +2415,7 @@ end
 function pruned_second_order_state_update(pruned_states::AbstractVector{<:AbstractVector{T}}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
     aug_state₁ = [pruned_states[1][past_idx]; 1; shock]
     aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
-    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * compressed_kron²_power(aug_state₁) / 2]
 end
 
 function pruned_second_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂) where {T <: Real, S <: Real}
@@ -2440,8 +2427,8 @@ function pruned_third_order_state_update(pruned_states::AbstractVector{<:Abstrac
     aug_state₁̂ = [pruned_states[1][past_idx]; 0; shock]
     aug_state₂ = [pruned_states[2][past_idx]; 0; zero(shock)]
     aug_state₃ = [pruned_states[3][past_idx]; 0; zero(shock)]
-    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+    kron_aug_state₁ = compressed_kron²_power(aug_state₁)
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * compressed_kron²(aug_state₁̂, aug_state₂) + 𝐒₃ * compressed_kron³_power(aug_state₁) / 6]
 end
 
 function pruned_third_order_state_update(state::AbstractVector{T}, shock::AbstractVector{S}, past_idx, n_states::Int, 𝐒₁, 𝐒₂, 𝐒₃) where {T <: Real, S <: Real}
@@ -2465,28 +2452,28 @@ end
                 return Ŝ₁ * aug_state
             end
         elseif algorithm ∈ [:second_order, :third_order]
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₂ = 𝓂.caches.second_order_solution
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
 
             if algorithm == :second_order
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                return Ŝ₁̂ * aug_state + 𝐒₂ * compressed_kron²_power(aug_state) / 2
                 end
             else  # :third_order
-                𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+                𝐒₃ = 𝓂.caches.third_order_solution
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * compressed_kron²_power(aug_state) / 2 + 𝐒₃ * compressed_kron³_power(aug_state) / 6
                 end
             end
         elseif algorithm == :pruned_second_order
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₂ = 𝓂.caches.second_order_solution
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
             state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂)
         elseif algorithm == :pruned_third_order
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
-            𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+            𝐒₂ = 𝓂.caches.second_order_solution
+            𝐒₃ = 𝓂.caches.third_order_solution
             Ŝ₁̂ = [Ŝ₁[:,1:nPast] zeros(nVars) Ŝ₁[:,nPast+1:end]]
             state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, Ŝ₁̂, 𝐒₂, 𝐒₃)
         end
@@ -2500,30 +2487,30 @@ end
         elseif algorithm ∈ [:second_order, :third_order]
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₂ = 𝓂.caches.second_order_solution
 
             if algorithm == :second_order
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                return 𝐒₁ * aug_state + 𝐒₂ * compressed_kron²_power(aug_state) / 2
                 end
             else  # :third_order
-                𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+                𝐒₃ = 𝓂.caches.third_order_solution
                 state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                     aug_state = [state[past_idx]; 1; shock]
-                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                    return 𝐒₁ * aug_state + 𝐒₂ * compressed_kron²_power(aug_state) / 2 + 𝐒₃ * compressed_kron³_power(aug_state) / 6
                 end
             end
         elseif algorithm == :pruned_second_order
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            𝐒₂ = 𝓂.caches.second_order_solution
             state_update = (state, shock) -> pruned_second_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂)
         elseif algorithm == :pruned_third_order
             S₁ = 𝓂.caches.first_order_solution_matrix
             𝐒₁ = [S₁[:,1:nPast] zeros(nVars) S₁[:,nPast+1:end]]
-            𝐒₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
-            𝐒₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+            𝐒₂ = 𝓂.caches.second_order_solution
+            𝐒₃ = 𝓂.caches.third_order_solution
             state_update = (state, shock) -> pruned_third_order_state_update(state, shock, past_idx, nVars, 𝐒₁, 𝐒₂, 𝐒₃)
         end
     end

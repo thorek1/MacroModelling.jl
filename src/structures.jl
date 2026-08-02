@@ -337,6 +337,10 @@ mutable struct second_order_indices
     I_exo::Matrix{Float64}               # I(nExo) reused by inversion warmup helpers
     I_state_vol::Matrix{Float64}         # I(nPast+1) reused by inversion warmup helpers
     I_aug::Matrix{Float64}               # I(nPast+1+nExo) reused by inversion warmup helpers
+    compressed_pair_index_map::Matrix{Int} # Pair-coordinate map for hot pullback loops
+    shockvar_cols::Vector{Int}            # Compressed columns for shockvar_idxs
+    shock²_cols::Vector{Int}              # Compressed columns for shock²_idxs
+    var_vol²_cols::Vector{Int}            # Compressed columns for var_vol²_idxs
 
     # =========================================================================
     # CONDITIONAL FORECAST CONSTANTS
@@ -346,6 +350,9 @@ mutable struct second_order_indices
     var²_idxs::Vector{Int}               # Variable² indices (no-vol: kron(s_in_s, s_in_s))
     shockvar²_idxs::Vector{Int}          # Shock × variable² indices
     shockvar_no_vol_idxs::Vector{Int}    # Shock-variable cross indices (no-vol: kron(e_in_s⁺, s_in_s))
+    var²_cols::Vector{Int}                # Compressed columns for var²_idxs
+    shockvar²_cols::Vector{Int}           # Compressed columns for shockvar²_idxs
+    shockvar_no_vol_cols::Vector{Int}     # Compressed columns for shockvar_no_vol_idxs
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS (model-constant values for moments.jl)
@@ -430,7 +437,14 @@ mutable struct third_order_indices
     shockvar3_idxs::Vector{Int}          # Shock × var indices (position 3)
     shockvar³2_idxs::Vector{Int}         # Shock × var³ indices (2nd variant)
     shockvar³_idxs::Vector{Int}          # Shock × var³ indices
-    I_exo2::SparseMatrixCSC{Float64, Int} # I(nExo^2) reused by inversion warmup helpers
+    shock_state_state_idxs::Vector{Int}   # Sorted shock × state² compressed indices
+    shock_state_state_rows::Vector{Int}   # Loop-order rows into shock_state_state_idxs
+    shock_shock_state_idxs::Vector{Int}   # Sorted shock² × state compressed indices
+    shock_shock_state_rows::Vector{Int}   # Loop-order rows into shock_shock_state_idxs
+    var_vol³_cols::Vector{Int}             # Compressed columns for var_vol³_idxs
+    shock³_cols::Vector{Int}               # Compressed columns for shock³_idxs
+    shockvar³2_cols::Vector{Int}           # Compressed columns for shockvar³2_idxs
+    shockvar³_cols::Vector{Int}            # Compressed columns for shockvar³_idxs
 
     # =========================================================================
     # MOMENT COMPUTATION CONSTANTS
@@ -1148,13 +1162,13 @@ mutable struct inversion_workspace{T <: Real}
     aug_state₁̂::Vector{T}           # n_past+1+n_exo - hat state (vol=0)
     state²⁻_vol::Vector{T}           # n_past+1 - second-order state with volatility slot
     # Third-order state kron buffers
-    kronstate_vol³::Vector{T}        # (n_past+1)^3 - triple kron of state_vol
-    kron_buffer2ss::Vector{T}        # n_past^2 - ℒ.kron(state₁, state₂) for pruned 3rd order
-    kron_buffer3sv::Matrix{T}        # (n_exo * (n_past+1)^2, n_exo) - ℒ.kron(kron(J, state_vol), state_vol)
-    kron_buffer4sv::Matrix{T}        # (n_exo^2 * (n_past+1), n_exo^2) - x_kron_II! scratch
-    kron_shock_state2::Vector{T}     # n_exo * (n_past+1)^2 - ℒ.kron(kron_shock_state, state_vol)
-    kron_shock2_state::Vector{T}     # n_exo^2 * (n_past+1) - ℒ.kron(kron_shock_shock, state_vol)
-    kronaug_state_aux::Vector{T}     # (n_past+1+n_exo)^2 - auxiliary augmented-state kron scratch
+    kronstate_vol³::Vector{T}        # compressed triple of state_vol
+    kron_buffer2ss::Vector{T}        # compressed pair of state₁ and state₂
+    kron_buffer3sv::Matrix{T}        # shock × compressed state pair × shock
+    kron_buffer4sv::Matrix{T}        # compressed shock pair × state
+    kron_shock_state2::Vector{T}     # shock × compressed state pair
+    kron_shock2_state::Vector{T}     # compressed shock pair × state
+    kronaug_state_aux::Vector{T}     # compressed augmented-state pair scratch
     
     # Pullback buffers (for reverse-mode AD in rrule)
     ∂_tmp1::Matrix{T}                # (n_exo, n_past + n_exo)
@@ -1196,10 +1210,13 @@ and lazily (re)allocated by `ensure_particle_workspace!` — inside a sampler th
 likelihood is evaluated thousands of times at the same dimensions, so these
 buffers are allocated once for the whole run rather than once per evaluation.
 
-Six `nVars × n_particles` and three `nExo × n_particles` matrices cover the
-simultaneous needs of every variant: the bootstrap filter uses the fewest, the
-tempered filter the most (ancestors, states, Metropolis proposals, and the
-swap partners for each).
+A cloud is stored as `nVars × n_particles` matrices — one per pruned state
+component, so one matrix at first, second and third order, two at pruned second
+order and three at pruned third order — which is what lets the whole swarm be
+propagated with a handful of BLAS `gemm` calls. `pools` is a flat vector of such
+matrices handed out in groups of `n_components` by `ensure_particle_pools!`; the
+bootstrap filter needs the fewest groups, the tempered filter the most
+(ancestors, states, Metropolis proposals, and the swap partners for each).
 """
 mutable struct particle_workspace{T <: Real}
     # Dimensions (for reallocation checks)
@@ -1207,13 +1224,8 @@ mutable struct particle_workspace{T <: Real}
     nExo::Int
     n_particles::Int
 
-    # nVars × n_particles state clouds
-    X::Matrix{T}
-    X2::Matrix{T}
-    Anc::Matrix{T}
-    Anc2::Matrix{T}
-    St::Matrix{T}
-    St2::Matrix{T}
+    # nVars × n_particles state-component buffers, handed out in groups
+    pools::Vector{Matrix{T}}
 
     # nExo × n_particles shock clouds
     E::Matrix{T}
@@ -1348,12 +1360,12 @@ mutable struct higher_order_workspace{F <: Real, G <: AbstractFloat, H <: Real}
     # Dedicated FastLapackInterface LU workspace for the SSS pullback transpose solve
     fast_lu_ws_sss_pullback::FastLapackInterface.LUWs
     fast_lu_dims_sss_pullback::NTuple{2, Int}
-    # SSS Newton iter kron! buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
+    # SSS Newton compressed-kron buffers (Float64 path; shared by primal, rrule forward loop, and ForwardDiffExt)
     x_aug_buf::Vector{F}            # length nPast+1, holds [x; 1]
-    kron_x_aug_xx::Vector{F}        # length (nPast+1)^2, holds kron(x_aug, x_aug)
-    kron_x_aug_x_kron::Vector{F}    # length (nPast+1)^3, holds kron(x_aug, kron_x_aug); 3rd order only
-    kron_x_aug_I::Matrix{F}         # size (nPast+1)*nPast × nPast, holds kron(x_aug, I_nPast)
-    kron_x_kron_I::Matrix{F}        # size (nPast+1)^2*nPast × nPast, holds kron(kron_x_aug, I_nPast); 3rd order only
+    kron_x_aug_xx::Vector{F}        # compressed pair terms of x_aug with itself
+    kron_x_aug_x_kron::Vector{F}    # compressed triple terms of x_aug with itself; 3rd order only
+    kron_x_aug_I::Matrix{F}         # compressed pair terms of x_aug with I_nPast
+    kron_x_kron_I::Matrix{F}        # compressed triple terms of x_aug with itself and I_nPast; 3rd order only
     # ForwardDiff partials buffers for stochastic steady state (accessed via model struct)
     ∂x_second_order::Matrix{H}     # For second order SSS partials
     ∂x_third_order::Matrix{H}      # For third order SSS partials

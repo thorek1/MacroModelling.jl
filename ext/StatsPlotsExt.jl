@@ -715,10 +715,10 @@ function plot_model_estimates(𝓂::ℳ,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(), 
-                                tempering_target_ratio::Real = MacroModelling.DEFAULT_TEMPERING_TARGET_RATIO,
-                                tempering_mh_steps::Int = MacroModelling.DEFAULT_TEMPERING_MH_STEPS,
-                                tempering_max_stages::Int = MacroModelling.DEFAULT_TEMPERING_MAX_STAGES,
-                                tempering_mh_scale::Real = MacroModelling.DEFAULT_TEMPERING_MH_SCALE,
+                                particle_target_ratio::Real = MacroModelling.DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = MacroModelling.DEFAULT_TEMPERED_MH_STEPS,
+                                particle_max_stages::Int = MacroModelling.DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = MacroModelling.DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -856,8 +856,8 @@ function plot_model_estimates(𝓂::ℳ,
     if filter ∈ MacroModelling.PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
-                                      particle_rng, tempering_target_ratio, tempering_mh_steps,
-                                      tempering_max_stages, tempering_mh_scale))
+                                      particle_rng, particle_target_ratio, particle_mh_steps,
+                                      particle_max_stages, particle_mh_scale))
     end
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
@@ -1396,10 +1396,10 @@ function plot_model_estimates!(𝓂::ℳ,
                                 particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(),
-                                tempering_target_ratio::Real = MacroModelling.DEFAULT_TEMPERING_TARGET_RATIO,
-                                tempering_mh_steps::Int = MacroModelling.DEFAULT_TEMPERING_MH_STEPS,
-                                tempering_max_stages::Int = MacroModelling.DEFAULT_TEMPERING_MAX_STAGES,
-                                tempering_mh_scale::Real = MacroModelling.DEFAULT_TEMPERING_MH_SCALE,
+                                particle_target_ratio::Real = MacroModelling.DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = MacroModelling.DEFAULT_TEMPERED_MH_STEPS,
+                                particle_max_stages::Int = MacroModelling.DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = MacroModelling.DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -1525,8 +1525,8 @@ function plot_model_estimates!(𝓂::ℳ,
     particle_kw = filter ∈ MacroModelling.PARTICLE_FILTERS ?
         (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
-           tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG

@@ -87,6 +87,7 @@ function Second_order_indices()
     empty_sparse_int = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
     empty_sparse_float = spzeros(Float64, 0, 0)
     empty_matrix_float = Matrix{Float64}(undef, 0, 0)
+    empty_matrix_int = Matrix{Int}(undef, 0, 0)
     return second_order_indices(
         # Auxiliary matrices (𝛔, 𝛔_sym, 𝛔c₂, 𝛔𝐂₂, 𝐂₂, 𝐔₂, 𝐔∇₂, 𝐈ₙ₊, 𝐈ₙ₋)
         empty_sparse_int,
@@ -128,10 +129,17 @@ function Second_order_indices()
         empty_matrix_float,  # I_exo
         empty_matrix_float,  # I_state_vol
         empty_matrix_float,  # I_aug
+        empty_matrix_int,    # compressed_pair_index_map
+        Int[],               # shockvar_cols
+        Int[],               # shock²_cols
+        Int[],               # var_vol²_cols
         # Conditional forecast indices
         Int[],               # var²_idxs
         Int[],               # shockvar²_idxs
         Int[],               # shockvar_no_vol_idxs
+        Int[],               # var²_cols
+        Int[],               # shockvar²_cols
+        Int[],               # shockvar_no_vol_cols
         # Moment computation caches
         BitVector(),         # kron_states
         empty_sparse_float,  # I_plus_s_s
@@ -194,7 +202,14 @@ function Third_order_indices()
         Int[],               # shockvar3_idxs
         Int[],               # shockvar³2_idxs
         Int[],               # shockvar³_idxs
-        empty_sparse_float,  # I_exo2
+        Int[],               # shock_state_state_idxs
+        Int[],               # shock_state_state_rows
+        Int[],               # shock_shock_state_idxs
+        Int[],               # shock_shock_state_rows
+        Int[],               # var_vol³_cols
+        Int[],               # shock³_cols
+        Int[],               # shockvar³2_cols
+        Int[],               # shockvar³_cols
         # Moment computation caches
         Float64[],           # e6
         BitVector(),         # kron_e_v
@@ -279,11 +294,11 @@ All buffers are initialized to 0-dimensional objects and resized on-demand via e
 function Find_shocks_workspace(::Type{TT} = Float64) where {TT <: Real}
     find_shocks_workspace{TT}(
         0,                      # n_exo dimension
-        zeros(TT,0),             # kron_buffer (n_exo^2)
-        zeros(TT,0,0),           # kron_buffer2 (n_exo × n_exo)
-        zeros(TT,0),             # kron_buffer² (n_exo^3)
-        zeros(TT,0,0),           # kron_buffer3 (n_exo × n_exo^2)
-        zeros(TT,0,0),           # kron_buffer4 (n_exo^2 × n_exo)
+        zeros(TT,0),             # kron_buffer (compressed n_exo pair)
+        zeros(TT,0,0),           # kron_buffer2 (compressed n_exo pair × n_exo)
+        zeros(TT,0),             # kron_buffer² (compressed n_exo triple)
+        zeros(TT,0,0),           # kron_buffer3 (compressed n_exo triple × n_exo)
+        zeros(TT,0,0),           # kron_buffer4 (compressed n_exo triple × compressed n_exo pair)
         0,                      # n_past dimension
         zeros(TT,0),             # kron_state_vol
         zeros(TT,0),             # kron_state_vol3
@@ -393,18 +408,20 @@ end
 """
     ensure_sss_kron_buffers!(ws, nPast; third_order=false)
 
-Lazily (re)allocate kron! buffers used by the stochastic-steady-state Newton iter
+    Lazily (re)allocate compressed-kron buffers used by the stochastic-steady-state Newton iter
 on `ws` (a `higher_order_workspace`). `nPast` is `T.nPast_not_future_and_mixed`.
 The 3rd-order-only buffers are only sized when `third_order=true`.
 """
 function ensure_sss_kron_buffers!(ws::higher_order_workspace{S,G,H}, nPast::Int; third_order::Bool=false) where {S <: Real, G <: AbstractFloat, H <: Real}
     n_aug = nPast + 1
     length(ws.x_aug_buf) == n_aug || (ws.x_aug_buf = zeros(S, n_aug))
-    length(ws.kron_x_aug_xx) == n_aug^2 || (ws.kron_x_aug_xx = zeros(S, n_aug^2))
-    size(ws.kron_x_aug_I) == (n_aug * nPast, nPast) || (ws.kron_x_aug_I = zeros(S, n_aug * nPast, nPast))
+    n_aug2 = n_aug * (n_aug + 1) ÷ 2
+    length(ws.kron_x_aug_xx) == n_aug2 || (ws.kron_x_aug_xx = zeros(S, n_aug2))
+    size(ws.kron_x_aug_I) == (n_aug2, nPast) || (ws.kron_x_aug_I = zeros(S, n_aug2, nPast))
     if third_order
-        length(ws.kron_x_aug_x_kron) == n_aug^3 || (ws.kron_x_aug_x_kron = zeros(S, n_aug^3))
-        size(ws.kron_x_kron_I) == (n_aug^2 * nPast, nPast) || (ws.kron_x_kron_I = zeros(S, n_aug^2 * nPast, nPast))
+        n_aug3 = n_aug * (n_aug + 1) * (n_aug + 2) ÷ 6
+        length(ws.kron_x_aug_x_kron) == n_aug3 || (ws.kron_x_aug_x_kron = zeros(S, n_aug3))
+        size(ws.kron_x_kron_I) == (n_aug3, nPast) || (ws.kron_x_kron_I = zeros(S, n_aug3, nPast))
     end
     return ws
 end
@@ -834,14 +851,14 @@ end
 
 Ensure the find_shocks workspaces are allocated for the given number of shocks.
 Only allocates 3rd order buffers if third_order=true.
-Buffer sizes: kron_buffer (n_exo^2), kron_buffer2 (n_exo^2 × n_exo), 
-              kron_buffer² (n_exo^3), kron_buffer3 (n_exo^3 × n_exo), kron_buffer4 (n_exo^3 × n_exo^2)
+Buffer sizes: compressed pair/triple shock coordinates, with matrix buffers using
+the corresponding compressed row and column counts.
 """
 function ensure_find_shocks_buffers!(ws::find_shocks_workspace{T}, n_exo::Int; third_order::Bool = false) where T
     ws.n_exo = n_exo
     
-    n_exo² = n_exo^2
-    n_exo³ = n_exo^3
+    n_exo² = n_exo * (n_exo + 1) ÷ 2
+    n_exo³ = n_exo * (n_exo + 1) * (n_exo + 2) ÷ 6
     
     # 2nd order buffers (always needed)
     if length(ws.kron_buffer) != n_exo²
@@ -881,23 +898,26 @@ function ensure_find_shocks_state_buffers!(ws::find_shocks_workspace{T}, n_exo::
     ws.n_past = n_past
     n_aug = n_past + 1
 
-    if length(ws.kron_state_vol) != n_aug^2
-        ws.kron_state_vol = zeros(T, n_aug^2)
+    n_aug² = n_aug * (n_aug + 1) ÷ 2
+    if length(ws.kron_state_vol) != n_aug²
+        ws.kron_state_vol = zeros(T, n_aug²)
     end
     if size(ws.kron_I_state) != (n_exo * n_aug, n_exo)
         ws.kron_I_state = zeros(T, n_exo * n_aug, n_exo)
     end
 
     if third_order
-        if length(ws.kron_state_vol3) != n_aug^3
-            ws.kron_state_vol3 = zeros(T, n_aug^3)
+        n_aug³ = n_aug * (n_aug + 1) * (n_aug + 2) ÷ 6
+        if length(ws.kron_state_vol3) != n_aug³
+            ws.kron_state_vol3 = zeros(T, n_aug³)
         end
-        if size(ws.kron_I_state_state) != (n_exo * n_aug^2, n_exo)
-            ws.kron_I_state_state = zeros(T, n_exo * n_aug^2, n_exo)
+        if size(ws.kron_I_state_state) != (n_exo * n_aug², n_exo)
+            ws.kron_I_state_state = zeros(T, n_exo * n_aug², n_exo)
         end
         if third_order_pruning
-            if length(ws.kron_state₁₂) != n_past^2
-                ws.kron_state₁₂ = zeros(T, n_past^2)
+            n_past² = n_past * (n_past + 1) ÷ 2
+            if length(ws.kron_state₁₂) != n_past²
+                ws.kron_state₁₂ = zeros(T, n_past²)
             end
             if size(ws.kron_I_state₂) != (n_exo * n_past, n_exo)
                 ws.kron_I_state₂ = zeros(T, n_exo * n_past, n_exo)
@@ -918,16 +938,16 @@ All buffers are initialized to 0-dimensional objects and resized on-demand via e
 function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
     inversion_workspace{TT}(
         0, 0,                   # n_exo, n_past dimensions
-        zeros(TT, 0),            # kron_buffer (n_exo^2)
-        zeros(TT, 0, 0),         # kron_buffer2 (n_exo^2 × n_exo)
-        zeros(TT, 0),            # kron_buffer² (n_exo^3)
-        zeros(TT, 0, 0),         # kron_buffer3 (n_exo^3 × n_exo)
-        zeros(TT, 0, 0),         # kron_buffer4 (n_exo^3 × n_exo^2)
+        zeros(TT, 0),            # kron_buffer (compressed n_exo pair)
+        zeros(TT, 0, 0),         # kron_buffer2 (compressed n_exo pair × n_exo)
+        zeros(TT, 0),            # kron_buffer² (compressed n_exo triple)
+        zeros(TT, 0, 0),         # kron_buffer3 (compressed n_exo triple × n_exo)
+        zeros(TT, 0, 0),         # kron_buffer4 (compressed n_exo triple × compressed n_exo pair)
         zeros(TT, 0, 0),         # kron_buffer_state (n_exo × n_past+1)
         zeros(TT, 0),            # kron_shock_state (n_exo * (n_past+1))
-        zeros(TT, 0),            # kronstate_vol ((n_past+1)^2)
-        zeros(TT, 0),            # kronaug_state ((n_past+1+n_exo)^2)
-        zeros(TT, 0),            # kron_kron_aug_state ((n_past+1+n_exo)^3)
+        zeros(TT, 0),            # kronstate_vol (compressed past-state pair)
+        zeros(TT, 0),            # kronaug_state (compressed augmented-state pair)
+        zeros(TT, 0),            # kron_kron_aug_state (compressed augmented-state triple)
         zeros(TT, 0),            # state_vol (n_past+1)
         zeros(TT, 0),            # aug_state₁ (n_past+1+n_exo)
         zeros(TT, 0),            # aug_state₂ (n_past+1+n_exo)
@@ -937,7 +957,7 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # init_guess (n_exo)
         zeros(TT, 0, 0),         # Si_buffer (n_cond_var × n_exo)
         zeros(TT, 0, 0),         # jacc_buffer (n_cond_var × n_exo)
-        zeros(TT, 0, 0),         # Si2e_buffer (n_cond_var × n_exo^2)
+        zeros(TT, 0, 0),         # Si2e_buffer (n_cond_var × compressed n_exo pair)
         zeros(TT, 0),            # y_obs (n_cond_var)
         zeros(TT, 0),            # x_shocks (n_exo)
         zeros(TT, 0),            # state_concat (n_past + n_exo)
@@ -947,13 +967,13 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0),            # aug_state₃ (n_past+1+n_exo)
         zeros(TT, 0),            # aug_state₁̂ (n_past+1+n_exo)
         zeros(TT, 0),            # state²⁻_vol (n_past+1)
-        zeros(TT, 0),            # kronstate_vol³ ((n_past+1)^3)
-        zeros(TT, 0),            # kron_buffer2ss (n_past^2)
-        zeros(TT, 0, 0),         # kron_buffer3sv (n_exo*(n_past+1)^2 × n_exo)
-        zeros(TT, 0, 0),         # kron_buffer4sv (n_exo^2*(n_past+1) × n_exo^2)
-        zeros(TT, 0),            # kron_shock_state2 (n_exo * (n_past+1)^2)
-        zeros(TT, 0),            # kron_shock2_state (n_exo^2 * (n_past+1))
-        zeros(TT, 0),            # kronaug_state_aux ((n_past+1+n_exo)^2)
+        zeros(TT, 0),            # kronstate_vol³ (compressed state triple)
+        zeros(TT, 0),            # kron_buffer2ss (compressed past-state pair)
+        zeros(TT, 0, 0),         # kron_buffer3sv (shock × compressed state pair × shock)
+        zeros(TT, 0, 0),         # kron_buffer4sv (compressed shock pair × state)
+        zeros(TT, 0),            # kron_shock_state2 (shock × compressed state pair)
+        zeros(TT, 0),            # kron_shock2_state (compressed shock pair × state)
+        zeros(TT, 0),            # kronaug_state_aux (compressed augmented-state pair)
         # Pullback buffers (for reverse-mode AD)
         zeros(TT, 0, 0),         # ∂_tmp1 (n_exo × n_past+n_exo)
         zeros(TT, 0, 0),         # ∂_tmp2 (n_past × n_past+n_exo)
@@ -962,7 +982,7 @@ function Inversion_workspace(::Type{TT} = Float64) where {TT <: Real}
         zeros(TT, 0, 0),         # ∂data (n_past × n_periods)
         # Pullback buffers for pruned second order
         zeros(TT, 0, 0),         # ∂𝐒ⁱ²ᵉtmp (n_exo × n_exo*n_obs)
-        zeros(TT, 0, 0),         # ∂𝐒ⁱ²ᵉtmp2 (n_obs × n_exo^2)
+        zeros(TT, 0, 0),         # ∂𝐒ⁱ²ᵉtmp2 (n_obs × compressed n_exo pair)
         zeros(TT, 0),            # kronSλ (n_obs * n_exo)
         zeros(TT, 0),            # kronxS (n_exo * n_obs)
         # Per-period sequence buffers captured by rrule pullbacks (grown lazily
@@ -994,10 +1014,14 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
     ws.n_exo = n_exo
     ws.n_past = n_past
     
-    n_exo² = n_exo^2
-    n_exo³ = n_exo^3
+    n_exo² = n_exo * (n_exo + 1) ÷ 2
+    n_exo³ = n_exo * (n_exo + 1) * (n_exo + 2) ÷ 6
     n_state_vol = n_past + 1
     n_aug = n_past + 1 + n_exo
+    n_state_vol² = n_state_vol * (n_state_vol + 1) ÷ 2
+    n_state_vol³ = n_state_vol * (n_state_vol + 1) * (n_state_vol + 2) ÷ 6
+    n_aug² = n_aug * (n_aug + 1) ÷ 2
+    n_aug³ = n_aug * (n_aug + 1) * (n_aug + 2) ÷ 6
     
     # Shock-related kron buffers (2nd order)
     if length(ws.kron_buffer) != n_exo²
@@ -1028,15 +1052,15 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
     if length(ws.kron_shock_state) != n_exo * n_state_vol
         ws.kron_shock_state = zeros(T, n_exo * n_state_vol)
     end
-    if length(ws.kronstate_vol) != n_state_vol^2
-        ws.kronstate_vol = zeros(T, n_state_vol^2)
+    if length(ws.kronstate_vol) != n_state_vol²
+        ws.kronstate_vol = zeros(T, n_state_vol²)
     end
-    if length(ws.kronaug_state) != n_aug^2
-        ws.kronaug_state = zeros(T, n_aug^2)
+    if length(ws.kronaug_state) != n_aug²
+        ws.kronaug_state = zeros(T, n_aug²)
     end
     if third_order
-        if length(ws.kron_kron_aug_state) != n_aug^3
-            ws.kron_kron_aug_state = zeros(T, n_aug^3)
+        if length(ws.kron_kron_aug_state) != n_aug³
+            ws.kron_kron_aug_state = zeros(T, n_aug³)
         end
     end
     
@@ -1073,26 +1097,28 @@ function ensure_inversion_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_pas
         if length(ws.state²⁻_vol) != n_state_vol
             ws.state²⁻_vol = zeros(T, n_state_vol)
         end
-        if length(ws.kronstate_vol³) != n_state_vol^3
-            ws.kronstate_vol³ = zeros(T, n_state_vol^3)
+        if length(ws.kronstate_vol³) != n_state_vol³
+            ws.kronstate_vol³ = zeros(T, n_state_vol³)
         end
-        if length(ws.kron_buffer2ss) != n_past^2
-            ws.kron_buffer2ss = zeros(T, n_past^2)
+        n_past² = n_past * (n_past + 1) ÷ 2
+        if length(ws.kron_buffer2ss) != n_past²
+            ws.kron_buffer2ss = zeros(T, n_past²)
         end
-        if size(ws.kron_buffer3sv, 1) != n_exo * n_state_vol^2 || size(ws.kron_buffer3sv, 2) != n_exo
-            ws.kron_buffer3sv = zeros(T, n_exo * n_state_vol^2, n_exo)
+        n_state_vol² = n_state_vol * (n_state_vol + 1) ÷ 2
+        if size(ws.kron_buffer3sv, 1) != n_exo * n_state_vol² || size(ws.kron_buffer3sv, 2) != n_exo
+            ws.kron_buffer3sv = zeros(T, n_exo * n_state_vol², n_exo)
         end
         if size(ws.kron_buffer4sv, 1) != n_exo² * n_state_vol || size(ws.kron_buffer4sv, 2) != n_exo²
             ws.kron_buffer4sv = zeros(T, n_exo² * n_state_vol, n_exo²)
         end
-        if length(ws.kron_shock_state2) != n_exo * n_state_vol^2
-            ws.kron_shock_state2 = zeros(T, n_exo * n_state_vol^2)
+        if length(ws.kron_shock_state2) != n_exo * n_state_vol²
+            ws.kron_shock_state2 = zeros(T, n_exo * n_state_vol²)
         end
         if length(ws.kron_shock2_state) != n_exo² * n_state_vol
             ws.kron_shock2_state = zeros(T, n_exo² * n_state_vol)
         end
-        if length(ws.kronaug_state_aux) != n_aug^2
-            ws.kronaug_state_aux = zeros(T, n_aug^2)
+        if length(ws.kronaug_state_aux) != n_aug²
+            ws.kronaug_state_aux = zeros(T, n_aug²)
         end
     end
     
@@ -1107,7 +1133,7 @@ Ensure observation-dimension-dependent estimation buffers are allocated.
 Call after ensure_inversion_buffers! when the number of conditioning variables (observables) is known.
 """
 function ensure_inversion_estimation_buffers!(ws::inversion_workspace{T}, n_exo::Int, n_cond_var::Int; third_order::Bool = false) where T
-    n_exo² = n_exo^2
+    n_exo² = n_exo * (n_exo + 1) ÷ 2
     if ws.n_cond_var == n_cond_var && length(ws.shock_independent) == n_cond_var && 
        size(ws.Si_buffer) == (n_cond_var, n_exo) &&
        size(ws.JJt_buf) == (n_cond_var, n_cond_var) &&
@@ -1171,7 +1197,7 @@ function ensure_inversion_rrule_buffers!(ws::inversion_workspace{T},
                                           order::Symbol = :first_order) where T
     n_aug = n_past + 1 + n_exo
     n_vol = n_past + 1
-    n_exo² = n_exo^2
+    n_exo² = n_exo * (n_exo + 1) ÷ 2
 
     grow_vec_seq!(ws.x_seq_rrule, Tt, n_exo, T)
 
@@ -1272,8 +1298,7 @@ buffers start empty and are sized on demand by `ensure_particle_workspace!`.
 function Particle_workspace(::Type{TT} = Float64) where {TT <: Real}
     particle_workspace{TT}(
         0, 0, 0,                                             # nVars, nExo, n_particles
-        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # X, X2, Anc
-        zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # Anc2, St, St2
+        Matrix{TT}[],                                        # pools
         zeros(TT, 0, 0), zeros(TT, 0, 0), zeros(TT, 0, 0),   # E, E2, Eprop
         zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # W, Wn, logdens
         zeros(TT, 0), zeros(TT, 0), zeros(TT, 0),            # logw, lam, dv
@@ -1292,12 +1317,7 @@ function ensure_particle_workspace!(workspaces::workspaces, nVars::Int, nExo::In
     ws = workspaces.particle
 
     if ws.nVars != nVars || ws.n_particles != n_particles
-        ws.X    = Matrix{Float64}(undef, nVars, n_particles)
-        ws.X2   = Matrix{Float64}(undef, nVars, n_particles)
-        ws.Anc  = Matrix{Float64}(undef, nVars, n_particles)
-        ws.Anc2 = Matrix{Float64}(undef, nVars, n_particles)
-        ws.St   = Matrix{Float64}(undef, nVars, n_particles)
-        ws.St2  = Matrix{Float64}(undef, nVars, n_particles)
+        empty!(ws.pools)   # a dimension change invalidates every state buffer
         ws.nVars = nVars
     end
 
@@ -1322,6 +1342,20 @@ function ensure_particle_workspace!(workspaces::workspaces, nVars::Int, nExo::In
     end
 
     return ws
+end
+
+"""
+    ensure_particle_pools!(ws, n)
+
+Guarantee that the workspace holds at least `n` `nVars × n_particles` state
+buffers and return the pool vector. The particle filters take these in groups of
+one per pruned state component, so `n` is `n_groups * n_components`.
+"""
+function ensure_particle_pools!(ws::particle_workspace{Float64}, n::Int)
+    while length(ws.pools) < n
+        push!(ws.pools, Matrix{Float64}(undef, ws.nVars, ws.n_particles))
+    end
+    return ws.pools
 end
 
 """
@@ -1806,6 +1840,16 @@ function ensure_computational_constants!(constants::constants)
         I_exo = Matrix{Float64}(ℒ.I, nᵉ, nᵉ)
         I_state_vol = Matrix{Float64}(ℒ.I, nˢ + 1, nˢ + 1)
         I_aug = Matrix{Float64}(ℒ.I, nˢ + 1 + nᵉ, nˢ + 1 + nᵉ)
+        n_aug = nˢ + 1 + nᵉ
+        compressed_pair_index_map = Matrix{Int}(undef, n_aug, n_aug)
+        @inbounds for i in 1:n_aug
+            base = (i - 1) * i ÷ 2
+            for j in 1:i
+                index = base + j
+                compressed_pair_index_map[i, j] = index
+                compressed_pair_index_map[j, i] = index
+            end
+        end
 
         so.s_in_s⁺ = s_in_s⁺
         so.s_in_s = s_in_s
@@ -1827,6 +1871,7 @@ function ensure_computational_constants!(constants::constants)
         so.I_exo = I_exo
         so.I_state_vol = I_state_vol
         so.I_aug = I_aug
+        so.compressed_pair_index_map = compressed_pair_index_map
     end
 
     return constants.second_order
@@ -1834,6 +1879,9 @@ end
 
 function ensure_conditional_forecast_constants!(constants::constants; third_order::Bool = false)
     so = ensure_computational_constants!(constants)
+    T = constants.post_model_macro
+    nᵉ = T.nExo
+    nˢ = T.nPast_not_future_and_mixed
 
     if isempty(so.var²_idxs)
         s_in_s⁺ = so.s_in_s
@@ -1849,6 +1897,16 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
         so.shockvar²_idxs = shockvar²_idxs
         so.shockvar_no_vol_idxs = shockvar_no_vol_idxs
         so.var_vol²_idxs = var_vol²_idxs
+    end
+
+    if isempty(so.var²_cols)
+        n_global = nˢ + 1 + nᵉ
+        so.shockvar_cols = compressed_pair_indices(so.shockvar_idxs, n_global)
+        so.shock²_cols = compressed_pair_indices(so.shock²_idxs, n_global)
+        so.var_vol²_cols = compressed_pair_indices(so.var_vol²_idxs, n_global)
+        so.var²_cols = compressed_pair_indices(so.var²_idxs, n_global)
+        so.shockvar²_cols = compressed_pair_indices(so.shockvar²_idxs, n_global)
+        so.shockvar_no_vol_cols = compressed_pair_indices(so.shockvar_no_vol_idxs, n_global)
     end
 
     if third_order
@@ -1877,10 +1935,23 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
             to.shockvar3_idxs = shockvar3_idxs
             to.shockvar³2_idxs = shockvar³2_idxs
             to.shockvar³_idxs = shockvar³_idxs
+
         end
 
-        if size(to.I_exo2, 1) != constants.post_model_macro.nExo^2
-            to.I_exo2 = sparse(ℒ.I(constants.post_model_macro.nExo^2))
+        if isempty(to.var_vol³_cols)
+            n_global = nˢ + 1 + nᵉ
+            to.var_vol³_cols = compressed_triple_indices(to.var_vol³_idxs, n_global)
+            to.shock³_cols = compressed_triple_indices(to.shock³_idxs, n_global)
+            to.shockvar³2_cols = compressed_triple_indices(to.shockvar³2_idxs, n_global)
+            to.shockvar³_cols = compressed_triple_indices(to.shockvar³_idxs, n_global)
+        end
+
+        if isempty(to.shock_state_state_idxs)
+            state_length = nˢ + 1
+            to.shock_state_state_idxs, to.shock_state_state_rows =
+                compressed_shock_state_state_index_map(state_length, nᵉ)
+            to.shock_shock_state_idxs, to.shock_shock_state_rows =
+                compressed_shock_shock_state_index_map(state_length, nᵉ)
         end
     end
 

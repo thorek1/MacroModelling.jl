@@ -2411,6 +2411,1084 @@ function compressed_kron²(a::AbstractMatrix{T};
     return out
 end
 
+"""Fill `out` with the compressed square of `a`.
+
+The output is ordered like `𝐔₂ * kron(a, a)`, with diagonal entries `a[i]^2`
+and off-diagonal entries `2a[i]a[j]`.  The dedicated name makes repeated-input
+contractions explicit at their call sites and avoids the generic permutation
+logic used for two different inputs.
+"""
+#
+# `@simd` was tried on these inner loops and made things worse, so it is
+# deliberately absent. Measured on the pair kernel, microseconds per call, best
+# of 20 x 2000: n = 34, 0.13 plain against 0.21 with `@simd`; n = 64, 0.30
+# against 0.80. The body carries a data-dependent branch (`i == j`, taken
+# exactly once, on the last iteration, so the predictor gets it right every
+# time) and `@simd` trades that perfectly predicted branch for a vectorised
+# select and masked store. Peeling the diagonal out into its own statement so
+# the inner loop is branch-free is a wash for the pair kernel and worth a few
+# percent at best for the cube — not enough to justify two more loop bodies.
+function compressed_kron²_power!(out::AbstractVector, a::AbstractVector)
+    n = length(a)
+    expected_length = n * (n + 1) ÷ 2
+    length(out) == expected_length || throw(DimensionMismatch("compressed pair output must have length $expected_length"))
+
+    p = 0
+    @inbounds for i in 1:n
+        ai = a[i]
+        for j in 1:i
+            p += 1
+            out[p] = i == j ? ai * ai : 2 * ai * a[j]
+        end
+    end
+    return out
+end
+
+function compressed_kron²_power(a::AbstractVector)
+    T = eltype(a)
+    out = Vector{T}(undef, length(a) * (length(a) + 1) ÷ 2)
+    return compressed_kron²_power!(out, a)
+end
+
+compressed_kron²_same!(out::AbstractVector, a::AbstractVector) = compressed_kron²_power!(out, a)
+
+function compressed_kron²!(out::AbstractVector, a::AbstractVector, b::AbstractVector)
+    a === b && return compressed_kron²_power!(out, a)
+    n = length(a)
+    length(b) == n || throw(DimensionMismatch("compressed pair inputs must have equal length"))
+    expected_length = n * (n + 1) ÷ 2
+    length(out) == expected_length || throw(DimensionMismatch("compressed pair output must have length $expected_length"))
+
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            p += 1
+            if i == j
+                out[p] = a[i] * b[j]
+            else
+                out[p] = a[i] * b[j] + a[j] * b[i]
+            end
+        end
+    end
+    return out
+end
+
+function compressed_kron²(a::AbstractVector, b::AbstractVector)
+    T = promote_type(eltype(a), eltype(b))
+    out = Vector{T}(undef, length(a) * (length(a) + 1) ÷ 2)
+    return compressed_kron²!(out, a, b)
+end
+
+# One vector against every column of a matrix — the shape the Jacobian of a
+# compressed pair term takes when `b` is an identity block.
+#
+# Argument order does not matter: the underlying pair product is symmetric
+# (`out[i,j] = a[i]b[j] + a[j]b[i]` off the diagonal, `a[i]b[i]` on it), so
+# `compressed_kron²(x, J)` and `compressed_kron²(J, x)` agree entry for entry —
+# `test/test_compressed_kron.jl` pins that, as it does for the fully symmetric
+# triple. Only this argument order has a method, so call sites are written
+# vector-first.
+function compressed_kron²!(out::AbstractMatrix, a::AbstractVector, b::AbstractMatrix)
+    n = length(a)
+    size(b, 1) == n || throw(DimensionMismatch("compressed pair inputs must have equal row count"))
+    expected_rows = n * (n + 1) ÷ 2
+    size(out, 1) == expected_rows || throw(DimensionMismatch("compressed pair output has the wrong row count"))
+    size(out, 2) == size(b, 2) || throw(DimensionMismatch("compressed pair output has the wrong column count"))
+    @inbounds for column in axes(b, 2)
+        compressed_kron²!(view(out, :, column), a, view(b, :, column))
+    end
+    return out
+end
+
+function compressed_kron²(a::AbstractVector, b::AbstractMatrix)
+    T = promote_type(eltype(a), eltype(b))
+    n = length(a)
+    out = Matrix{T}(undef, n * (n + 1) ÷ 2, size(b, 2))
+    return compressed_kron²!(out, a, b)
+end
+
+"""Fill `out` with the compressed cube of `a`.
+
+The output is ordered like `𝐔₃ * kron(kron(a, a), a)`.  Repeated-index terms
+use their exact multiplicities: `a[i]^3`, `3a[i]^2a[k]`, `3a[i]a[j]^2`, and
+`6a[i]a[j]a[k]`.
+"""
+function compressed_kron³_power!(out::AbstractVector, a::AbstractVector)
+    n = length(a)
+    expected_length = n * (n + 1) * (n + 2) ÷ 6
+    length(out) == expected_length || throw(DimensionMismatch("compressed triple output must have length $expected_length"))
+
+    p = 0
+    @inbounds for i in 1:n
+        ai = a[i]
+        for j in 1:i
+            aj = a[j]
+            for k in 1:j
+                p += 1
+                if i == j
+                    out[p] = j == k ? ai * ai * ai : 3 * ai * ai * a[k]
+                elseif j == k
+                    out[p] = 3 * ai * aj * aj
+                else
+                    out[p] = 6 * ai * aj * a[k]
+                end
+            end
+        end
+    end
+    return out
+end
+
+function compressed_kron³_power(a::AbstractVector)
+    T = eltype(a)
+    out = Vector{T}(undef, length(a) * (length(a) + 1) * (length(a) + 2) ÷ 6)
+    return compressed_kron³_power!(out, a)
+end
+
+compressed_kron³_same!(out::AbstractVector, a::AbstractVector) = compressed_kron³_power!(out, a)
+
+# Column-wise variants: column `j` of `out` is the compressed power (or product)
+# of column `j` of the input, rather than one vector against every column the way
+# `compressed_kron²!(::AbstractMatrix, ::AbstractVector, ::AbstractMatrix)` works.
+# The particle filters carry their swarm as one column per particle and need this
+# shape; the ordering is the vector kernels' own, which is what makes the swarm
+# contractible against the same 𝐒₂/𝐒₃ the scalar paths use.
+function compressed_kron²_power_columns!(out::AbstractMatrix, a::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair output has the wrong column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron²_power!(view(out, :, column), view(a, :, column))
+    end
+    return out
+end
+
+function compressed_kron²_columns!(out::AbstractMatrix, a::AbstractMatrix, b::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair output has the wrong column count"))
+    size(b, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair inputs must have equal column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron²!(view(out, :, column), view(a, :, column), view(b, :, column))
+    end
+    return out
+end
+
+function compressed_kron³_power_columns!(out::AbstractMatrix, a::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed triple output has the wrong column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron³_power!(view(out, :, column), view(a, :, column))
+    end
+    return out
+end
+
+"""Fill `out` with the unique triple terms of `kron(kron(a, b), c)`.
+
+The output uses the same ordering as `𝐔₃ * kron(kron(a, b), c)`: sorted index
+triples `(i, j, k)` with `i ≥ j ≥ k`.  Repeated indices are handled by adding
+each distinct permutation exactly once.
+"""
+function compressed_kron³!(out::AbstractVector, a::AbstractVector,
+                           b::AbstractVector, c::AbstractVector)
+    n = length(a)
+    length(b) == n || throw(DimensionMismatch("compressed triple inputs must have equal length"))
+    length(c) == n || throw(DimensionMismatch("compressed triple inputs must have equal length"))
+    expected_length = n * (n + 1) * (n + 2) ÷ 6
+    length(out) == expected_length || throw(DimensionMismatch("compressed triple output must have length $expected_length"))
+
+    if a === b && b === c
+        return compressed_kron³_power!(out, a)
+    end
+
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            for k in 1:j
+                p += 1
+                if i == j
+                    if j == k
+                        out[p] = a[i] * b[i] * c[i]
+                    else
+                        out[p] = a[i] * b[i] * c[k] +
+                                 a[i] * b[k] * c[i] +
+                                 a[k] * b[i] * c[i]
+                    end
+                elseif j == k
+                    out[p] = a[i] * b[j] * c[j] +
+                             a[j] * b[i] * c[j] +
+                             a[j] * b[j] * c[i]
+                else
+                    out[p] = a[i] * b[j] * c[k] +
+                             a[i] * b[k] * c[j] +
+                             a[j] * b[i] * c[k] +
+                             a[j] * b[k] * c[i] +
+                             a[k] * b[i] * c[j] +
+                             a[k] * b[j] * c[i]
+                end
+            end
+        end
+    end
+    return out
+end
+
+function compressed_kron²_vjp!(da::AbstractVector, db::AbstractVector,
+                               cotangent::AbstractVector,
+                               a::AbstractVector, b::AbstractVector,
+                               scale = one(eltype(da)))
+    n = length(a)
+    length(b) == n == length(da) == length(db) ||
+        throw(DimensionMismatch("compressed pair VJP inputs have incompatible lengths"))
+    length(cotangent) == n * (n + 1) ÷ 2 ||
+        throw(DimensionMismatch("compressed pair VJP cotangent has the wrong length"))
+    fill!(da, zero(eltype(da)))
+    fill!(db, zero(eltype(db)))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            p += 1
+            value = cotangent[p] * scale
+            if i == j
+                da[i] += value * b[i]
+                db[i] += value * a[i]
+            else
+                da[i] += value * b[j]
+                da[j] += value * b[i]
+                db[i] += value * a[j]
+                db[j] += value * a[i]
+            end
+        end
+    end
+    return da, db
+end
+
+function compressed_kron²_power_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                                     a::AbstractVector, scale = one(eltype(da)))
+    n = length(a)
+    length(da) == n || throw(DimensionMismatch("compressed pair VJP output has the wrong length"))
+    length(cotangent) == n * (n + 1) ÷ 2 ||
+        throw(DimensionMismatch("compressed pair VJP cotangent has the wrong length"))
+    fill!(da, zero(eltype(da)))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            p += 1
+            value = scale * cotangent[p]
+            if i == j
+                da[i] += 2 * value * a[i]
+            else
+                da[i] += 2 * value * a[j]
+                da[j] += 2 * value * a[i]
+            end
+        end
+    end
+    return da
+end
+
+compressed_kron²_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                           a::AbstractVector, scale = one(eltype(da))) =
+    compressed_kron²_power_vjp!(da, cotangent, a, scale)
+
+function compressed_kron³_vjp!(da::AbstractVector, db::AbstractVector,
+                               dc::AbstractVector, cotangent::AbstractVector,
+                               a::AbstractVector, b::AbstractVector, c::AbstractVector,
+                               scale = one(eltype(da)))
+    n = length(a)
+    length(b) == n == length(c) == length(da) == length(db) == length(dc) ||
+        throw(DimensionMismatch("compressed triple VJP inputs have incompatible lengths"))
+    length(cotangent) == n * (n + 1) * (n + 2) ÷ 6 ||
+        throw(DimensionMismatch("compressed triple VJP cotangent has the wrong length"))
+    fill!(da, zero(eltype(da)))
+    fill!(db, zero(eltype(db)))
+    fill!(dc, zero(eltype(dc)))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            for k in 1:j
+                p += 1
+                value = cotangent[p] * scale
+                if i == j
+                    if j == k
+                        da[i] += value * b[i] * c[i]
+                        db[i] += value * a[i] * c[i]
+                        dc[i] += value * a[i] * b[i]
+                    else
+                        da[i] += value * (b[i] * c[k] + b[k] * c[i])
+                        da[k] += value * b[i] * c[i]
+                        db[i] += value * (a[i] * c[k] + a[k] * c[i])
+                        db[k] += value * a[i] * c[i]
+                        dc[i] += value * (a[i] * b[k] + a[k] * b[i])
+                        dc[k] += value * a[i] * b[i]
+                    end
+                elseif j == k
+                    da[i] += value * b[j] * c[j]
+                    da[j] += value * (b[i] * c[j] + b[j] * c[i])
+                    db[i] += value * a[j] * c[j]
+                    db[j] += value * (a[i] * c[j] + a[j] * c[i])
+                    dc[i] += value * a[j] * b[j]
+                    dc[j] += value * (a[i] * b[j] + a[j] * b[i])
+                else
+                    da[i] += value * (b[j] * c[k] + b[k] * c[j])
+                    da[j] += value * (b[i] * c[k] + b[k] * c[i])
+                    da[k] += value * (b[i] * c[j] + b[j] * c[i])
+                    db[i] += value * (a[j] * c[k] + a[k] * c[j])
+                    db[j] += value * (a[i] * c[k] + a[k] * c[i])
+                    db[k] += value * (a[i] * c[j] + a[j] * c[i])
+                    dc[i] += value * (a[j] * b[k] + a[k] * b[j])
+                    dc[j] += value * (a[i] * b[k] + a[k] * b[i])
+                    dc[k] += value * (a[i] * b[j] + a[j] * b[i])
+                end
+            end
+        end
+    end
+    return da, db, dc
+end
+
+function compressed_kron³_power_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                                     a::AbstractVector, scale = one(eltype(da)))
+    n = length(a)
+    length(da) == n || throw(DimensionMismatch("compressed triple VJP output has the wrong length"))
+    length(cotangent) == n * (n + 1) * (n + 2) ÷ 6 ||
+        throw(DimensionMismatch("compressed triple VJP cotangent has the wrong length"))
+    fill!(da, zero(eltype(da)))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            for k in 1:j
+                p += 1
+                value = scale * cotangent[p]
+                if i == j
+                    if j == k
+                        da[i] += 3 * value * a[i] * a[i]
+                    else
+                        da[i] += 6 * value * a[i] * a[k]
+                        da[k] += 3 * value * a[i] * a[i]
+                    end
+                elseif j == k
+                    da[i] += 3 * value * a[j] * a[j]
+                    da[j] += 6 * value * a[i] * a[j]
+                else
+                    da[i] += 6 * value * a[j] * a[k]
+                    da[j] += 6 * value * a[i] * a[k]
+                    da[k] += 6 * value * a[i] * a[j]
+                end
+            end
+        end
+    end
+    return da
+end
+
+compressed_kron³_same_vjp!(da::AbstractVector, cotangent::AbstractVector,
+                           a::AbstractVector, scale = one(eltype(da))) =
+    compressed_kron³_power_vjp!(da, cotangent, a, scale)
+
+"""Accumulate the VJP of `compressed_kron³(a, a, I)` with respect to `a`."""
+function compressed_kron³_identity_vjp!(da::AbstractVector,
+                                        cotangent::AbstractMatrix,
+                                        a::AbstractVector,
+                                        scale = one(eltype(da)))
+    n = length(a)
+    n_triple = n * (n + 1) * (n + 2) ÷ 6
+    size(cotangent) == (n_triple, n) ||
+        throw(DimensionMismatch("compressed triple identity VJP has the wrong size"))
+    basis = zeros(promote_type(eltype(a), eltype(cotangent)), n)
+    ∂a = similar(da)
+    ∂b = similar(da)
+    ∂c = similar(da)
+    @inbounds for column in 1:n
+        fill!(basis, zero(eltype(basis)))
+        basis[column] = one(eltype(basis))
+        compressed_kron³_vjp!(∂a, ∂b, ∂c, view(cotangent, :, column), a, a, basis, scale)
+        da .+= ∂a
+        da .+= ∂b
+    end
+    return da
+end
+
+"""Accumulate the analytical VJP of `compressed_kron²(a, I)` into `da`."""
+function compressed_kron²_identity_vjp!(da::AbstractVector,
+                                        cotangent::AbstractMatrix,
+                                        a::AbstractVector,
+                                        scale = one(eltype(da)))
+    n = length(a)
+    n_pair = n * (n + 1) ÷ 2
+    size(cotangent) == (n_pair, n) ||
+        throw(DimensionMismatch("compressed pair identity VJP has the wrong size"))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            p += 1
+            if i == j
+                da[i] += scale * cotangent[p, j]
+            else
+                da[i] += scale * cotangent[p, j]
+                da[j] += scale * cotangent[p, i]
+            end
+        end
+    end
+    return da
+end
+
+function compressed_kron³(a::AbstractVector, b::AbstractVector, c::AbstractVector)
+    T = promote_type(eltype(a), eltype(b), eltype(c))
+    n = length(a)
+    out = Vector{T}(undef, n * (n + 1) * (n + 2) ÷ 6)
+    return compressed_kron³!(out, a, b, c)
+end
+
+function compressed_kron³!(out::AbstractMatrix, a::AbstractVector,
+                           b::AbstractVector, c::AbstractMatrix)
+    n = length(a)
+    length(b) == n || throw(DimensionMismatch("compressed triple inputs must have equal length"))
+    size(c, 1) == n || throw(DimensionMismatch("compressed triple inputs must have equal row count"))
+    expected_rows = n * (n + 1) * (n + 2) ÷ 6
+    size(out, 1) == expected_rows || throw(DimensionMismatch("compressed triple output has the wrong row count"))
+    size(out, 2) == size(c, 2) || throw(DimensionMismatch("compressed triple output has the wrong column count"))
+    @inbounds for column in axes(c, 2)
+        compressed_kron³!(view(out, :, column), a, b, view(c, :, column))
+    end
+    return out
+end
+
+function compressed_kron³(a::AbstractVector, b::AbstractVector, c::AbstractMatrix)
+    T = promote_type(eltype(a), eltype(b), eltype(c))
+    n = length(a)
+    out = Matrix{T}(undef, n * (n + 1) * (n + 2) ÷ 6, size(c, 2))
+    return compressed_kron³!(out, a, b, c)
+end
+
+"""Fill a symmetric pair Hessian from compressed quadratic coefficients."""
+function compressed_pair_hessian!(out::AbstractMatrix, coefficients::AbstractVector)
+    n = round(Int, (sqrt(8 * length(coefficients) + 1) - 1) / 2)
+    n * (n + 1) ÷ 2 == length(coefficients) ||
+        throw(DimensionMismatch("compressed pair coefficients have an invalid length"))
+    size(out) == (n, n) || throw(DimensionMismatch("pair Hessian has the wrong size"))
+    fill!(out, zero(eltype(out)))
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            p += 1
+            out[i, j] = coefficients[p]
+            out[j, i] = coefficients[p]
+        end
+    end
+    return out
+end
+
+"""Add the symmetric Hessian of a compressed cubic polynomial to `out`."""
+function compressed_triple_hessian!(out::AbstractMatrix,
+                                   coefficients::AbstractVector,
+                                   x::AbstractVector)
+    n = length(x)
+    expected_length = n * (n + 1) * (n + 2) ÷ 6
+    length(coefficients) == expected_length ||
+        throw(DimensionMismatch("compressed triple coefficients have the wrong length"))
+    size(out) == (n, n) || throw(DimensionMismatch("triple Hessian has the wrong size"))
+
+    p = 0
+    @inbounds for i in 1:n
+        for j in 1:i
+            for k in 1:j
+                p += 1
+                coefficient = coefficients[p]
+                if i == j
+                    if j == k
+                        out[i, i] += coefficient * x[i]
+                    else
+                        out[i, i] += coefficient * x[k]
+                        out[i, k] += coefficient * x[i]
+                        out[k, i] += coefficient * x[i]
+                    end
+                elseif j == k
+                    out[j, j] += coefficient * x[i]
+                    out[i, j] += coefficient * x[j]
+                    out[j, i] += coefficient * x[j]
+                else
+                    out[i, j] += coefficient * x[k]
+                    out[j, i] += coefficient * x[k]
+                    out[i, k] += coefficient * x[j]
+                    out[k, i] += coefficient * x[j]
+                    out[j, k] += coefficient * x[i]
+                    out[k, j] += coefficient * x[i]
+                end
+            end
+        end
+    end
+    return out
+end
+
+function compressed_shock_state_state_rows(selected_indices,
+                                           shock_offset::Int,
+                                           n_state::Int,
+                                           n_exo::Int)
+    n_state_pair = n_state * (n_state + 1) ÷ 2
+    rows = Vector{Int}(undef, n_exo * n_state_pair)
+    p = 0
+    @inbounds for q in 1:n_exo
+        for i in 1:n_state
+            for j in 1:i
+                p += 1
+                triple_index = compressed_triple_index(shock_offset + q, i, j)
+                row = searchsortedfirst(selected_indices, triple_index)
+                row <= length(selected_indices) && selected_indices[row] == triple_index ||
+                    throw(ArgumentError("selected cubic indices do not contain a shock-state-state term"))
+                rows[p] = row
+            end
+        end
+    end
+    return rows
+end
+
+function compressed_shock_shock_state_rows(selected_indices,
+                                           shock_offset::Int,
+                                           n_state::Int,
+                                           n_exo::Int)
+    n_shock_pair = n_exo * (n_exo + 1) ÷ 2
+    rows = Vector{Int}(undef, n_shock_pair * n_state)
+    p = 0
+    @inbounds for i in 1:n_exo
+        for j in 1:i
+            for state_index in 1:n_state
+                p += 1
+                triple_index = compressed_triple_index(shock_offset + i,
+                                                       shock_offset + j,
+                                                       state_index)
+                row = searchsortedfirst(selected_indices, triple_index)
+                row <= length(selected_indices) && selected_indices[row] == triple_index ||
+                    throw(ArgumentError("selected cubic indices do not contain a shock-shock-state term"))
+                rows[p] = row
+            end
+        end
+    end
+    return rows
+end
+
+# The cubic index sets that mix shocks with states, and the row maps into them.
+#
+# Both depend only on the model's dimensions, so they live with the model's other
+# index constants: `third_order_indices` holds them as `shock_state_state_idxs` /
+# `shock_state_state_rows` and `shock_shock_state_idxs` / `shock_shock_state_rows`,
+# filled once by `ensure_conditional_forecast_constants!`. Everything downstream —
+# the inversion filter loops, the joint-warmup solvers and their pullbacks — takes
+# them from there rather than rebuilding a comprehension over O(n_exo·n_state²)
+# triples per call.
+#
+# These two builders are the single construction shared by that cache and by the
+# handful of pullback entry points that can be called without the model's
+# constants in scope, so the two can never disagree. The shock offset is always
+# the state length (states, then the volatility slot, then the shocks), so it is
+# not a separate argument. Sorting the loop-ordered indices and inverting the
+# permutation yields both the sorted set and the loop-position-to-row map in one
+# pass, which is what the callers index with.
+function compressed_shock_state_state_index_map(n_state::Int, n_exo::Int)
+    shock_offset = n_state
+    loop_order = [compressed_triple_index(shock_offset + q, i, j)
+                  for q in 1:n_exo for i in 1:n_state for j in 1:i]
+    permutation = sortperm(loop_order)
+    return loop_order[permutation], invperm(permutation)
+end
+
+function compressed_shock_shock_state_index_map(n_state::Int, n_exo::Int)
+    shock_offset = n_state
+    loop_order = [compressed_triple_index(shock_offset + i, shock_offset + j, k)
+                  for i in 1:n_exo for j in 1:i for k in 1:n_state]
+    permutation = sortperm(loop_order)
+    return loop_order[permutation], invperm(permutation)
+end
+
+"""Fill a compressed matrix for fixing one state coordinate in a cubic term."""
+function compressed_triple_state_to_pair!(output::AbstractMatrix,
+                                          state::AbstractVector,
+                                          n_global::Int,
+                                          shock_offset::Int,
+                                          n_exo::Int,
+                                          selected_indices;
+                                          index_rows = nothing)
+    n_pair = n_exo * (n_exo + 1) ÷ 2
+    size(output) == (length(selected_indices), n_pair) ||
+        throw(DimensionMismatch("compressed state-to-pair output has the wrong size"))
+    fill!(output, zero(eltype(output)))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
+    pair_index = 0
+    row_index = 0
+    @inbounds for i in 1:n_exo
+        for j in 1:i
+            pair_index += 1
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                output[row, pair_index] = state[state_index] / 2
+            end
+        end
+    end
+    return output
+end
+
+function compressed_triple_state_to_pair(state::AbstractVector,
+                                         n_global::Int,
+                                         shock_offset::Int,
+                                         n_exo::Int,
+                                         selected_indices;
+                                         index_rows = nothing)
+    n_pair = n_exo * (n_exo + 1) ÷ 2
+    output = zeros(promote_type(eltype(state), Float64), length(selected_indices), n_pair)
+    return compressed_triple_state_to_pair!(output, state, n_global, shock_offset, n_exo,
+                                            selected_indices; index_rows = index_rows)
+end
+
+"""Accumulate the VJP of `compressed_triple_state_to_pair` into a state cotangent."""
+function compressed_triple_state_to_pair_vjp!(dstate::AbstractVector,
+                                              cotangent::AbstractMatrix,
+                                              state::AbstractVector,
+                                              n_global::Int,
+                                              shock_offset::Int,
+                                              n_exo::Int,
+                                              selected_indices;
+                                              index_rows = nothing)
+    size(cotangent, 1) == length(selected_indices) ||
+        throw(DimensionMismatch("compressed triple state-to-pair cotangent has the wrong row count"))
+    size(cotangent, 2) == n_exo * (n_exo + 1) ÷ 2 ||
+        throw(DimensionMismatch("compressed triple state-to-pair cotangent has the wrong column count"))
+    pair_index = 0
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
+    row_index = 0
+    @inbounds for i in 1:n_exo
+        for j in 1:i
+            pair_index += 1
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                dstate[state_index] += cotangent[row, pair_index] / 2
+            end
+        end
+    end
+    return dstate
+end
+
+"""Build compressed shock-state-state cubic entries for selected global indices."""
+function compressed_triple_shock_state_state(shock::AbstractVector,
+                                             state::AbstractVector,
+                                             shock_offset::Int,
+                                             selected_indices;
+                                             index_rows = nothing)
+    output = zeros(promote_type(eltype(shock), eltype(state), Float64), length(selected_indices))
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for shock_index in eachindex(shock)
+        for i in eachindex(state)
+            for j in 1:i
+                row_index += 1
+                row = rows[row_index]
+                output[row] = shock[shock_index] * (i == j ? state[i] * state[i] : 2 * state[i] * state[j])
+            end
+        end
+    end
+    return output
+end
+
+"""Accumulate the VJP of compressed shock-state-state entries."""
+function compressed_triple_shock_state_state_vjp!(dshock::AbstractVector,
+                                                  dstate::AbstractVector,
+                                                  cotangent::AbstractVector,
+                                                  shock::AbstractVector,
+                                                  state::AbstractVector,
+                                                  shock_offset::Int,
+                                                  selected_indices,
+                                                  scale = 1;
+                                                  index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for q in eachindex(shock)
+        for i in eachindex(state)
+            for j in 1:i
+                row_index += 1
+                row = rows[row_index]
+                value = cotangent[row] * scale
+                dshock[q] += value * (i == j ? state[i] * state[i] : 2 * state[i] * state[j])
+                if i == j
+                    dstate[i] += value * 2 * shock[q] * state[i]
+                else
+                    dstate[i] += value * 2 * shock[q] * state[j]
+                    dstate[j] += value * 2 * shock[q] * state[i]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""Build compressed shock-shock-state cubic entries for selected global indices."""
+function compressed_triple_shock_shock_state(shock::AbstractVector,
+                                             state::AbstractVector,
+                                             shock_offset::Int,
+                                             selected_indices;
+                                             index_rows = nothing)
+    output = zeros(promote_type(eltype(shock), eltype(state), Float64), length(selected_indices))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                output[row] = pair_value * state[state_index]
+            end
+        end
+    end
+    return output
+end
+
+"""Accumulate the VJP of compressed shock-shock-state entries."""
+function compressed_triple_shock_shock_state_vjp!(dshock::AbstractVector,
+                                                  dstate::AbstractVector,
+                                                  cotangent::AbstractVector,
+                                                  shock::AbstractVector,
+                                                  state::AbstractVector,
+                                                  shock_offset::Int,
+                                                  selected_indices,
+                                                  scale = 1;
+                                                  index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                value = cotangent[row] * scale
+                dstate[state_index] += value * pair_value
+                if i == j
+                    dshock[i] += value * 2 * shock[i] * state[state_index]
+                else
+                    dshock[i] += value * 2 * shock[j] * state[state_index]
+                    dshock[j] += value * 2 * shock[i] * state[state_index]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""Build the state Jacobian of compressed shock-shock-state entries."""
+function compressed_triple_shock_shock_state_to_state(shock::AbstractVector,
+                                                      state::AbstractVector,
+                                                      shock_offset::Int,
+                                                      selected_indices;
+                                                      index_rows = nothing)
+    output = zeros(promote_type(eltype(shock), eltype(state), Float64),
+                   length(selected_indices), length(state))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            pair_value = i == j ? shock[i] * shock[i] : 2 * shock[i] * shock[j]
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                output[row, state_index] = pair_value
+            end
+        end
+    end
+    return output
+end
+
+"""Accumulate the VJP of the state Jacobian of shock-shock-state entries."""
+function compressed_triple_shock_shock_state_to_state_vjp!(dshock::AbstractVector,
+                                                           cotangent::AbstractMatrix,
+                                                           shock::AbstractVector,
+                                                           state::AbstractVector,
+                                                           shock_offset::Int,
+                                                           selected_indices,
+                                                           scale = 1;
+                                                           index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                value = scale * cotangent[row, state_index]
+                if i == j
+                    dshock[i] += value * 2 * shock[i]
+                else
+                    dshock[i] += value * 2 * shock[j]
+                    dshock[j] += value * 2 * shock[i]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""Fill a compressed matrix for fixing two state coordinates in a cubic term."""
+function compressed_triple_state_pair_to_shock!(output::AbstractMatrix,
+                                                state_pair::AbstractVector,
+                                                n_global::Int,
+                                                shock_offset::Int,
+                                                n_exo::Int,
+                                                selected_indices;
+                                                index_rows = nothing)
+    n_state = round(Int, (sqrt(8 * length(state_pair) + 1) - 1) / 2)
+    return compressed_triple_state_pair_to_shock!(output, state_pair, n_global, shock_offset,
+                                                  n_exo, selected_indices, n_state;
+                                                  index_rows = index_rows)
+end
+
+function compressed_triple_state_pair_to_shock!(output::AbstractMatrix,
+                                                state_pair::AbstractVector,
+                                                n_global::Int,
+                                                shock_offset::Int,
+                                                n_exo::Int,
+                                                selected_indices,
+                                                n_state::Int;
+                                                index_rows = nothing)
+    n_state * (n_state + 1) ÷ 2 == length(state_pair) ||
+        throw(DimensionMismatch("compressed state-pair vector has an invalid length"))
+    size(output) == (length(selected_indices), n_exo) ||
+        throw(DimensionMismatch("compressed state-pair-to-shock output has the wrong size"))
+    fill!(output, zero(eltype(output)))
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, n_state, n_exo) : index_rows
+    @inbounds for shock_index in 1:n_exo
+        row_index = (shock_index - 1) * (n_state * (n_state + 1) ÷ 2)
+        pair_index = 0
+        for i in 1:n_state
+            for j in 1:i
+                row_index += 1
+                pair_index += 1
+                row = rows[row_index]
+                output[row, shock_index] = state_pair[pair_index] / 2
+            end
+        end
+    end
+    return output
+end
+
+function compressed_triple_state_pair_to_shock(state_pair::AbstractVector,
+                                               n_global::Int,
+                                               shock_offset::Int,
+                                               n_exo::Int,
+                                               selected_indices;
+                                               index_rows = nothing)
+    output = zeros(promote_type(eltype(state_pair), Float64), length(selected_indices), n_exo)
+    n_state = round(Int, (sqrt(8 * length(state_pair) + 1) - 1) / 2)
+    return compressed_triple_state_pair_to_shock!(output, state_pair, n_global, shock_offset,
+                                                  n_exo, selected_indices, n_state;
+                                                  index_rows = index_rows)
+end
+
+"""Accumulate the VJP of `compressed_triple_state_pair_to_shock` into a state cotangent."""
+function compressed_triple_state_pair_to_shock_vjp!(dstate::AbstractVector,
+                                                    cotangent::AbstractMatrix,
+                                                    state::AbstractVector,
+                                                    n_global::Int,
+                                                    shock_offset::Int,
+                                                    n_exo::Int,
+                                                    selected_indices;
+                                                    index_rows = nothing)
+    n_state_pair = length(state) * (length(state) + 1) ÷ 2
+    size(cotangent) == (length(selected_indices), n_exo) ||
+        throw(DimensionMismatch("compressed triple state-pair-to-shock cotangent has the wrong size"))
+    dstate_pair = zeros(promote_type(eltype(state), eltype(cotangent)), n_state_pair)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), n_exo) : index_rows
+    @inbounds for shock_index in 1:n_exo
+        row_index = (shock_index - 1) * n_state_pair
+        pair_index = 0
+        for i in eachindex(state)
+            for j in 1:i
+                row_index += 1
+                pair_index += 1
+                row = rows[row_index]
+                dstate_pair[pair_index] += cotangent[row, shock_index] / 2
+            end
+        end
+    end
+    # `compressed_kron²_power_vjp!` fills its output.  This helper has
+    # accumulating semantics, so add the state-pair contribution explicitly
+    # instead of overwriting cotangents already supplied by other terms.
+    pair_index = 0
+    @inbounds for i in eachindex(state)
+        for j in 1:i
+            pair_index += 1
+            value = dstate_pair[pair_index]
+            if i == j
+                dstate[i] += 2 * value * state[i]
+            else
+                dstate[i] += 2 * value * state[j]
+                dstate[j] += 2 * value * state[i]
+            end
+        end
+    end
+    return dstate
+end
+
+"""Build cubic derivatives for one fixed shock and two state coordinates."""
+function compressed_triple_shock_state_to_state(shock::AbstractVector,
+                                                state::AbstractVector,
+                                                shock_offset::Int,
+                                                selected_indices;
+                                                index_rows = nothing)
+    output = zeros(promote_type(eltype(shock), eltype(state), Float64),
+                   length(selected_indices), length(state))
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for shock_index in eachindex(shock)
+        for i in eachindex(state)
+            for j in 1:i
+                row_index += 1
+                row = rows[row_index]
+                if i == j
+                    output[row, i] = shock[shock_index] * state[i]
+                else
+                    output[row, i] = shock[shock_index] * state[j]
+                    output[row, j] = shock[shock_index] * state[i]
+                end
+            end
+        end
+    end
+    return output
+end
+
+"""Accumulate the VJP of compressed shock-state-state derivatives."""
+function compressed_triple_shock_state_to_state_vjp!(dshock::AbstractVector,
+                                                     dstate::AbstractVector,
+                                                     cotangent::AbstractMatrix,
+                                                     shock::AbstractVector,
+                                                     state::AbstractVector,
+                                                     shock_offset::Int,
+                                                     selected_indices,
+                                                     scale = 1;
+                                                     index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_state_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for q in eachindex(shock)
+        for i in eachindex(state)
+            for j in 1:i
+                row_index += 1
+                row = rows[row_index]
+                if i == j
+                    dshock[q] += scale * cotangent[row, i] * state[i]
+                    dstate[i] += scale * cotangent[row, i] * shock[q]
+                else
+                    dshock[q] += scale * (cotangent[row, i] * state[j] + cotangent[row, j] * state[i])
+                    dstate[i] += scale * cotangent[row, j] * shock[q]
+                    dstate[j] += scale * cotangent[row, i] * shock[q]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""Build cubic derivatives for one fixed state and two shock coordinates."""
+function compressed_triple_state_shock_to_shock(state::AbstractVector,
+                                                shock::AbstractVector,
+                                                shock_offset::Int,
+                                                selected_indices;
+                                                index_rows = nothing)
+    output = zeros(promote_type(eltype(shock), eltype(state), Float64),
+                   length(selected_indices), length(shock))
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                if i == j
+                    output[row, i] = state[state_index] * shock[i]
+                else
+                    output[row, i] = state[state_index] * shock[j]
+                    output[row, j] = state[state_index] * shock[i]
+                end
+            end
+        end
+    end
+    return output
+end
+
+"""Accumulate the VJP of compressed state-shock-shock derivatives."""
+function compressed_triple_state_shock_to_shock_vjp!(dstate::AbstractVector,
+                                                     dshock::AbstractVector,
+                                                     cotangent::AbstractMatrix,
+                                                     state::AbstractVector,
+                                                     shock::AbstractVector,
+                                                     shock_offset::Int,
+                                                     selected_indices,
+                                                     scale = 1;
+                                                     index_rows = nothing)
+    rows = isnothing(index_rows) ? compressed_shock_shock_state_rows(
+        selected_indices, shock_offset, length(state), length(shock)) : index_rows
+    row_index = 0
+    @inbounds for i in eachindex(shock)
+        for j in 1:i
+            for state_index in eachindex(state)
+                row_index += 1
+                row = rows[row_index]
+                value = cotangent[row, :]
+                if i == j
+                    dstate[state_index] += scale * value[i] * shock[i]
+                    dshock[i] += scale * value[i] * state[state_index]
+                else
+                    dstate[state_index] += scale * (value[i] * shock[j] + value[j] * shock[i])
+                    dshock[i] += scale * value[j] * state[state_index]
+                    dshock[j] += scale * value[i] * state[state_index]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+@inline function compressed_pair_index(i::Int, j::Int)
+    hi = max(i, j)
+    lo = min(i, j)
+    return (hi - 1) * hi ÷ 2 + lo
+end
+
+@inline function compressed_triple_index(i::Int, j::Int, k::Int)
+    hi = max(i, j, k)
+    lo = min(i, j, k)
+    mid = i + j + k - hi - lo
+    return (hi - 1) * hi * (hi + 1) ÷ 6 + (mid - 1) * mid ÷ 2 + lo
+end
+
+function compressed_pair_indices(full_indices, n::Int, offset::Int = 0)
+    indices = Vector{Int}(undef, length(full_indices))
+    @inbounds for p in eachindex(full_indices)
+        full_index = full_indices[p] - 1
+        i, j = full_index ÷ n + 1, full_index % n + 1
+        indices[p] = compressed_pair_index(i - offset, j - offset)
+    end
+    sort!(indices)
+    unique!(indices)
+    return indices
+end
+
+function compressed_triple_indices(full_indices, n::Int, offset::Int = 0)
+    indices = Vector{Int}(undef, length(full_indices))
+    @inbounds for p in eachindex(full_indices)
+        full_index = full_indices[p] - 1
+        k = full_index % n + 1
+        full_index ÷= n
+        j = full_index % n + 1
+        i = full_index ÷ n + 1
+        indices[p] = compressed_triple_index(i - offset, j - offset, k - offset)
+    end
+    sort!(indices)
+    unique!(indices)
+    return indices
+end
+
 # Detect unit roots from QME solution without computing eigenvalues.
 # If sol has an eigenvalue near 1, (I - sol) is nearly singular.
 # Uses LU factorization: exactly singular (info > 0) or smallest absolute pivot < tol.
