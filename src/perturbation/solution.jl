@@ -2418,6 +2418,16 @@ and off-diagonal entries `2a[i]a[j]`.  The dedicated name makes repeated-input
 contractions explicit at their call sites and avoids the generic permutation
 logic used for two different inputs.
 """
+#
+# `@simd` was tried on these inner loops and made things worse, so it is
+# deliberately absent. Measured on the pair kernel, microseconds per call, best
+# of 20 x 2000: n = 34, 0.13 plain against 0.21 with `@simd`; n = 64, 0.30
+# against 0.80. The body carries a data-dependent branch (`i == j`, taken
+# exactly once, on the last iteration, so the predictor gets it right every
+# time) and `@simd` trades that perfectly predicted branch for a vectorised
+# select and masked store. Peeling the diagonal out into its own statement so
+# the inner loop is branch-free is a wash for the pair kernel and worth a few
+# percent at best for the cube — not enough to justify two more loop bodies.
 function compressed_kron²_power!(out::AbstractVector, a::AbstractVector)
     n = length(a)
     expected_length = n * (n + 1) ÷ 2
@@ -2469,6 +2479,15 @@ function compressed_kron²(a::AbstractVector, b::AbstractVector)
     return compressed_kron²!(out, a, b)
 end
 
+# One vector against every column of a matrix — the shape the Jacobian of a
+# compressed pair term takes when `b` is an identity block.
+#
+# Argument order does not matter: the underlying pair product is symmetric
+# (`out[i,j] = a[i]b[j] + a[j]b[i]` off the diagonal, `a[i]b[i]` on it), so
+# `compressed_kron²(x, J)` and `compressed_kron²(J, x)` agree entry for entry —
+# `test/test_compressed_kron.jl` pins that, as it does for the fully symmetric
+# triple. Only this argument order has a method, so call sites are written
+# vector-first.
 function compressed_kron²!(out::AbstractMatrix, a::AbstractVector, b::AbstractMatrix)
     n = length(a)
     size(b, 1) == n || throw(DimensionMismatch("compressed pair inputs must have equal row count"))
@@ -2526,6 +2545,37 @@ function compressed_kron³_power(a::AbstractVector)
 end
 
 compressed_kron³_same!(out::AbstractVector, a::AbstractVector) = compressed_kron³_power!(out, a)
+
+# Column-wise variants: column `j` of `out` is the compressed power (or product)
+# of column `j` of the input, rather than one vector against every column the way
+# `compressed_kron²!(::AbstractMatrix, ::AbstractVector, ::AbstractMatrix)` works.
+# The particle filters carry their swarm as one column per particle and need this
+# shape; the ordering is the vector kernels' own, which is what makes the swarm
+# contractible against the same 𝐒₂/𝐒₃ the scalar paths use.
+function compressed_kron²_power_columns!(out::AbstractMatrix, a::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair output has the wrong column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron²_power!(view(out, :, column), view(a, :, column))
+    end
+    return out
+end
+
+function compressed_kron²_columns!(out::AbstractMatrix, a::AbstractMatrix, b::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair output has the wrong column count"))
+    size(b, 2) == size(a, 2) || throw(DimensionMismatch("compressed pair inputs must have equal column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron²!(view(out, :, column), view(a, :, column), view(b, :, column))
+    end
+    return out
+end
+
+function compressed_kron³_power_columns!(out::AbstractMatrix, a::AbstractMatrix)
+    size(out, 2) == size(a, 2) || throw(DimensionMismatch("compressed triple output has the wrong column count"))
+    @inbounds for column in axes(a, 2)
+        compressed_kron³_power!(view(out, :, column), view(a, :, column))
+    end
+    return out
+end
 
 """Fill `out` with the unique triple terms of `kron(kron(a, b), c)`.
 
@@ -2905,6 +2955,47 @@ function compressed_shock_shock_state_rows(selected_indices,
         end
     end
     return rows
+end
+
+# The cubic index sets that mix shocks with states, and the row maps into them.
+#
+# Both depend only on the model's dimensions, but every caller was rebuilding
+# them: a comprehension over O(n_exo·n_state²) triples, a sort, then a binary
+# search per row — once per likelihood evaluation, and in the warmup routines
+# once per period. Memoise on the dimensions instead. The key space is one entry
+# per model shape, the vectors are read-only once built (callers only
+# `searchsortedfirst` into them), and the lock covers the threaded filters
+# racing to fill an entry on the first call.
+struct CompressedCubicShockMaps
+    shock_state_state_indices::Vector{Int}
+    shock_state_state_rows::Vector{Int}
+    shock_shock_state_indices::Vector{Int}
+    shock_shock_state_rows::Vector{Int}
+end
+
+const COMPRESSED_CUBIC_SHOCK_MAPS = Dict{NTuple{3,Int},CompressedCubicShockMaps}()
+const COMPRESSED_CUBIC_SHOCK_MAPS_LOCK = ReentrantLock()
+
+function compressed_cubic_shock_maps(shock_offset::Int, n_state::Int, n_exo::Int)::CompressedCubicShockMaps
+    key = (shock_offset, n_state, n_exo)
+    hit = lock(COMPRESSED_CUBIC_SHOCK_MAPS_LOCK) do
+        get(COMPRESSED_CUBIC_SHOCK_MAPS, key, nothing)
+    end
+    hit === nothing || return hit
+
+    shock_state_state_indices = sort!([compressed_triple_index(shock_offset + q, i, j)
+                                       for q in 1:n_exo for i in 1:n_state for j in 1:i])
+    shock_shock_state_indices = sort!([compressed_triple_index(shock_offset + i, shock_offset + j, k)
+                                       for i in 1:n_exo for j in 1:i for k in 1:n_state])
+    maps = CompressedCubicShockMaps(
+        shock_state_state_indices,
+        compressed_shock_state_state_rows(shock_state_state_indices, shock_offset, n_state, n_exo),
+        shock_shock_state_indices,
+        compressed_shock_shock_state_rows(shock_shock_state_indices, shock_offset, n_state, n_exo))
+
+    return lock(COMPRESSED_CUBIC_SHOCK_MAPS_LOCK) do
+        get!(COMPRESSED_CUBIC_SHOCK_MAPS, key, maps)
+    end
 end
 
 """Fill a compressed matrix for fixing one state coordinate in a cubic term."""

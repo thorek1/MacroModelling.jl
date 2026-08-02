@@ -105,10 +105,14 @@ effective_sample_size(W::AbstractVector{<:Real}) = 1.0 / sum(abs2, W)
 function systematic_resample_indices!(idx::Vector{Int}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
     u0 = rand(rng) / N
-    c = W[1]; i = 1
+    c = W[1]
+    i = 1
     @inbounds for j in 1:N
         u = u0 + (j - 1) / N
-        while u > c && i < N; i += 1; c += W[i]; end
+        while u > c && i < N
+            i += 1
+            c += W[i]
+        end
         idx[j] = i
     end
     return idx
@@ -119,10 +123,14 @@ end
 # while keeping the draws independent, unlike the systematic scheme.
 function stratified_resample_indices!(idx::Vector{Int}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
-    c = W[1]; i = 1
+    c = W[1]
+    i = 1
     @inbounds for j in 1:N
         u = (j - 1 + rand(rng)) / N
-        while u > c && i < N; i += 1; c += W[i]; end
+        while u > c && i < N
+            i += 1
+            c += W[i]
+        end
         idx[j] = i
     end
     return idx
@@ -133,7 +141,8 @@ end
 # particle with weight 1/N from being drawn three times or not at all.
 function multinomial_resample_indices!(idx::Vector{Int}, bins::Vector{Float64}, rng::Random.AbstractRNG, W::AbstractVector{<:Real})
     N = length(W)
-    cumsum!(bins, W); bins[N] = one(eltype(bins))   # guard against round-off
+    cumsum!(bins, W)
+    bins[N] = one(eltype(bins))   # guard against round-off
     @inbounds for j in 1:N
         idx[j] = searchsortedfirst(bins, rand(rng))
     end
@@ -149,23 +158,30 @@ function residual_resample_indices!(idx::Vector{Int}, bins::Vector{Float64}, rng
     k = 0
     @inbounds for i in 1:N
         ni = floor(Int, N * W[i])
-        for _ in 1:ni; k += 1; idx[k] = i; end
+        for _ in 1:ni
+            k += 1
+            idx[k] = i
+        end
     end
     R = N - k
     if R > 0
         s = 0.0
         @inbounds for i in 1:N
-            bins[i] = N * W[i] - floor(N * W[i]); s += bins[i]
+            bins[i] = N * W[i] - floor(N * W[i])
+            s += bins[i]
         end
         if s <= 0            # numerical degeneracy: fall back to multinomial
             cumsum!(bins, W)
         else
-            @inbounds for i in 1:N; bins[i] /= s; end
+            @inbounds for i in 1:N
+                bins[i] /= s
+            end
             cumsum!(bins, bins)
         end
         bins[N] = one(eltype(bins))
         @inbounds for _ in 1:R
-            k += 1; idx[k] = searchsortedfirst(bins, rand(rng))
+            k += 1
+            idx[k] = searchsortedfirst(bins, rand(rng))
         end
     end
     return idx
@@ -565,6 +581,31 @@ function build_particle_transition(::Val{:first_order}, 𝐒, T)
     return ParticleTransition(𝐒₁, empty, empty, T.past_not_future_and_mixed_idx, nVars, nPast, nExo, naug)
 end
 
+# Why 𝐒₂/𝐒₃ are densified, when the solution stores them sparse.
+#
+# In the *compressed* basis they are not sparse. Compression merges each set of
+# symmetric duplicate columns into one, so a compressed column is zero only when
+# every uncompressed column it stands for was, and the surviving matrix is mostly
+# full. Measured on the solutions themselves:
+#
+#           𝐒₂ shape       density    𝐒₃ shape        density
+#   FS2000  18 x   28       0.48      18 x    84       0.28
+#   Gali    23 x   36       0.78      23 x   120       0.73
+#   SW03    54 x  435       0.87      54 x  4495       0.84
+#   SW07    66 x  595       0.62      66 x  7140       0.51
+#
+# and dense `gemm` beats `SparseMatrixCSC` multiplication over the whole of that
+# range. Against a swarm block of 512 / 4096 columns, sparse costs 3.2-7.9x more
+# with BLAS on one thread and 2.6-26x more on four. The crossover — measured by
+# thinning a 66 x 7140 matrix — sits near 1 % density: at 5 % sparse is still
+# 1.35x slower single-threaded, and only at 1 % does it win (0.32x), which no
+# model here comes close to. The shape is what does it: the operand is short and
+# very wide, so the dense kernel is entirely cache-blocked BLAS while the CSC
+# kernel is single-threaded scattered accumulation.
+#
+# If a model ever does produce a genuinely sparse compressed 𝐒₃, this is the one
+# place to branch on `nnz`; the propagation code below needs no change, since
+# `mul!` dispatches on the type it is handed.
 function build_particle_transition(::Val{algo}, 𝐒, T) where {algo}
     nVars = T.nVars
     nPast = T.nPast_not_future_and_mixed
@@ -687,67 +728,17 @@ end
     return aug
 end
 
-# Column-wise compressed Kronecker powers. The element order matches
-# `compressed_kron²_power!` / `compressed_kron³_power!` / `compressed_kron²!` in
-# `perturbation/solution.jl` (sorted index pairs/triples with their
-# multiplicities); `test/test_particle_filter.jl` pins that equivalence.
-function kron²_power_block!(out::AbstractMatrix{Float64}, a::AbstractMatrix{Float64})
-    n = size(a, 1)
-    @inbounds for j in axes(a, 2)
-        p = 0
-        for i in 1:n
-            ai = a[i, j]
-            for k in 1:i
-                p += 1
-                out[p, j] = i == k ? ai * ai : 2 * ai * a[k, j]
-            end
-        end
-    end
-    return out
-end
-
-function kron²_block!(out::AbstractMatrix{Float64}, a::AbstractMatrix{Float64}, b::AbstractMatrix{Float64})
-    n = size(a, 1)
-    @inbounds for j in axes(a, 2)
-        p = 0
-        for i in 1:n
-            ai = a[i, j]; bi = b[i, j]
-            for k in 1:i
-                p += 1
-                out[p, j] = i == k ? ai * bi : ai * b[k, j] + a[k, j] * bi
-            end
-        end
-    end
-    return out
-end
-
-function kron³_power_block!(out::AbstractMatrix{Float64}, a::AbstractMatrix{Float64})
-    n = size(a, 1)
-    @inbounds for j in axes(a, 2)
-        p = 0
-        for i in 1:n
-            ai = a[i, j]
-            for k in 1:i
-                ak = a[k, j]
-                for l in 1:k
-                    p += 1
-                    if i == k
-                        out[p, j] = k == l ? ai * ai * ai : 3 * ai * ai * a[l, j]
-                    elseif k == l
-                        out[p, j] = 3 * ai * ak * ak
-                    else
-                        out[p, j] = 6 * ai * ak * a[l, j]
-                    end
-                end
-            end
-        end
-    end
-    return out
-end
-
 # One column block of the transition, written into `Xn`. `X` is the current
 # cloud, `E` the shocks. Each method mirrors the corresponding closure built by
-# `parse_algorithm_to_state_update`, with `aug = [x[past]; 1; ε]`:
+# `parse_algorithm_to_state_update`, with `aug = [x[past]; 1; ε]`.
+#
+# Every operand is a `view` into a preallocated buffer. Slicing whole columns of
+# a `Matrix` gives a contiguous `SubArray`, which is a `StridedMatrix`, so `mul!`
+# reaches BLAS `gemm` on it directly — no copy of the block, and no allocation:
+# `@allocated` over a statically dispatched `propagate_block!` and
+# `propagate_cloud!` is 0 bytes at every order, at any block size.
+#
+# Method bodies:
 #
 #   :second_order         x⁺ = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug)
 #   :third_order          x⁺ = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug) + ⅙ 𝐒₃·(aug⊗aug⊗aug)
@@ -777,7 +768,7 @@ function propagate_block!(::Val{:second_order}, tr::ParticleTransition, scr,
     o1 = view(Xn[1], :, cols)
 
     fill_aug_block!(a1, X[1], tr.past_idx, E, cols, 1.0, true)
-    kron²_power_block!(kk, a1)
+    compressed_kron²_power_columns!(kk, a1)
     ℒ.mul!(o1, tr.𝐒₁, a1)                           # x⁺ = 𝐒₁·aug
     ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)                 # x⁺ += ½ 𝐒₂·(aug⊗aug)
     return Xn
@@ -793,8 +784,8 @@ function propagate_block!(::Val{:third_order}, tr::ParticleTransition, scr,
     o1  = view(Xn[1], :, cols)
 
     fill_aug_block!(a1, X[1], tr.past_idx, E, cols, 1.0, true)
-    kron²_power_block!(kk, a1)
-    kron³_power_block!(kkk, a1)
+    compressed_kron²_power_columns!(kk, a1)
+    compressed_kron³_power_columns!(kkk, a1)
     ℒ.mul!(o1, tr.𝐒₁, a1)                           # x⁺ = 𝐒₁·aug
     ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)                 # x⁺ += ½ 𝐒₂·(aug⊗aug)
     ℒ.mul!(o1, tr.𝐒₃, kkk, 1 / 6, 1.0)              # x⁺ += ⅙ 𝐒₃·(aug⊗aug⊗aug)
@@ -814,7 +805,7 @@ function propagate_block!(::Val{:pruned_second_order}, tr::ParticleTransition, s
 
     fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
     fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
-    kron²_power_block!(kk, a1)
+    compressed_kron²_power_columns!(kk, a1)
     ℒ.mul!(o1, tr.𝐒₁, a1)                           # x¹⁺ = 𝐒₁·aug¹
     ℒ.mul!(o2, tr.𝐒₁, a2)                           # x²⁺ = 𝐒₁·aug²
     ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)                 # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
@@ -841,9 +832,9 @@ function propagate_block!(::Val{:pruned_third_order}, tr::ParticleTransition, sc
     fill_aug_block!(aĥ, X[1], past_idx, E, cols, 0.0, true)
     fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
     fill_aug_block!(a3, X[3], past_idx, E, cols, 0.0, false)
-    kron²_power_block!(kk, a1)
-    kron²_block!(kk2, aĥ, a2)
-    kron³_power_block!(kkk, a1)
+    compressed_kron²_power_columns!(kk, a1)
+    compressed_kron²_columns!(kk2, aĥ, a2)
+    compressed_kron³_power_columns!(kkk, a1)
     ℒ.mul!(o1, tr.𝐒₁, a1)                           # x¹⁺ = 𝐒₁·aug¹
     ℒ.mul!(o2, tr.𝐒₁, a2)                           # x²⁺ = 𝐒₁·aug²
     ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)                 # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
@@ -858,8 +849,9 @@ end
 # the result — does not depend on how the scheduler interleaves them.
 #
 # Why this is threaded at all, when most of a block is `mul!`. `𝐒₂`/`𝐒₃` are
-# densified in `build_particle_transition`, so those are dense `gemm` calls and
-# BLAS is already threading them. What BLAS cannot touch is the other part of a
+# dense (see `build_particle_transition` for why that is the right call, and for
+# where the sparse crossover lies), so those are `gemm` calls and BLAS is already
+# threading them. What BLAS cannot touch is the other part of a
 # block: `fill_aug_block!` and the compressed Kronecker kernels are plain
 # sequential Julia loops, and they are not a rounding error — measured per block
 # at 10 000 particles they are ~26 % of the time at pruned second order and ~37 %
@@ -960,7 +952,8 @@ end
 function gather_cloud!(Y::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}}, idx::Vector{Int}) where {K}
     foreach_column_chunk(length(idx)) do cols
         @inbounds for k in 1:K
-            Yk = Y[k]; Xk = X[k]
+            Yk = Y[k]
+            Xk = X[k]
             nrow = size(Xk, 1)
             for j in cols
                 a = idx[j]
@@ -1095,12 +1088,12 @@ function run_particle_filter(::Val{algo},
     nK = n_components(K)
     pools = ensure_particle_pools!(pws, 2 * nK + 1)
     X  = cloud_group(pools, 1, K)
-    X2 = cloud_group(pools, 2, K)
+    X_scratch = cloud_group(pools, 2, K)
     Fbuf = pools[2 * nK + 1]
 
     init_cloud!(X, particle_rng, state, L, Fbuf)
 
-    return bootstrap_loop!(Val(algo), tr, scr, X, X2, Fbuf, pws.E, pws.W, pws.logdens,
+    return bootstrap_loop!(Val(algo), tr, scr, X, X_scratch, Fbuf, pws.E, pws.W, pws.logdens,
                            pws.idx, pws.bins, nT, normalize_presample_periods(presample_periods, nT),
                            observables_index, data_in_deviations, obs_idx_per_t, has_missing,
                            me_var, inv_me_var, particle_resampling, particle_resampling_threshold,
@@ -1109,7 +1102,7 @@ end
 
 # Function barrier: the enclosing kwarg method body is too large for inference to
 # keep the cloud types, so the hot loop lives here and runs allocation-free.
-function bootstrap_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NTuple{K,Matrix{Float64}},
+function bootstrap_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X_scratch::NTuple{K,Matrix{Float64}},
                          Fbuf, E, W, logdens, idx, bins, nT, presample_periods, observables_index,
                          data_in_deviations, obs_idx_per_t, has_missing, me_var, inv_me_var,
                          resampling, resampling_threshold, rng, on_failure_loglikelihood, log2pi) where {algo, K}
@@ -1123,8 +1116,8 @@ function bootstrap_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2:
 
         # 1. PREDICT
         Random.randn!(rng, E)
-        propagate_cloud!(Val(algo), tr, scr, X2, X, E)
-        X, X2 = X2, X
+        propagate_cloud!(Val(algo), tr, scr, X_scratch, X, E)
+        X, X_scratch = X_scratch, X
 
         isempty(rows) && continue      # nothing observed: weights unchanged
 
@@ -1146,8 +1139,8 @@ function bootstrap_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2:
         #    would leave all the weight on a single particle within a few periods.
         if effective_sample_size(W) < resampling_threshold * n_particles
             particle_resample_indices!(idx, bins, rng, W, resampling)
-            gather_cloud!(X2, X, idx)
-            X, X2 = X2, X
+            gather_cloud!(X_scratch, X, idx)
+            X, X_scratch = X_scratch, X
             fill!(W, 1.0 / n_particles)   # survivors are equally likely again
         end
     end
@@ -1241,13 +1234,13 @@ function run_particle_filter(::Val{algo},
     nK = n_components(K)
     pools = ensure_particle_pools!(pws, 3 * nK + 1)
     X   = cloud_group(pools, 1, K)
-    X2  = cloud_group(pools, 2, K)
-    Anc = cloud_group(pools, 3, K)
+    X_scratch  = cloud_group(pools, 2, K)
+    anc = cloud_group(pools, 3, K)
     Fbuf = pools[3 * nK + 1]
 
     init_cloud!(X, particle_rng, state, L, Fbuf)
 
-    return auxiliary_loop!(Val(algo), tr, scr, X, X2, Anc, Fbuf, pws.E, pws.W, pws.logdens,
+    return auxiliary_loop!(Val(algo), tr, scr, X, X_scratch, anc, Fbuf, pws.E, pws.W, pws.logdens,
                            pws.logw, pws.lam, pws.idx, pws.bins, nT,
                            normalize_presample_periods(presample_periods, nT),
                            observables_index, data_in_deviations, obs_idx_per_t, has_missing,
@@ -1255,8 +1248,8 @@ function run_particle_filter(::Val{algo},
                            particle_rng, Float64(on_failure_loglikelihood), log(2π))
 end
 
-function auxiliary_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NTuple{K,Matrix{Float64}},
-                         Anc::NTuple{K,Matrix{Float64}}, Fbuf, E, W, logg̃, logw, lam, idx, bins,
+function auxiliary_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X_scratch::NTuple{K,Matrix{Float64}},
+                         anc::NTuple{K,Matrix{Float64}}, Fbuf, E, W, logg̃, logw, lam, idx, bins,
                          nT, presample_periods, observables_index, data_in_deviations, obs_idx_per_t,
                          has_missing, me_var, inv_me_var, pred_var, inv_pred_var, resampling, rng,
                          on_failure_loglikelihood, log2pi) where {algo, K}
@@ -1271,8 +1264,8 @@ function auxiliary_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2:
         # First stage: predictive density at the transition mean (zero shock),
         # spread by the shock-induced predictive variance `pred_var`.
         fill!(E, 0.0)
-        propagate_cloud!(Val(algo), tr, scr, X2, X, E)
-        Fμ = full_states!(Fbuf, X2)
+        propagate_cloud!(Val(algo), tr, scr, X_scratch, X, E)
+        Fμ = full_states!(Fbuf, X_scratch)
         score_cloud!(logg̃, Fμ, data_col, observables_index, pred_var, inv_pred_var, rows, log2pi)
 
         # First-stage (auxiliary) weights λ ∝ W·g̃, with κ = Σ W·g̃.
@@ -1283,15 +1276,15 @@ function auxiliary_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2:
         # Resample ancestors ∝ λ, propagate with fresh shocks, second-stage weight
         # w = g(yₜ|xₜ) / g̃(ancestor).
         particle_resample_indices!(idx, bins, rng, lam, resampling)
-        gather_cloud!(Anc, X, idx)
+        gather_cloud!(anc, X, idx)
         Random.randn!(rng, E)
-        propagate_cloud!(Val(algo), tr, scr, X2, Anc, E)
-        F = full_states!(Fbuf, X2)
+        propagate_cloud!(Val(algo), tr, scr, X_scratch, anc, E)
+        F = full_states!(Fbuf, X_scratch)
         score_cloud!(logw, F, data_col, observables_index, me_var, inv_me_var, rows, log2pi)
         @inbounds for j in 1:n_particles
             logw[j] -= logg̃[idx[j]]
         end
-        X, X2 = X2, X
+        X, X_scratch = X_scratch, X
 
         logsw = normalise_log_weights!(W, logw)
         isfinite(logsw) || return on_failure_loglikelihood
@@ -1597,7 +1590,7 @@ end
 # proposal uses, which is the right shape at both ends of the bridge). Returns the
 # acceptance rate.
 function guided_anneal_mutate!(::Val{algo}, tr, scr, gp, St::NTuple{K,Matrix{Float64}},
-                               Sprop::NTuple{K,Matrix{Float64}}, Anc::NTuple{K,Matrix{Float64}},
+                               parts_proposed::NTuple{K,Matrix{Float64}}, anc::NTuple{K,Matrix{Float64}},
                                Fbuf, E, Eprop, Z, R, Mu, dv, dprop, accept,
                                c::Float64, β::Float64, data_col, observables_index,
                                inv_me_var, rows, rng) where {algo, K}
@@ -1610,26 +1603,34 @@ function guided_anneal_mutate!(::Val{algo}, tr, scr, gp, St::NTuple{K,Matrix{Flo
         Eprop[i] += E[i]
     end
 
-    propagate_cloud!(Val(algo), tr, scr, Sprop, Anc, Eprop)
-    residual_cloud!(R, full_states!(Fbuf, Sprop), data_col, observables_index, rows)
+    propagate_cloud!(Val(algo), tr, scr, parts_proposed, anc, Eprop)
+    residual_cloud!(R, full_states!(Fbuf, parts_proposed), data_col, observables_index, rows)
 
     accepted = 0
     @inbounds for p in 1:n_particles
-        d1 = residual_quadform(R, p, inv_me_var, rows)
-        dprop[p] = d1
-        isfinite(d1) || continue
-        S0 = 0.0; S1 = 0.0
+        # log γ_β = (1-β)·log q + β·log π̃, so the ratio needs both ends of the
+        # bridge at both shocks: the proposal's Mahalanobis form under M for q,
+        # and ‖ε‖² together with the measurement quadratic form for π̃.
+        measurement_proposed = residual_quadform(R, p, inv_me_var, rows)
+        dprop[p] = measurement_proposed
+        isfinite(measurement_proposed) || continue
+        shock_norm²_current  = 0.0
+        shock_norm²_proposed = 0.0
         for e in 1:nExo
-            a = E[e, p]; b = Eprop[e, p]
-            S0 += a * a; S1 += b * b
+            current  = E[e, p]
+            proposed = Eprop[e, p]
+            shock_norm²_current  += current * current
+            shock_norm²_proposed += proposed * proposed
         end
-        A0 = mahalanobis_M(E, Mu, gp.U, p)
-        A1 = mahalanobis_M(Eprop, Mu, gp.U, p)
-        logα = -0.5 * (1 - β) * (A1 - A0) - 0.5 * β * (S1 - S0) - 0.5 * β * (d1 - dv[p])
+        proposal_form_current  = mahalanobis_M(E, Mu, gp.U, p)
+        proposal_form_proposed = mahalanobis_M(Eprop, Mu, gp.U, p)
+        logα = -0.5 * (1 - β) * (proposal_form_proposed - proposal_form_current) -
+               0.5 * β * (shock_norm²_proposed - shock_norm²_current) -
+               0.5 * β * (measurement_proposed - dv[p])
         acc = log(rand(rng)) < logα
         accept[p] = acc
         if acc
-            dv[p] = d1
+            dv[p] = measurement_proposed
             accepted += 1
         else
             accept[p] = false
@@ -1639,7 +1640,7 @@ function guided_anneal_mutate!(::Val{algo}, tr, scr, gp, St::NTuple{K,Matrix{Flo
     @inbounds for p in 1:n_particles
         if accept[p]
             copy_col!(E, p, Eprop, p)
-            copy_cloud_col!(St, p, Sprop, p)
+            copy_cloud_col!(St, p, parts_proposed, p)
         end
     end
 
@@ -1682,6 +1683,17 @@ end
 
 # One Gauss-Newton step towards the mode: μ ← μ + M⁻¹(BₒᵀH⁻¹r(μ) - μ), batched.
 # `R` holds the residuals at the current `Mu`; `Tmp` is nExo × N scratch.
+#
+# This does not need as many observables as shocks, or the reverse. The step is
+# taken in shock space throughout: `K` is nExo × d and `M` is nExo × nExo however
+# many observables `d` are live. Nor can it break down when d < nExo — M is
+# I + BₒᵀH⁻¹Bₒ, a positive-definite matrix plus the identity, so it is invertible
+# even when Bₒ has a large null space and the observation pins down only some
+# directions of the shock. The unidentified directions simply keep their prior:
+# where Bₒ says nothing, M is the identity there and the step leaves μ at zero.
+# That is exactly the case the inversion filter cannot handle at all, and it is
+# the reason the particle filters accept fewer shocks than observables as well as
+# more.
 function guided_newton_step!(Mu::Matrix{Float64}, R::Matrix{Float64}, Tmp::Matrix{Float64},
                              gp::GuidedProposal)
     ℒ.mul!(Tmp, proposal_K(gp), view(R, 1:gp.d, :))   # M⁻¹BₒᵀH⁻¹r(μ)
@@ -1696,6 +1708,26 @@ end
 #     p(yₜ|xₜ₋₁) ≈ (2π)^(-d/2)|H|^(-1/2)|M|^(-1/2)·exp(-½‖μ‖² - ½r(μ)ᵀH⁻¹r(μ)).
 # `R` must hold the residuals evaluated at `Mu`. When the transition is linear in
 # the shock this reduces exactly to N(yₜ; mₚ, H + BₒBₒᵀ).
+#
+# Where the Laplace approximation sits in the algorithm, and where it does not.
+# It does two jobs, and the reported likelihood is not one of them:
+#
+#   1. It shapes the proposal. Expanding log p(εₜ|xₜ₋₁,yₜ) to second order about
+#      its mode gives a Gaussian with mean μ (the mode `guided_newton_step!`
+#      refines towards) and covariance M⁻¹. That Gaussian is q, the distribution
+#      the shocks are actually drawn from. A wrong Laplace approximation makes q
+#      a poor fit — more bridging stages, a lower ESS — but never a wrong answer.
+#
+#   2. It is the λ this function returns, kept only as a diagnostic. λ appears in
+#      both the numerator and the denominator of the importance weight and
+#      divides out exactly (see the derivation above `GuidedProposal`), which is
+#      what stops an over-confident approximation from steering the resampling.
+#
+# The likelihood the filter reports is the ordinary particle-filter estimate:
+# log of the weighted average of the exact p(yₜ|xₜᵖ) over the cloud, accumulated
+# across the bridging stages. Nothing in it is Gaussian by assumption. So the
+# approximation controls the filter's *efficiency*, and its errors show up as
+# variance rather than as bias.
 function guided_lambda!(logλ::Vector{Float64}, Mu::Matrix{Float64}, R::Matrix{Float64},
                         gp::GuidedProposal, inv_me_var, rows)
     nExo = size(Mu, 1)
@@ -1734,7 +1766,7 @@ function run_particle_filter(::Val{algo},
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
                              particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
-                             particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+                             particle_mh_steps::Int = DEFAULT_GUIDED_MH_STEPS,
                              particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
                              particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
@@ -1749,14 +1781,14 @@ function run_particle_filter(::Val{algo},
     nK = n_components(K)
     pools = ensure_particle_pools!(pws, 4 * nK + 1)
     X    = cloud_group(pools, 1, K)
-    X2   = cloud_group(pools, 2, K)
-    Anc  = cloud_group(pools, 3, K)
-    Anc2 = cloud_group(pools, 4, K)
+    X_scratch   = cloud_group(pools, 2, K)
+    anc  = cloud_group(pools, 3, K)
+    anc_scratch = cloud_group(pools, 4, K)
     Fbuf = pools[4 * nK + 1]
 
     init_cloud!(X, particle_rng, state, L, Fbuf)
 
-    return guided_loop!(Val(algo), tr, scr, X, X2, Anc, Anc2, Fbuf, pws.E, pws.E2, pws.Eprop,
+    return guided_loop!(Val(algo), tr, scr, X, X_scratch, anc, anc_scratch, Fbuf, pws.E, pws.E2, pws.Eprop,
                         pws.W, pws.logdens, pws.logw, pws.lam, pws.idx, pws.bins, nT,
                         normalize_presample_periods(presample_periods, nT),
                         observables_index, data_in_deviations, obs_idx_per_t, has_missing,
@@ -1768,8 +1800,8 @@ function run_particle_filter(::Val{algo},
                         Float64(on_failure_loglikelihood), log(2π))
 end
 
-function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NTuple{K,Matrix{Float64}},
-                      Anc::NTuple{K,Matrix{Float64}}, Anc2::NTuple{K,Matrix{Float64}},
+function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X_scratch::NTuple{K,Matrix{Float64}},
+                      anc::NTuple{K,Matrix{Float64}}, anc_scratch::NTuple{K,Matrix{Float64}},
                       Fbuf, E, Mu, Tmp, W, logλ, logw, lam,
                       idx, bins, nT, presample_periods, observables_index, data_in_deviations,
                       obs_idx_per_t, has_missing, me_var, inv_me_var, S₁, nPast, resampling,
@@ -1780,7 +1812,7 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
     R = Matrix{Float64}(undef, length(observables_index), n_particles)
     Z = Matrix{Float64}(undef, nExo, n_particles)
     Eprop = Matrix{Float64}(undef, nExo, n_particles)
-    Tmp2  = Matrix{Float64}(undef, nExo, n_particles)
+    mu_scratch  = Matrix{Float64}(undef, nExo, n_particles)
     dv     = Vector{Float64}(undef, n_particles)
     dprop  = Vector{Float64}(undef, n_particles)
     Lvec   = Vector{Float64}(undef, n_particles)
@@ -1800,8 +1832,8 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
 
         if isempty(rows)
             Random.randn!(rng, E)
-            propagate_cloud!(Val(algo), tr, scr, X2, X, E)
-            X, X2 = X2, X
+            propagate_cloud!(Val(algo), tr, scr, X_scratch, X, E)
+            X, X_scratch = X_scratch, X
             continue
         end
         if !same_rows(gp_rows, rows)
@@ -1813,12 +1845,12 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
         # transition at ε = 0 for the residual, then Gauss-Newton steps that use the
         # true residual rather than the linearisation.
         fill!(E, 0.0)
-        propagate_cloud!(Val(algo), tr, scr, X2, X, E)
-        residual_cloud!(R, full_states!(Fbuf, X2), data_col, observables_index, rows)
+        propagate_cloud!(Val(algo), tr, scr, X_scratch, X, E)
+        residual_cloud!(R, full_states!(Fbuf, X_scratch), data_col, observables_index, rows)
         ℒ.mul!(Mu, proposal_K(gp), view(R, 1:length(rows), :))
         for _ in 1:DEFAULT_GUIDED_NEWTON_STEPS
-            propagate_cloud!(Val(algo), tr, scr, X2, X, Mu)
-            residual_cloud!(R, full_states!(Fbuf, X2), data_col, observables_index, rows)
+            propagate_cloud!(Val(algo), tr, scr, X_scratch, X, Mu)
+            residual_cloud!(R, full_states!(Fbuf, X_scratch), data_col, observables_index, rows)
             guided_newton_step!(Mu, R, Tmp, gp)
         end
 
@@ -1828,9 +1860,9 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
         @inbounds for i in eachindex(E)
             E[i] += Mu[i]
         end
-        copy_cloud!(Anc, X)
-        propagate_cloud!(Val(algo), tr, scr, X2, Anc, E)
-        copy_cloud!(X, X2)
+        copy_cloud!(anc, X)
+        propagate_cloud!(Val(algo), tr, scr, X_scratch, anc, E)
+        copy_cloud!(X, X_scratch)
         residual_cloud!(R, full_states!(Fbuf, X), data_col, observables_index, rows)
 
         @inbounds for j in 1:n_particles
@@ -1843,7 +1875,9 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
         ll_t = 0.0
         β_old = 0.0
         stage = 0
-        @inbounds for j in 1:n_particles; negL[j] = -Lvec[j]; end
+        @inbounds for j in 1:n_particles
+            negL[j] = -Lvec[j]
+        end
         while β_old < 1.0 - 1e-12 && stage < max_stages
             stage += 1
             β_new = any(isfinite, negL) ? tempered_next_phi(β_old, negL, r_star, n_particles) : 1.0
@@ -1856,26 +1890,32 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
 
             if effective_sample_size(W) < resampling_threshold * n_particles
                 particle_resample_indices!(idx, bins, rng, W, resampling)
-                gather_cloud!(X2, X, idx);   copy_cloud!(X, X2)
-                gather_cloud!(Anc2, Anc, idx); copy_cloud!(Anc, Anc2)
+                gather_cloud!(X_scratch, X, idx)
+                copy_cloud!(X, X_scratch)
+                gather_cloud!(anc_scratch, anc, idx)
+                copy_cloud!(anc, anc_scratch)
                 @inbounds for j in 1:n_particles
                     a = idx[j]
                     copy_col!(Eprop, j, E, a)
-                    copy_col!(Tmp2, j, Mu, a)
+                    copy_col!(mu_scratch, j, Mu, a)
                     dprop[j] = dv[a]
                 end
-                copyto!(E, Eprop); copyto!(Mu, Tmp2); copyto!(dv, dprop)
+                copyto!(E, Eprop)
+                copyto!(Mu, mu_scratch)
+                copyto!(dv, dprop)
                 fill!(W, 1.0 / n_particles)
             end
 
             for _ in 1:n_mh
-                acc = guided_anneal_mutate!(Val(algo), tr, scr, gp, X, X2, Anc, Fbuf,
+                acc = guided_anneal_mutate!(Val(algo), tr, scr, gp, X, X_scratch, anc, Fbuf,
                                             E, Eprop, Z, R, Mu, dv, dprop, accept, c, β_new,
                                             data_col, observables_index, inv_me_var, rows, rng)
                 c = adapt_mh_scale(c, acc)
             end
             guided_bridge_gap!(Lvec, E, Mu, dv, gp)
-            @inbounds for j in 1:n_particles; negL[j] = -Lvec[j]; end
+            @inbounds for j in 1:n_particles
+                negL[j] = -Lvec[j]
+            end
             β_old = β_new
         end
         @debug "guided period" t stages = stage adaptation_ess = effective_sample_size(W) / n_particles
@@ -1974,6 +2014,28 @@ end
 #     schedule `φ` is already chosen adaptively from the particle system, so this
 #     adds no new kind of dependence; each individual Metropolis kernel is still
 #     exactly π_φ-invariant.
+#
+# How this differs from the guided filter's mutation (`guided_anneal_mutate!`).
+# The machinery is deliberately the same — bridge in stages, reweight, resample,
+# mutate, with the step size chosen by the same inefficiency target. What differs
+# is the two endpoints, and everything else follows from that:
+#
+#   * Where the bridge starts. Here at the prior N(ε;0,I), which knows nothing
+#     about yₜ, so the schedule usually needs several stages to arrive (~9 per
+#     period on the euro-area problem). The guided filter starts at its Laplace
+#     proposal, which already accounts for yₜ, and typically reaches β = 1 in one
+#     step — its bridge exists only for the periods the proposal fits badly.
+#   * What the mutation is preconditioned by. The preconditioner here has to
+#     follow the target as it contracts, hence the φ-dependent (I + φ G)⁻¹ and a
+#     fresh Cholesky per stage. The guided kernel reuses M⁻¹, the proposal's own
+#     covariance, at every β: it is the right shape at both ends because the
+#     bridge only interpolates between two distributions that already share it.
+#   * What β multiplies. Here φ scales the measurement term against a fixed
+#     prior. There the exponent moves weight from q to π̃, so the Metropolis ratio
+#     carries the proposal's Mahalanobis form as well as ‖ε‖².
+#
+# Both cost one batched transition per mutation step, so the difference in price
+# is entirely the difference in stage count.
 
 # `DEFAULT_PARTICLE_LOW_ESS_FRACTION` is the average effective sample size, as a
 # fraction of `n_particles`, below which the reported estimates are flagged. At
@@ -2049,7 +2111,7 @@ end
 # across threads. The RNG is drawn exactly once per particle, in order, either
 # way, so the outcome does not depend on the thread count.
 function tempered_mutate!(::Val{algo}, tr, scr, St::NTuple{K,Matrix{Float64}},
-                          Sprop::NTuple{K,Matrix{Float64}}, Anc::NTuple{K,Matrix{Float64}},
+                          parts_proposed::NTuple{K,Matrix{Float64}}, anc::NTuple{K,Matrix{Float64}},
                           E, Eprop, Z, Fbuf, dv, dprop, accept, Lφ, c::Float64, φ::Float64,
                           data_col, observables_index, inv_me_var, rows, rng) where {algo, K}
     n_particles = size(E, 2)
@@ -2061,20 +2123,23 @@ function tempered_mutate!(::Val{algo}, tr, scr, St::NTuple{K,Matrix{Float64}},
         Eprop[i] += E[i]
     end
 
-    propagate_cloud!(Val(algo), tr, scr, Sprop, Anc, Eprop)
-    F = full_states!(Fbuf, Sprop)
+    propagate_cloud!(Val(algo), tr, scr, parts_proposed, anc, Eprop)
+    F = full_states!(Fbuf, parts_proposed)
     quadform_cloud!(dprop, F, data_col, observables_index, inv_me_var, rows)
 
     accepted = 0
     @inbounds for p in 1:n_particles
-        esq_old = 0.0
-        esq_new = 0.0
+        # ‖ε‖² at the current and the proposed shock: the prior part of the
+        # Metropolis ratio, the measurement part being `dv`/`dprop`.
+        shock_norm²_current  = 0.0
+        shock_norm²_proposed = 0.0
         for e in 1:nExo
-            so = E[e, p]; sn = Eprop[e, p]
-            esq_old += so * so
-            esq_new += sn * sn
+            current  = E[e, p]
+            proposed = Eprop[e, p]
+            shock_norm²_current  += current * current
+            shock_norm²_proposed += proposed * proposed
         end
-        logα = -0.5 * ((esq_new - esq_old) + φ * (dprop[p] - dv[p]))
+        logα = -0.5 * ((shock_norm²_proposed - shock_norm²_current) + φ * (dprop[p] - dv[p]))
         acc = log(rand(rng)) < logα
         accept[p] = acc
         if acc
@@ -2087,7 +2152,7 @@ function tempered_mutate!(::Val{algo}, tr, scr, St::NTuple{K,Matrix{Float64}},
         @inbounds for p in cols
             if accept[p]
                 copy_col!(E, p, Eprop, p)
-                copy_cloud_col!(St, p, Sprop, p)
+                copy_cloud_col!(St, p, parts_proposed, p)
             end
         end
     end
@@ -2136,16 +2201,16 @@ function run_particle_filter(::Val{algo},
     K = pruned_components(Val(algo))
     nK = n_components(K)
     pools = ensure_particle_pools!(pws, 5 * nK + 1)
-    Anc   = cloud_group(pools, 1, K)
-    Anc2  = cloud_group(pools, 2, K)
+    anc   = cloud_group(pools, 1, K)
+    anc_scratch  = cloud_group(pools, 2, K)
     St    = cloud_group(pools, 3, K)
-    St2   = cloud_group(pools, 4, K)
-    Sprop = cloud_group(pools, 5, K)
+    St_scratch   = cloud_group(pools, 4, K)
+    parts_proposed = cloud_group(pools, 5, K)
     Fbuf  = pools[5 * nK + 1]
 
-    init_cloud!(Anc, particle_rng, state, L, Fbuf)
+    init_cloud!(anc, particle_rng, state, L, Fbuf)
 
-    return tempered_loop!(Val(algo), tr, scr, Anc, Anc2, St, St2, Sprop, Fbuf,
+    return tempered_loop!(Val(algo), tr, scr, anc, anc_scratch, St, St_scratch, parts_proposed, Fbuf,
                           pws.E, pws.E2, pws.Eprop, pws.logw, pws.Wn, pws.dv, pws.dv2,
                           pws.idx, pws.bins, nT, normalize_presample_periods(presample_periods, nT),
                           observables_index, data_in_deviations, obs_idx_per_t, has_missing,
@@ -2156,9 +2221,9 @@ function run_particle_filter(::Val{algo},
                           particle_rng, Float64(on_failure_loglikelihood), log(2π))
 end
 
-function tempered_loop!(::Val{algo}, tr, scr, Anc::NTuple{K,Matrix{Float64}}, Anc2::NTuple{K,Matrix{Float64}},
-                        St::NTuple{K,Matrix{Float64}}, St2::NTuple{K,Matrix{Float64}},
-                        Sprop::NTuple{K,Matrix{Float64}}, Fbuf, E, E2, Eprop, logw, Wn, dv, dv2,
+function tempered_loop!(::Val{algo}, tr, scr, anc::NTuple{K,Matrix{Float64}}, anc_scratch::NTuple{K,Matrix{Float64}},
+                        St::NTuple{K,Matrix{Float64}}, St_scratch::NTuple{K,Matrix{Float64}},
+                        parts_proposed::NTuple{K,Matrix{Float64}}, Fbuf, E, E_scratch, Eprop, logw, Wn, dv, dv_scratch,
                         idx, bins, nT, presample_periods, observables_index, data_in_deviations,
                         obs_idx_per_t, has_missing, me_var, inv_me_var, S₁, nPast, resampling,
                         r_star, mh_scale, n_mh, max_stages, rng, on_failure_loglikelihood, log2pi) where {algo, K}
@@ -2176,12 +2241,12 @@ function tempered_loop!(::Val{algo}, tr, scr, Anc::NTuple{K,Matrix{Float64}}, An
 
         # Bootstrap proposal: propagate every ancestor with a fresh shock.
         Random.randn!(rng, E)
-        propagate_cloud!(Val(algo), tr, scr, St, Anc, E)
+        propagate_cloud!(Val(algo), tr, scr, St, anc, E)
         F = full_states!(Fbuf, St)
         quadform_cloud!(dv, F, data_col, observables_index, inv_me_var, rows)
 
         if isempty(rows)
-            Anc, St = St, Anc
+            anc, St = St, anc
             continue
         end
         if all(!isfinite, dv)
@@ -2218,21 +2283,21 @@ function tempered_loop!(::Val{algo}, tr, scr, Anc::NTuple{K,Matrix{Float64}}, An
             period_ll += logsw - log(n_particles)
 
             particle_resample_indices!(idx, bins, rng, Wn, resampling)
-            gather_cloud!(Anc2, Anc, idx)
-            gather_cloud!(St2, St, idx)
+            gather_cloud!(anc_scratch, anc, idx)
+            gather_cloud!(St_scratch, St, idx)
             @inbounds for j in 1:n_particles
-                copy_col!(E2, j, E, idx[j])
-                dv2[j] = dv[idx[j]]
+                copy_col!(E_scratch, j, E, idx[j])
+                dv_scratch[j] = dv[idx[j]]
             end
-            Anc, Anc2 = Anc2, Anc
-            St,  St2  = St2,  St
-            E,   E2   = E2,   E
-            dv,  dv2  = dv2,  dv
+            anc, anc_scratch = anc_scratch, anc
+            St,  St_scratch  = St_scratch,  St
+            E,   E_scratch   = E_scratch,   E
+            dv,  dv_scratch  = dv_scratch,  dv
 
             Lφ = tempering_proposal_factor(G, φ_new)
             acc_sum = 0.0
             for _ in 1:n_mh
-                acc = tempered_mutate!(Val(algo), tr, scr, St, Sprop, Anc, E, Eprop, Z, Fbuf,
+                acc = tempered_mutate!(Val(algo), tr, scr, St, parts_proposed, anc, E, Eprop, Z, Fbuf,
                                        dv, dprop, accept, Lφ, c, φ_new, data_col,
                                        observables_index, inv_me_var, rows, rng)
                 c = adapt_mh_scale(c, acc)
@@ -2248,8 +2313,8 @@ function tempered_loop!(::Val{algo}, tr, scr, Anc::NTuple{K,Matrix{Float64}}, An
         end
         # The filtered cloud becomes next period's ancestors. A swap rather than a
         # copy: next period's propagation overwrites every column of `St` before
-        # reading it, so whatever `Anc` held is free to be scribbled over.
-        Anc, St = St, Anc
+        # reading it, so whatever `anc` held is free to be scribbled over.
+        anc, St = St, anc
     end
 
     return isfinite(loglik) ? loglik : on_failure_loglikelihood
@@ -2270,19 +2335,26 @@ end
 # `smooth = true` they condition on the whole sample, E[xₜ | y₁..T], obtained by
 # the genealogy smoother in `smooth_particle_trajectories!` below.
 #
-# All three particle variants target the same filtering distribution p(xₜ|y₁..ₜ)
+# All four particle variants target the same filtering distribution p(xₜ|y₁..ₜ)
 # — they differ only in how they get there — so the recursion below is shared.
 # `:bootstrap_particle` and `:auxiliary_particle` use the plain
 # predict/weight/resample step: the auxiliary filter's look-ahead proposal changes
 # the *variance* of the likelihood estimate, not the cloud it leaves behind, so
-# there is nothing extra to do for the moments. `:tempered_particle` does change
-# the cloud: within each period it bridges from the prior to the full measurement
-# density in stages, resampling and rejuvenating the shocks by preconditioned
-# random-walk Metropolis at each one. That leaves a cloud with far more distinct
-# support points at the same `n_particles`, which is exactly what the moments
-# (and the smoother, which walks the genealogy) benefit from — so the tempering
-# controls act here too, and `:tempered_particle` is the variant to use when the
-# estimates themselves, rather than a likelihood, are the output of interest.
+# there is nothing extra to do for the moments.
+#
+# The other two do change the cloud, and that is what makes them the ones to use
+# when the estimates themselves, rather than a likelihood, are the output. Both
+# bridge to the period's target in stages and rejuvenate the shocks by Metropolis
+# at each one, which leaves far more distinct support points at the same
+# `n_particles` — exactly what the weighted moments, and the smoother that walks
+# the genealogy, depend on. So the bridging controls act here too.
+#
+# Between the two, `:guided_particle` is the better default: it bridges from a
+# proposal that already accounts for the observation rather than from the prior,
+# and measures both more accurate and much cheaper (see the estimates section of
+# `docs/src/filters.md`). `:tempered_particle` is the fallback for the case the
+# guided proposal is built on and can get wrong — an observation far from linear
+# in the shock — since it assumes nothing about that.
 #
 # `decomposition` is the shock decomposition of whichever shock path was
 # produced — filtered when `smooth = false`, smoothed when `smooth = true`.
@@ -2343,14 +2415,14 @@ end
     parts2 = cloud_group(pools, 2, K)
     anc    = cloud_group(pools, 3, K)
     anc2   = cloud_group(pools, 4, K)
-    sprop  = cloud_group(pools, 5, K)
+    parts_proposed  = cloud_group(pools, 5, K)
     sprop2 = cloud_group(pools, 6, K)
     Fbuf   = pools[6 * nK + 1]
 
     init_cloud!(parts, particle_rng, state, L, Fbuf)
 
     if pf == :guided_particle
-        guided_estimates_loop!(Val(algo), tr, scr, parts, parts2, anc, sprop, sprop2, Fbuf, pws,
+        guided_estimates_loop!(Val(algo), tr, scr, parts, parts2, anc, parts_proposed, sprop2, Fbuf, pws,
                                variables, stds, shocks_out, nT, observables_index, dat,
                                obs_idx_per_t, has_missing, me_var, inv_me_var,
                                𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
@@ -2360,7 +2432,7 @@ end
                                particle_rng, smooth, log(2π))
     else
         particle_estimates_loop!(Val(algo), Val(pf == :tempered_particle), tr, scr,
-                                 parts, parts2, anc, anc2, sprop, Fbuf, pws,
+                                 parts, parts2, anc, anc2, parts_proposed, Fbuf, pws,
                                  variables, stds, shocks_out, nT, observables_index, dat,
                                  obs_idx_per_t, has_missing, me_var, inv_me_var,
                                  𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
@@ -2393,13 +2465,15 @@ end
         init_vec = state isa AbstractVector{<:AbstractVector} ? state[1] : state
         sck = zeros(nExo)
         @inbounds for i in 1:nExo
-            fill!(sck, 0.0); sck[i] = shocks_out[i, 1]
+            fill!(sck, 0.0)
+            sck[i] = shocks_out[i, 1]
             decomposition[:, i, 1] .= 𝐒₁ * vcat(init_vec[past_idx], sck)
         end
         decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end-2, 1], dims = 2)
         for t in 2:nT
             @inbounds for i in 1:nExo
-                fill!(sck, 0.0); sck[i] = shocks_out[i, t]
+                fill!(sck, 0.0)
+                sck[i] = shocks_out[i, t]
                 decomposition[:, i, t] .= 𝐒₁ * vcat(decomposition[past_idx, i, t-1], sck)
             end
             decomposition[:, end - 1, t] .= decomposition[:, end, t] - sum(decomposition[:, 1:end-2, t], dims = 2)
@@ -2444,9 +2518,9 @@ end
 # The forward pass shared by every particle variant. `Val(tempered)` selects the
 # within-period tempering stages; the rest of the recursion is identical.
 function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
-                                  parts::NTuple{K,Matrix{Float64}}, parts2::NTuple{K,Matrix{Float64}},
-                                  anc::NTuple{K,Matrix{Float64}}, anc2::NTuple{K,Matrix{Float64}},
-                                  sprop::NTuple{K,Matrix{Float64}}, Fbuf, pws,
+                                  parts::NTuple{K,Matrix{Float64}}, parts_scratch::NTuple{K,Matrix{Float64}},
+                                  anc::NTuple{K,Matrix{Float64}}, anc_scratch::NTuple{K,Matrix{Float64}},
+                                  parts_proposed::NTuple{K,Matrix{Float64}}, Fbuf, pws,
                                   variables, stds, shocks_out, nT, observables_index, dat,
                                   obs_idx_per_t, has_missing, me_var, inv_me_var, S₁, nPast,
                                   resampling, resampling_threshold, r_star, mh_scale, n_mh,
@@ -2455,9 +2529,9 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
     nVars = size(variables, 1)
     nExo  = size(shocks_out, 1)
 
-    E, E2, Eprop = pws.E, pws.E2, pws.Eprop
+    E, E_scratch, Eprop = pws.E, pws.E2, pws.Eprop
     W, logdens, Wn = pws.W, pws.logdens, pws.Wn
-    dv, dv2 = pws.dv, pws.dv2
+    dv, dv_scratch = pws.dv, pws.dv2
     idx, bins = pws.idx, pws.bins
     Z      = tempered ? Matrix{Float64}(undef, nExo, n_particles) : Matrix{Float64}(undef, 0, 0)
     dprop  = tempered ? Vector{Float64}(undef, n_particles) : Float64[]
@@ -2479,7 +2553,7 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
     within      = smooth ? [Int[] for _ in 1:nT] : Vector{Int}[]
     terminal_weights = smooth ? fill(1.0 / n_particles, n_particles) : Float64[]
     comp  = tempered ? collect(1:n_particles) : Int[]
-    comp2 = tempered ? collect(1:n_particles) : Int[]
+    comp_scratch = tempered ? collect(1:n_particles) : Int[]
 
     for t in 1:nT
         rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
@@ -2487,15 +2561,22 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
 
         Random.randn!(rng, E)
         if tempered
-            # The tempering stages need last period's cloud (the ancestors) to
-            # re-propagate Metropolis proposals from, so park it in `anc` and
-            # propagate into the buffer `anc` was using. A swap, not a copy: the
-            # target is fully overwritten before it is read.
+            # Why this branch keeps last period's cloud when the others discard
+            # it. Bootstrap and auxiliary propagate once per period and are then
+            # done with xₜ₋₁. Tempering mutates the *shock*: each Metropolis
+            # proposal is a new εₜ that has to be pushed through the transition
+            # from the same ancestor to see what state it implies, so xₜ₋₁ stays
+            # live for the whole period. (The guided filter needs it for the same
+            # reason, which is why `guided_estimates_loop!` carries `anc` too.)
+            #
+            # Hence: park the ancestors in `anc` and propagate into the buffer
+            # `anc` was using. A swap, not a copy — the target is fully
+            # overwritten before it is read.
             anc, parts = parts, anc
             propagate_cloud!(Val(algo), tr, scr, parts, anc, E)
         else
-            propagate_cloud!(Val(algo), tr, scr, parts2, parts, E)
-            parts, parts2 = parts2, parts
+            propagate_cloud!(Val(algo), tr, scr, parts_scratch, parts, E)
+            parts, parts_scratch = parts_scratch, parts
         end
         F = full_states!(Fbuf, parts)
 
@@ -2526,24 +2607,28 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
                     isfinite(normalise_log_weights!(Wn, logdens)) || break
 
                     particle_resample_indices!(idx, bins, rng, Wn, resampling)
-                    gather_cloud!(anc2, anc, idx)
-                    gather_cloud!(parts2, parts, idx)
+                    gather_cloud!(anc_scratch, anc, idx)
+                    gather_cloud!(parts_scratch, parts, idx)
                     @inbounds for j in 1:n_particles
                         a = idx[j]
-                        copy_col!(E2, j, E, a)
-                        dv2[j]   = dv[a]
-                        comp2[j] = comp[a]
+                        copy_col!(E_scratch, j, E, a)
+                        dv_scratch[j]   = dv[a]
+                        comp_scratch[j] = comp[a]
                     end
-                    anc,   anc2   = anc2,   anc
-                    parts, parts2 = parts2, parts
-                    E,     E2     = E2,     E
-                    dv,    dv2    = dv2,    dv
-                    comp,  comp2  = comp2,  comp
+                    # Every per-particle quantity carries a `_scratch` double. The
+                    # gather above wrote the resampled values into the doubles, so
+                    # swapping the two names makes them current — no copy, and the
+                    # old buffers become next stage's scratch.
+                    anc,   anc_scratch   = anc_scratch,   anc
+                    parts, parts_scratch = parts_scratch, parts
+                    E,     E_scratch     = E_scratch,     E
+                    dv,    dv_scratch    = dv_scratch,    dv
+                    comp,  comp_scratch  = comp_scratch,  comp
 
                     Lφ = tempering_proposal_factor(G, φ_new)
                     acc_sum = 0.0
                     for _ in 1:n_mh
-                        acc = tempered_mutate!(Val(algo), tr, scr, parts, sprop, anc, E, Eprop, Z,
+                        acc = tempered_mutate!(Val(algo), tr, scr, parts, parts_proposed, anc, E, Eprop, Z,
                                                Fbuf, dv, dprop, accept, Lφ, c, φ_new, data_col,
                                                observables_index, inv_me_var, rows, rng)
                         c = adapt_mh_scale(c, acc)
@@ -2560,7 +2645,9 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
                 end
                 # the tempering stages leave an equally weighted cloud
                 fill!(W, 1.0 / n_particles)
-                if smooth; within[t] = copy(comp); end
+                if smooth
+                    within[t] = copy(comp)
+                end
                 F = full_states!(Fbuf, parts)
             end
         else
@@ -2583,10 +2670,12 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
 
         if effective_sample_size(W) < resampling_threshold * n_particles
             particle_resample_indices!(idx, bins, rng, W, resampling)
-            gather_cloud!(parts2, parts, idx)
-            parts, parts2 = parts2, parts
+            gather_cloud!(parts_scratch, parts, idx)
+            parts, parts_scratch = parts_scratch, parts
             fill!(W, 1.0 / n_particles)
-            if smooth; parent[t] = copy(idx); end
+            if smooth
+                parent[t] = copy(idx)
+            end
         end
     end
 
@@ -2619,8 +2708,8 @@ end
 # proposal's own approximation error. Switched by `DEFAULT_GUIDED_RAO_BLACKWELL`.
 
 function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Float64}},
-                                parts2::NTuple{K,Matrix{Float64}}, anc::NTuple{K,Matrix{Float64}},
-                                sprop::NTuple{K,Matrix{Float64}}, sprop2::NTuple{K,Matrix{Float64}},
+                                parts_scratch::NTuple{K,Matrix{Float64}}, anc::NTuple{K,Matrix{Float64}},
+                                parts_proposed::NTuple{K,Matrix{Float64}}, sprop2::NTuple{K,Matrix{Float64}},
                                 Fbuf, pws, variables, stds, shocks_out, nT, observables_index, dat,
                                 obs_idx_per_t, has_missing, me_var, inv_me_var, S₁, nPast,
                                 resampling, resampling_threshold, n_mh, mh_scale,
@@ -2665,11 +2754,13 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
 
         if isempty(rows)
             Random.randn!(rng, E)
-            propagate_cloud!(Val(algo), tr, scr, parts2, parts, E)
-            parts, parts2 = parts2, parts
+            propagate_cloud!(Val(algo), tr, scr, parts_scratch, parts, E)
+            parts, parts_scratch = parts_scratch, parts
             F = full_states!(Fbuf, parts)
             if smooth
-                copyto!(terminal_weights, W); copyto!(hist_states[t], F); copyto!(hist_shocks[t], E)
+                copyto!(terminal_weights, W)
+                copyto!(hist_states[t], F)
+                copyto!(hist_shocks[t], E)
             else
                 accumulate_filtered_moments!(variables, stds, shocks_out, t, F, E, W)
             end
@@ -2682,12 +2773,12 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
 
         # Solve for the shock that best explains yₜ from each ancestor.
         fill!(E, 0.0)
-        propagate_cloud!(Val(algo), tr, scr, parts2, parts, E)
-        residual_cloud!(R, full_states!(Fbuf, parts2), data_col, observables_index, rows)
+        propagate_cloud!(Val(algo), tr, scr, parts_scratch, parts, E)
+        residual_cloud!(R, full_states!(Fbuf, parts_scratch), data_col, observables_index, rows)
         ℒ.mul!(Mu, proposal_K(gp), view(R, 1:length(rows), :))
         for _ in 1:DEFAULT_GUIDED_NEWTON_STEPS
-            propagate_cloud!(Val(algo), tr, scr, parts2, parts, Mu)
-            residual_cloud!(R, full_states!(Fbuf, parts2), data_col, observables_index, rows)
+            propagate_cloud!(Val(algo), tr, scr, parts_scratch, parts, Mu)
+            residual_cloud!(R, full_states!(Fbuf, parts_scratch), data_col, observables_index, rows)
             guided_newton_step!(Mu, R, Tmp, gp)
         end
 
@@ -2700,8 +2791,8 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
         @inbounds for i in eachindex(E)
             E[i] += Mu[i]
         end
-        propagate_cloud!(Val(algo), tr, scr, parts2, parts, E)
-        parts, parts2 = parts2, parts
+        propagate_cloud!(Val(algo), tr, scr, parts_scratch, parts, E)
+        parts, parts_scratch = parts_scratch, parts
         F = full_states!(Fbuf, parts)
         residual_cloud!(R, F, data_col, observables_index, rows)
 
@@ -2714,7 +2805,9 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
         # schedule reaches β = 1 in one step and this is the plain guided filter.
         β_old = 0.0
         stage = 0
-        @inbounds for j in 1:n_particles; negL[j] = -Lvec[j]; end
+        @inbounds for j in 1:n_particles
+            negL[j] = -Lvec[j]
+        end
         while β_old < 1.0 - 1e-12 && stage < max_stages
             stage += 1
             β_new = any(isfinite, negL) ? tempered_next_phi(β_old, negL, r_star, n_particles) : 1.0
@@ -2725,22 +2818,28 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
 
             if effective_sample_size(W) < resampling_threshold * n_particles
                 particle_resample_indices!(idx, bins, rng, W, resampling)
-                gather_cloud!(parts2, parts, idx); copy_cloud!(parts, parts2)
-                gather_cloud!(sprop, anc, idx);    copy_cloud!(anc, sprop)
+                gather_cloud!(parts_scratch, parts, idx)
+                copy_cloud!(parts, parts_scratch)
+                gather_cloud!(parts_proposed, anc, idx)
+                copy_cloud!(anc, parts_proposed)
                 @inbounds for j in 1:n_particles
                     a = idx[j]
                     copy_col!(Eprop, j, E, a)
                     copy_col!(Tmp2, j, Mu, a)
                     dprop[j] = dv[a]
                 end
-                copyto!(E, Eprop); copyto!(Mu, Tmp2); copyto!(dv, dprop)
+                copyto!(E, Eprop)
+                copyto!(Mu, Tmp2)
+                copyto!(dv, dprop)
                 fill!(W, 1.0 / n_particles)
                 if smooth
                     if isempty(parent[t])
                         parent[t] = copy(idx)
                     else
                         prev = parent[t]
-                        @inbounds for j in 1:n_particles; comp[j] = prev[idx[j]]; end
+                        @inbounds for j in 1:n_particles
+                            comp[j] = prev[idx[j]]
+                        end
                         parent[t] = copy(comp)
                     end
                 end
@@ -2753,11 +2852,14 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
                 c = adapt_mh_scale(c, acc)
             end
             guided_bridge_gap!(Lvec, E, Mu, dv, gp)
-            @inbounds for j in 1:n_particles; negL[j] = -Lvec[j]; end
+            @inbounds for j in 1:n_particles
+                negL[j] = -Lvec[j]
+            end
             β_old = β_new
         end
         F = full_states!(Fbuf, parts)
-        ess_sum += effective_sample_size(W); n_scored += 1
+        ess_sum += effective_sample_size(W)
+        n_scored += 1
         @debug "guided period" t stages = stage adaptation_ess = effective_sample_size(W) / n_particles
 
         # Which shock to report. Without rejuvenation the conditional mean μ is the
@@ -2859,10 +2961,12 @@ function smooth_particle_trajectories!(variables::Matrix{Float64},
     lineage = collect(1:n_particles)
 
     for t in nT:-1:1
-        Hs = hist_states[t]; Hh = hist_shocks[t]
+        Hs = hist_states[t]
+        Hh = hist_shocks[t]
 
         @inbounds for p in 1:n_particles
-            a = lineage[p]; w = W[p]
+            a = lineage[p]
+            w = W[p]
             for i in 1:nVars
                 variables[i, t] += w * Hs[i, a]
             end
@@ -2871,7 +2975,8 @@ function smooth_particle_trajectories!(variables::Matrix{Float64},
             end
         end
         @inbounds for p in 1:n_particles
-            a = lineage[p]; w = W[p]
+            a = lineage[p]
+            w = W[p]
             for i in 1:nVars
                 stds[i, t] += w * (Hs[i, a] - variables[i, t])^2
             end
@@ -2922,10 +3027,14 @@ function shock_path_trajectory(::Val{algo}, tr::ParticleTransition, scr, state,
     traj = zeros(nVars, nT)
 
     for t in 1:nT
-        @inbounds for e in axes(shocks_out, 1); E[e, 1] = shocks_out[e, t]; end
+        @inbounds for e in axes(shocks_out, 1)
+            E[e, 1] = shocks_out[e, t]
+        end
         propagate_cloud!(Val(algo), tr, scr, nxt, cur, E)
         full = full_states!(F, nxt)
-        @inbounds for i in 1:nVars; traj[i, t] = full[i, 1]; end
+        @inbounds for i in 1:nVars
+            traj[i, t] = full[i, 1]
+        end
         cur, nxt = nxt, cur
     end
 

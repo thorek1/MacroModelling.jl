@@ -206,6 +206,19 @@ which contracts as ``\phi`` rises and is strongly anisotropic — the observable
 
 In practice this buys a large variance reduction per particle — several times lower standard deviation than the bootstrap filter at the same ``N`` — at several times the cost per particle. It is the right default when the bootstrap filter degenerates.
 
+**The knobs, and which step each one controls.** One period is: *choose ``\phi_{k+1}`` → reweight → resample → mutate*, repeated until ``\phi = 1``.
+
+| option | step it acts on | what it does |
+|---|---|---|
+| `particle_target_ratio` | choosing ``\phi_{k+1}`` | The schedule is solved for, not fixed: ``\phi_{k+1}`` is the largest step whose incremental weights stay within this inefficiency target. Lower ⇒ smaller steps ⇒ more of them, each discarding fewer particles at its resampling. |
+| `particle_max_stages` | the loop itself | Hard cap on stages per period, so a pathological observation cannot hang the run. Reaching it is a symptom, not a setting to raise. |
+| `particle_resampling`, `particle_resampling_threshold` | resample | Which scheme, and how degenerate the weights must get first. The tempered filter resamples at *every* stage regardless (see [What actually limits the precision](@ref)), so the threshold only governs the once-per-period resampling that follows. |
+| `particle_mh_steps` | mutate | How many random-walk Metropolis sweeps per stage. Each sweep is one batched transition evaluation, so this is where the compute goes. |
+| `particle_mh_scale` | mutate | The *starting* step size, in units of the stage's own posterior scale. The filter adapts it towards the target acceptance rate during the run, so this only sets where the adaptation begins. |
+| `n_particles`, `measurement_error`, `particle_rng` | all of them | Cloud size, the ``H`` that defines ``\pi_\phi``, and the random stream. |
+
+`particle_target_ratio`, `particle_max_stages`, `particle_mh_steps` and `particle_mh_scale` are shared with `:guided_particle`, which runs the same four steps against a different bridge — see below. They have no effect on `:bootstrap_particle` or `:auxiliary_particle`, which do not bridge or mutate at all.
+
 **Reference:** Herbst & Schorfheide (2019), *Tempered Particle Filtering*; see also Herbst & Schorfheide (2015), *Bayesian Estimation of DSGE Models*.
 
 ### Estimates versus likelihoods
@@ -242,7 +255,14 @@ The investment-specific shock `eqs` makes the point sharply. At the defaults its
 
 The practical reading: past `n_particles` of a few thousand, spend the next unit of compute on `particle_mh_steps` (or a lower `particle_target_ratio`), not on more particles. `particle_mh_steps = 8` is worth trying whenever a shock looks unstable.
 
-**The direct check, and the one worth running:** call the same estimate under two or three different `particle_rng` seeds and compare. That takes seconds now and tells you exactly which of your shock estimates you can lean on. `tasks/particle_filter_diagnostics.jl` in the repository does this and prints the per-shock table above.
+**The direct check, and the one worth running:** call the same estimate under two or three different `particle_rng` seeds and compare. That takes seconds now and tells you exactly which of your shock estimates you can lean on:
+
+```julia
+using Random
+paths = [get_estimated_shocks(model, data, filter = :particle,
+                              particle_rng = Xoshiro(s)) for s in 1:3]
+maximum(abs, paths[1] .- paths[2])   # per-shock, per-period disagreement
+```
 
 ### Guided (`:guided_particle`, which `:particle` selects)
 
@@ -301,6 +321,20 @@ reweighting, resampling and mutating along the way — annealed importance sampl
 The point is that the schedule is adaptive, so this is nearly free: on the euro-area problem it takes **1.2 stages per period on average** (at most 6–8, in exactly the periods that need them), and where the proposal is already good it jumps straight to ``\beta = 1`` and reduces to the one-step filter. What it buys is the failure mode: the worst period's effective sample size goes from 0.00025 of the cloud to **0.50**, and the average from 0.24 to 0.92.
 
 The filter still warns when the average effective sample size falls below 5 % of `n_particles`. If that fires, the model is nonlinear enough in the shock that `:tempered_particle`, which assumes nothing, is worth its extra cost.
+
+**The knobs, and which step each one controls.** Steps 1–3 above are the proposal; step 4 is the same *choose ``\beta_{k+1}`` → reweight → resample → mutate* loop the tempered filter runs, differing only in where it starts.
+
+| option | step it acts on | what it does |
+|---|---|---|
+| `measurement_error` | steps 1–3 | ``H`` enters ``M = I + B_o'H^{-1}B_o`` directly, so it sets both the proposal's width and its centre — not just the weights, as it does for the bootstrap filter. |
+| `particle_target_ratio` | choosing ``\beta_{k+1}`` | Same inefficiency target as the tempered filter, applied to ``L = \log\tilde\pi - \log q``. Because ``q`` is already close to the target, the solved step is usually the whole way: ``\beta_1 = 1``, one stage, and the bridge costs nothing. |
+| `particle_max_stages` | the bridge loop | Cap on stages. Averages 1.2 here against the tempered filter's ~9, so the cap is far from binding in ordinary periods. |
+| `particle_mh_steps` | mutate | Metropolis sweeps per stage, preconditioned by ``M^{-1}`` — the proposal's own covariance, which is the right shape at both ends of the bridge. Defaults to `2` here rather than `4`, because bridging from a good proposal needs less rejuvenation; the *estimates* are flat in this knob and only the likelihood discriminates. |
+| `particle_mh_scale` | mutate | Starting step size, adapted during the run exactly as in the tempered filter. |
+| `particle_resampling`, `particle_resampling_threshold` | resample | As for the tempered filter. Unlike it, this filter resamples only when the threshold is crossed, which in an ordinary period means once. |
+| `n_particles`, `particle_rng` | all of them | Cloud size and the random stream. |
+
+The proposal's own two settings — two Gauss–Newton refinement steps and a width of one Laplace scale — are deliberately not exposed. Both were swept and both are flat or worse in either direction; the measurements are in [Tuning it: the settings barely matter, and here is the evidence](@ref) and in the comments in `src/filter/particle.jl`.
 
 #### Does it survive a crisis? COVID on the euro-area data
 

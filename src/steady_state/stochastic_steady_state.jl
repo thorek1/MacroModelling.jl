@@ -182,7 +182,7 @@ function calculate_stochastic_steady_state(::Val{:second_order},
     B_sss = 𝐒₂[T.past_not_future_and_mixed_idx,1:n_state_pair]
 
     SSSstates, converged = solve_stochastic_steady_state_newton(
-        Val(:second_order), A_sss, B_sss, collect(SSSstates), 𝓂; filtered = true)
+        Val(:second_order), A_sss, B_sss, collect(SSSstates), 𝓂)
 
     if !converged
         if opts.verbose println("SSS not found") end
@@ -256,8 +256,7 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
                                               𝐒₂::AbstractSparseMatrix{R}, 
                                               x::Vector{R},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14,
-                                              filtered::Bool = false)::Tuple{Vector{R}, Bool} where R <: AbstractFloat
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Setup matrices" begin
 
     # Get cached computational constants
@@ -266,10 +265,11 @@ function solve_stochastic_steady_state_newton(::Val{:second_order},
     T = constants.post_model_macro
     I_nPast = T.I_nPast
 
-    A = filtered ? 𝐒₁ : 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
-    n_state_aug = T.nPast_not_future_and_mixed + 1
-    n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
-    B = filtered ? 𝐒₂ : 𝐒₂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
+    # `𝐒₁`/`𝐒₂` arrive already restricted to the past/mixed rows and the
+    # state-and-constant prefix of the compressed columns; the shock columns are
+    # not unknowns of this Newton solve. See the call site above.
+    A = 𝐒₁
+    B = 𝐒₂
     B̂ = B
 
     max_iters = 100
@@ -389,7 +389,7 @@ function calculate_stochastic_steady_state(::Val{:third_order},
     B_sss = 𝐒₂[T.past_not_future_and_mixed_idx,1:n_state_pair]
     C_sss = 𝐒₃[T.past_not_future_and_mixed_idx,1:n_state_triple]
     SSSstates, converged = solve_stochastic_steady_state_newton(
-        Val(:third_order), A_sss, B_sss, C_sss, collect(SSSstates), 𝓂; filtered = true)
+        Val(:third_order), A_sss, B_sss, C_sss, collect(SSSstates), 𝓂)
 
     if !converged
         if opts.verbose println("SSS not found") end
@@ -485,20 +485,20 @@ function solve_stochastic_steady_state_newton(::Val{:third_order},
                                               𝐒₃::AbstractMatrix{Float64},
                                               x::Vector{Float64},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14,
-                                              filtered::Bool = false)::Tuple{Vector{Float64}, Bool}
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{Float64}, Bool}
     # Get cached computational constants
     T = 𝓂.constants.post_model_macro
     I_nPast = T.I_nPast
     so = ensure_computational_constants!(𝓂.constants)
     
-    A = filtered ? 𝐒₁ : 𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed]
+    # Pre-sliced by the caller, as at second order.
+    A = 𝐒₁
     n_state_aug = T.nPast_not_future_and_mixed + 1
     n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
     n_state_triple = n_state_aug * (n_state_aug + 1) * (n_state_aug + 2) ÷ 6
-    B = filtered ? 𝐒₂ : 𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
+    B = 𝐒₂
     B̂ = B
-    C = filtered ? 𝐒₃ : 𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_triple]
+    C = 𝐒₃
     Ĉ = C
 
     max_iters = 100

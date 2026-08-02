@@ -624,8 +624,17 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
     # ── t = 0 ──
     aug = [state[past_idx]; one(S); shock_vals]
     Y[:, 1] = Ŝ₁̂ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2
-    if has_third;  Y[:, 1] += 𝐒₃ * compressed_kron³_power(aug) / 6;  end
+    if has_third
+        Y[:, 1] += 𝐒₃ * compressed_kron³_power(aug) / 6
+    end
 
+    # Directional derivatives. The forward weights ½ and ⅙ do not carry over:
+    # d/dε compressed_kron²_power(a + εd) = 2·compressed_kron²(a, d) and
+    # d/dε compressed_kron³_power(a + εd) = 3·compressed_kron³(a, a, d), so ½·2
+    # is 1 (no factor below) and ⅙·3 is ½. The uncompressed form summed the two
+    # (resp. three) permutations itself and so divided by 2 (resp. 6) instead;
+    # the compressed kernels already include them, which is where the apparent
+    # factor-of-3 change comes from. `test/test_compressed_kron.jl` pins both.
     d_aug = zeros(S, n_aug)
     for j in 1:n_x
         fill!(d_aug, zero(S))
@@ -641,7 +650,9 @@ function obc_dYdx_nonpruned_higher!(Y, dYdx, state, shock_vals, zero_shock,
     for t in 1:periods
         aug_t    = [Y[past_idx, t]; one(S); zeros(S, n_shocks)]
         Y[:, t+1] = Ŝ₁̂ * aug_t + 𝐒₂ * compressed_kron²_power(aug_t) / 2
-        if has_third;  Y[:, t+1] += 𝐒₃ * compressed_kron³_power(aug_t) / 6;  end
+        if has_third
+            Y[:, t+1] += 𝐒₃ * compressed_kron³_power(aug_t) / 6
+        end
 
         for j in 1:n_x
             fill!(d_aug_t, zero(S))

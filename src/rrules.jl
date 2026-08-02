@@ -9902,18 +9902,20 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # ∂𝐒ⁱ²ᵉ_v from KKT:
                 #   dG_top[r]/d𝐒ⁱ²ᵉ_v[i, (p-1)n_exo+q] = -2 δ_{rp} x_q λ[i] → contrib = +2 λ[i] Sx[p] x_q
                 #   dG_F[i']/d𝐒ⁱ²ᵉ_v[i, (p-1)n_exo+q] = δ_{ii'} x_p x_q       → contrib = -Sλ[i] x_p x_q
-                ∂𝐒ⁱ²ᵉ_v_top = zeros(m, n_exo²)
                 ∂xx = compressed_kron²_power(x)
+                pair_top = Vector{Float64}(undef, n_exo²)
                 pair_column = 0
                 @inbounds for p in 1:n_exo
                     for q in 1:p
                         pair_column += 1
-                        top_value = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
-                        ∂𝐒ⁱ²ᵉ_v_top[:, pair_column] .= 2 .* λ .* top_value
+                        pair_top[pair_column] = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
                     end
                 end
-                ∂𝐒ⁱ²ᵉ_v_F   = -Sλ * ∂xx'
-                ∂𝐒ⁱ²ᵉ_v_kkt = ∂𝐒ⁱ²ᵉ_v_top + ∂𝐒ⁱ²ᵉ_v_F
+                # Two rank-1 updates into one matrix, rather than building the
+                # two terms separately and adding them.
+                ∂𝐒ⁱ²ᵉ_v_kkt = zeros(m, n_exo²)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, λ, pair_top', 2, 0)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, Sλ, ∂xx', -1, 1)
 
                 # Add direct ∂jac_v contributions:
                 #   ∂𝐒ⁱ_v    += ∂jac_v
@@ -11911,6 +11913,9 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin
         
+        # Scratch for the compressed pair-basis KKT cotangent inside the loop.
+        pair_top = zeros(T.nExo * (T.nExo + 1) ÷ 2)
+
         for i in reverse(axes(data_in_deviations,2))
             # state₁, state₂ = [𝐒⁻¹ * aug_state₁[i], 𝐒⁻¹ * aug_state₂[i] + 𝐒⁻² * ℒ.kron(aug_state₁[i], aug_state₁[i]) / 2]
             # state₁ = 𝐒⁻¹ * aug_state₁[i]
@@ -12023,14 +12028,24 @@ function rrule(::typeof(calculate_loglikelihood),
             # KKT tensor cotangent in the compressed pair basis. The full-coordinate
             # form was
             #   ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            # Two preallocated rank-1 updates rather than a column loop. The
+            # loop form read the target column back on the right of a `.+=`, which
+            # materialises the column: measured in isolation, 240 B per call at
+            # nExo = 2 rising to 328 kB at nExo = 40, and 1.6-5.8x slower than
+            # the two `ger!`s. End to end this block is a small share of the
+            # pullback — on Smets-Wouters at nExo = 7 over 80 periods it is
+            # 0.5 MB of 150 MB — but it grows with nExo and there is no reason
+            # to pay it.
+            xᵢ = x[i]
             pair_column = 0
             @inbounds for p in 1:T.nExo
                 for q in 1:p
                     pair_column += 1
-                    top_value = p == q ? S1[p] * x[i][q] : S1[p] * x[i][q] + S1[q] * x[i][p]
-                    ∂𝐒ⁱ²ᵉ[:, pair_column] .+= 2 .* λ[i] .* top_value .- S2 .* kronxx[i][pair_column]
+                    pair_top[pair_column] = p == q ? S1[p] * xᵢ[q] : S1[p] * xᵢ[q] + S1[q] * xᵢ[p]
                 end
             end
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, λ[i], pair_top', 2, 1)
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, S2, kronxx[i]', -1, 1)
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
             fill!(∂state¹⁻_vol, 0)
@@ -12513,18 +12528,20 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 ∂v_v = Sλ
                 ∂𝐒ⁱ_v = λ * Sx' - Sλ * x'
 
-                ∂𝐒ⁱ²ᵉ_v_top = zeros(m, n_exo²)
                 ∂xx = compressed_kron²_power(x)
+                pair_top = Vector{Float64}(undef, n_exo²)
                 pair_column = 0
                 @inbounds for p in 1:n_exo
                     for q in 1:p
                         pair_column += 1
-                        top_value = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
-                        ∂𝐒ⁱ²ᵉ_v_top[:, pair_column] .= 2 .* λ .* top_value
+                        pair_top[pair_column] = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
                     end
                 end
-                ∂𝐒ⁱ²ᵉ_v_F   = -Sλ * ∂xx'
-                ∂𝐒ⁱ²ᵉ_v_kkt = ∂𝐒ⁱ²ᵉ_v_top + ∂𝐒ⁱ²ᵉ_v_F
+                # Two rank-1 updates into one matrix, rather than building the
+                # two terms separately and adding them.
+                ∂𝐒ⁱ²ᵉ_v_kkt = zeros(m, n_exo²)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, λ, pair_top', 2, 0)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, Sλ, ∂xx', -1, 1)
 
                 if t > presample_periods
                     ∂𝐒ⁱ_v_total = ∂𝐒ⁱ_v + ∂jac_v
@@ -13061,6 +13078,9 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin
 
+        # Scratch for the compressed pair-basis KKT cotangent inside the loop.
+        pair_top = zeros(T.nExo * (T.nExo + 1) ÷ 2)
+
         for i in reverse(axes(data_in_deviations,2))
             # stt = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
             # ∂𝐒⁻¹ += ∂state * aug_state[i]'
@@ -13156,14 +13176,24 @@ function rrule(::typeof(calculate_loglikelihood),
             ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
 
             # KKT tensor cotangent in the compressed pair basis.
+            # Two preallocated rank-1 updates rather than a column loop. The
+            # loop form read the target column back on the right of a `.+=`, which
+            # materialises the column: measured in isolation, 240 B per call at
+            # nExo = 2 rising to 328 kB at nExo = 40, and 1.6-5.8x slower than
+            # the two `ger!`s. End to end this block is a small share of the
+            # pullback — on Smets-Wouters at nExo = 7 over 80 periods it is
+            # 0.5 MB of 150 MB — but it grows with nExo and there is no reason
+            # to pay it.
+            xᵢ = x[i]
             pair_column = 0
             @inbounds for p in 1:T.nExo
                 for q in 1:p
                     pair_column += 1
-                    top_value = p == q ? S1[p] * x[i][q] : S1[p] * x[i][q] + S1[q] * x[i][p]
-                    ∂𝐒ⁱ²ᵉ[:, pair_column] .+= 2 .* λ[i] .* top_value .- S2 .* kronxx[i][pair_column]
+                    pair_top[pair_column] = p == q ? S1[p] * xᵢ[q] : S1[p] * xᵢ[q] + S1[q] * xᵢ[p]
                 end
             end
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, λ[i], pair_top', 2, 1)
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, S2, kronxx[i]', -1, 1)
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
             fill!(∂state¹⁻_vol, 0)
@@ -13669,7 +13699,8 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂aug_state₁, 0); fill!(∂aug_state₁̂, 0); fill!(∂aug_state₂, 0); fill!(∂aug_state₃, 0)
         fill!(∂aug_state₂_cross, 0)
         fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
-        fill!(∂state¹⁻_vol_pair, 0); fill!(∂state¹⁻_vol_cubic, 0)
+        fill!(∂state¹⁻_vol_pair, 0)
+        fill!(∂state¹⁻_vol_cubic, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(∂kronaug_for3, 0)
         fill!(∂jac_v_buf, 0)
@@ -13811,25 +13842,27 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 ∂𝐒ⁱ_v = λ * Sx' - Sλ * x'
 
                 # Pair and triple KKT cotangents in compressed coordinates.
-                ∂𝐒ⁱ²ᵉ_v_top = zeros(m, n_exo²)
                 pair_xx = compressed_kron²_power(x)
+                pair_top = Vector{Float64}(undef, n_exo²)
                 pair_column = 0
                 @inbounds for p in 1:n_exo
                     for q in 1:p
                         pair_column += 1
-                        top_value = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
-                        ∂𝐒ⁱ²ᵉ_v_top[:, pair_column] .= 2 .* λ .* top_value
+                        pair_top[pair_column] = p == q ? Sx[p] * x[q] : Sx[p] * x[q] + Sx[q] * x[p]
                     end
                 end
-                ∂𝐒ⁱ²ᵉ_v_F   = -Sλ * pair_xx'
-                ∂𝐒ⁱ²ᵉ_v_kkt = ∂𝐒ⁱ²ᵉ_v_top + ∂𝐒ⁱ²ᵉ_v_F
+                # Two rank-1 updates into one matrix, rather than building the
+                # two terms separately and adding them.
+                ∂𝐒ⁱ²ᵉ_v_kkt = zeros(m, n_exo²)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, λ, pair_top', 2, 0)
+                ℒ.mul!(∂𝐒ⁱ²ᵉ_v_kkt, Sλ, pair_xx', -1, 1)
 
                 # ∂𝐒ⁱ³ᵉ_v_kkt:
                 triple_xx = compressed_kron³(x, x, Sx)
                 triple_xxx = compressed_kron³_power(x)
-                ∂𝐒ⁱ³ᵉ_v_top = 3 * λ * triple_xx'
-                ∂𝐒ⁱ³ᵉ_v_F   = -Sλ * triple_xxx'
-                ∂𝐒ⁱ³ᵉ_v_kkt = ∂𝐒ⁱ³ᵉ_v_top + ∂𝐒ⁱ³ᵉ_v_F
+                ∂𝐒ⁱ³ᵉ_v_kkt = zeros(m, n_exo³)
+                ℒ.mul!(∂𝐒ⁱ³ᵉ_v_kkt, λ, triple_xx', 3, 0)
+                ℒ.mul!(∂𝐒ⁱ³ᵉ_v_kkt, Sλ, triple_xxx', -1, 1)
 
                 # Add direct ∂jac_v contributions for periods past presample
                 if t > presample_periods
@@ -14559,7 +14592,8 @@ function rrule(::typeof(calculate_loglikelihood),
         fill!(∂𝐒⁻³, 0)
 
         fill!(∂aug_state₁̂, 0)
-        fill!(∂aug_state₂_cross, 0); fill!(∂aug_state₁_cubic, 0)
+        fill!(∂aug_state₂_cross, 0)
+        fill!(∂aug_state₁_cubic, 0)
         fill!(∂state¹⁻_vol, 0)
         fill!(∂x, 0)
         fill!(∂kronxx, 0)
@@ -14569,6 +14603,9 @@ function rrule(::typeof(calculate_loglikelihood),
         fill!(∂state[3], 0)
 
         # @timeit_debug timer "Loop" begin
+        # Scratch for the compressed pair-basis KKT cotangent inside the loop.
+        pair_top = zeros(T.nExo * (T.nExo + 1) ÷ 2)
+
         for i in reverse(axes(data_in_deviations,2))
             # state₁ = 𝐒⁻¹ * aug_state₁[i]
             ∂𝐒⁻¹ += ∂state[1] * aug_state₁[i]'
@@ -14717,14 +14754,20 @@ function rrule(::typeof(calculate_loglikelihood),
 
             # Pair KKT cotangent in the compressed pair basis. The full-coordinate form was
             #   ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
+            # Two preallocated rank-1 updates rather than a column loop. The
+            # loop form read `∂𝐒ⁱ²ᵉ_tmp[:, c]` back on the right of a `.+=`, which
+            # materialises the column: 240 B per call at nExo = 2 rising to
+            # 328 kB at nExo = 40, and 1.6-5.8x slower than `ger!`.
+            xᵢ = x[i]
             pair_column = 0
             @inbounds for p in 1:T.nExo
                 for q in 1:p
                     pair_column += 1
-                    top_value = p == q ? S1[p] * x[i][q] : S1[p] * x[i][q] + S1[q] * x[i][p]
-                    ∂𝐒ⁱ²ᵉ_tmp[:, pair_column] .+= 2 .* λ[i] .* top_value .- S2 .* kronxx[i][pair_column]
+                    pair_top[pair_column] = p == q ? S1[p] * xᵢ[q] : S1[p] * xᵢ[q] + S1[q] * xᵢ[p]
                 end
             end
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, λ[i], pair_top', 2, 1)
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, S2, kronxx[i]', -1, 1)
             ∂𝐒ⁱ²ᵉ = ∂𝐒ⁱ²ᵉ_tmp
 
             # Triple KKT cotangent in the compressed triple basis. The full-coordinate form was
@@ -15260,8 +15303,10 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
         fill!(∂st_next, 0)
         fill!(kronaug_buf, 0); fill!(∂kronaug, 0)
         fill!(∂aug_state, 0); fill!(∂kronstate, 0); fill!(∂state¹⁻_vol, 0)
-        fill!(∂aug_state_pair_third, 0); fill!(∂aug_state_cubic_third, 0)
-        fill!(∂state¹⁻_vol_pair_third, 0); fill!(∂state¹⁻_vol_cubic_third, 0)
+        fill!(∂aug_state_pair_third, 0)
+        fill!(∂aug_state_cubic_third, 0)
+        fill!(∂state¹⁻_vol_pair_third, 0)
+        fill!(∂state¹⁻_vol_cubic_third, 0)
         fill!(∂𝐒ⁱ_full_buf, 0); fill!(∂𝐒ⁱ²ᵉ_full_buf, 0); fill!(∂shock_independent, 0)
         fill!(kron_Isv_buf, 0); fill!(∂kronIstate_local, 0)
         fill!(∂kronaug_for3, 0); fill!(∂u_mat, 0)
@@ -15794,16 +15839,11 @@ function third_order_warmup_observation_and_jacobian_pullback!(
     kron_shock_state = ℒ.kron(final_shock, state_vol)
     kron_shock_shock = compressed_kron²_power(final_shock)
     shock_offset = n_past + 1
-    shock_state_state_indices = isnothing(shock_state_state_indices) ?
-        sort!([compressed_triple_index(shock_offset + q, i, j)
-               for q in 1:n_exo for i in 1:n_state_vol for j in 1:i]) : shock_state_state_indices
-    shock_state_state_rows = isnothing(shock_state_state_rows) ?
-        compressed_shock_state_state_rows(shock_state_state_indices, shock_offset, n_state_vol, n_exo) : shock_state_state_rows
-    shock_shock_state_indices = isnothing(shock_shock_state_indices) ?
-        sort!([compressed_triple_index(shock_offset + i, shock_offset + j, k)
-               for i in 1:n_exo for j in 1:i for k in 1:n_state_vol]) : shock_shock_state_indices
-    shock_shock_state_rows = isnothing(shock_shock_state_rows) ?
-        compressed_shock_shock_state_rows(shock_shock_state_indices, shock_offset, n_state_vol, n_exo) : shock_shock_state_rows
+    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
+    shock_state_state_indices = isnothing(shock_state_state_indices) ? cubic_maps.shock_state_state_indices : shock_state_state_indices
+    shock_state_state_rows    = isnothing(shock_state_state_rows)    ? cubic_maps.shock_state_state_rows    : shock_state_state_rows
+    shock_shock_state_indices = isnothing(shock_shock_state_indices) ? cubic_maps.shock_shock_state_indices : shock_shock_state_indices
+    shock_shock_state_rows    = isnothing(shock_shock_state_rows)    ? cubic_maps.shock_shock_state_rows    : shock_shock_state_rows
     kron_shock_state2 = compressed_triple_shock_state_state(
         final_shock, state_vol, shock_offset, shock_state_state_indices;
         index_rows = shock_state_state_rows)
@@ -16114,16 +16154,11 @@ function third_order_joint_warmup_solver_pullback!(
 
     n_state_vol = n_past + 1
     shock_offset = n_state_vol
-    shock_state_state_indices = isnothing(shock_state_state_indices) ?
-        sort!([compressed_triple_index(shock_offset + q, i, j)
-               for q in 1:n_exo for i in 1:n_state_vol for j in 1:i]) : shock_state_state_indices
-    shock_state_state_rows = isnothing(shock_state_state_rows) ?
-        compressed_shock_state_state_rows(shock_state_state_indices, shock_offset, n_state_vol, n_exo) : shock_state_state_rows
-    shock_shock_state_indices = isnothing(shock_shock_state_indices) ?
-        sort!([compressed_triple_index(shock_offset + i, shock_offset + j, k)
-               for i in 1:n_exo for j in 1:i for k in 1:n_state_vol]) : shock_shock_state_indices
-    shock_shock_state_rows = isnothing(shock_shock_state_rows) ?
-        compressed_shock_shock_state_rows(shock_shock_state_indices, shock_offset, n_state_vol, n_exo) : shock_shock_state_rows
+    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
+    shock_state_state_indices = isnothing(shock_state_state_indices) ? cubic_maps.shock_state_state_indices : shock_state_state_indices
+    shock_state_state_rows    = isnothing(shock_state_state_rows)    ? cubic_maps.shock_state_state_rows    : shock_state_state_rows
+    shock_shock_state_indices = isnothing(shock_shock_state_indices) ? cubic_maps.shock_shock_state_indices : shock_shock_state_indices
+    shock_shock_state_rows    = isnothing(shock_shock_state_rows)    ? cubic_maps.shock_shock_state_rows    : shock_shock_state_rows
 
     if size(warmup_jac, 1) == size(warmup_jac, 2)
         n_z = length(warmup_x)
@@ -16817,6 +16852,9 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
         # @timeit_debug timer "Main loop" begin
         
+        # Scratch for the compressed pair-basis KKT cotangent inside the loop.
+        pair_top = zeros(T.nExo * (T.nExo + 1) ÷ 2)
+
         for i in reverse(axes(data_in_deviations,2))
             # stt = 𝐒⁻¹ * aug_state[i] + 𝐒⁻² * ℒ.kron(aug_state[i], aug_state[i]) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state[i],aug_state[i]),aug_state[i]) / 6
             ∂𝐒⁻¹ += ∂state * aug_state[i]'
@@ -16930,14 +16968,20 @@ function rrule(::typeof(calculate_loglikelihood),
             copyto!(∂𝐒ⁱ, kronSλ)
             ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
 
+            # Two preallocated rank-1 updates rather than a column loop. The
+            # loop form read `∂𝐒ⁱ²ᵉ_tmp[:, c]` back on the right of a `.+=`, which
+            # materialises the column: 240 B per call at nExo = 2 rising to
+            # 328 kB at nExo = 40, and 1.6-5.8x slower than `ger!`.
+            xᵢ = x[i]
             pair_column = 0
             @inbounds for p in 1:T.nExo
                 for q in 1:p
                     pair_column += 1
-                    top_value = p == q ? S1[p] * x[i][q] : S1[p] * x[i][q] + S1[q] * x[i][p]
-                    ∂𝐒ⁱ²ᵉ_tmp[:, pair_column] .+= 2 .* λ[i] .* top_value .- S2 .* kronxx[i][pair_column]
+                    pair_top[pair_column] = p == q ? S1[p] * xᵢ[q] : S1[p] * xᵢ[q] + S1[q] * xᵢ[p]
                 end
             end
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, λ[i], pair_top', 2, 1)
+            ℒ.mul!(∂𝐒ⁱ²ᵉ_tmp, S2, kronxx[i]', -1, 1)
             ∂𝐒ⁱ²ᵉ = ∂𝐒ⁱ²ᵉ_tmp
 
             triple_Sx = compressed_kron³(x[i], x[i], S1)

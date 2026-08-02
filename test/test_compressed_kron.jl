@@ -88,6 +88,68 @@ end
     @test MacroModelling.compressed_kron³(a, a, a) ≈ triple_extractor(3) * kron(kron(a, a), a)
 end
 
+@testset "compressed Kronecker argument order" begin
+    # The pair and triple products are fully symmetric in their vector
+    # arguments, so call sites are free to pass them in whatever order the
+    # available method wants. `find_shocks` and the inversion filter rely on
+    # this when they write `compressed_kron²!(buf, x, J)`.
+    for n in (1, 3, 6)
+        a = randn(n)
+        b = randn(n)
+        c = randn(n)
+        @test MacroModelling.compressed_kron²(a, b) == MacroModelling.compressed_kron²(b, a)
+        for perm in ((a, c, b), (b, a, c), (b, c, a), (c, a, b), (c, b, a))
+            @test MacroModelling.compressed_kron³(a, b, c) ≈ MacroModelling.compressed_kron³(perm...)
+        end
+    end
+
+    # And the vector-against-matrix form is the column-wise vector form.
+    n = 4
+    a = randn(n)
+    B = randn(n, 3)
+    out = MacroModelling.compressed_kron²(a, B)
+    for j in axes(B, 2)
+        @test out[:, j] ≈ MacroModelling.compressed_kron²(a, B[:, j])
+    end
+end
+
+@testset "compressed power derivative weights" begin
+    # d/dx compressed_kron²_power(x) = 2·compressed_kron²(x, dx) and
+    # d/dx compressed_kron³_power(x) = 3·compressed_kron³(x, x, dx). These are
+    # the factors that turn the forward Taylor weights 1/2 and 1/6 into 1 and
+    # 1/2 in every Jacobian and pullback built on the compressed basis.
+    for n in (3, 5, 8)
+        x  = randn(n)
+        dx = randn(n)
+        h  = 1e-6
+        fd² = (MacroModelling.compressed_kron²_power(x .+ h .* dx) .-
+               MacroModelling.compressed_kron²_power(x .- h .* dx)) ./ (2h)
+        fd³ = (MacroModelling.compressed_kron³_power(x .+ h .* dx) .-
+               MacroModelling.compressed_kron³_power(x .- h .* dx)) ./ (2h)
+        @test 2 .* MacroModelling.compressed_kron²(x, dx) ≈ fd² rtol = 1e-6
+        @test 3 .* MacroModelling.compressed_kron³(x, x, dx) ≈ fd³ rtol = 1e-6
+    end
+end
+
+@testset "column-wise compressed Kronecker" begin
+    # The particle filters carry one column per particle; the `_columns!`
+    # helpers must agree with the vector kernels column by column.
+    n, N = 5, 7
+    A = randn(n, N)
+    B = randn(n, N)
+    pair²  = zeros(n * (n + 1) ÷ 2, N)
+    pairAB = zeros(n * (n + 1) ÷ 2, N)
+    cube   = zeros(n * (n + 1) * (n + 2) ÷ 6, N)
+    MacroModelling.compressed_kron²_power_columns!(pair², A)
+    MacroModelling.compressed_kron²_columns!(pairAB, A, B)
+    MacroModelling.compressed_kron³_power_columns!(cube, A)
+    for j in 1:N
+        @test pair²[:, j]  ≈ MacroModelling.compressed_kron²_power(A[:, j])
+        @test pairAB[:, j] ≈ MacroModelling.compressed_kron²(A[:, j], B[:, j])
+        @test cube[:, j]   ≈ MacroModelling.compressed_kron³_power(A[:, j])
+    end
+end
+
 @testset "compressed Kronecker power edge cases" begin
     empty = Float64[]
     @test isempty(MacroModelling.compressed_kron²_power(empty))

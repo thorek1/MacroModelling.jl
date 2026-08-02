@@ -30,7 +30,10 @@ import MacroModelling:
     solve_nsss_wrapper, update_ss_counter!, factorize_lu!, solve_lu_left!,
     get_initial_covariance, find_shocks, normalize_presample_periods,
     compressed_kron²!, compressed_kron²_power!, compressed_kron³!,
-    compressed_kron³_power!,
+    compressed_kron³_power!, compressed_kron², compressed_kron³,
+    compressed_kron²_power, compressed_kron³_power,
+    compressed_pair_hessian!, compressed_triple_hessian!,
+    ensure_sss_kron_buffers!,
     # Constants
     DEFAULT_SOLVER_PARAMETERS, DEFAULT_QME_ALGORITHM
 
@@ -59,8 +62,7 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
                                               𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                               x::Vector{ℱ.Dual{Z,S,N}},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14,
-                                              filtered::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -77,15 +79,11 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     nPast = length(x̂)
     n_state_aug = nPast + 1
     n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
-    if filtered
-        A = 𝐒₁̂
-        B = 𝐒₂̂
-        B̂ = B
-    else
-        A = 𝐒₁̂[T.past_not_future_and_mixed_idx, 1:nPast]
-        B = 𝐒₂̂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
-        B̂ = B
-    end
+    # Pre-sliced by the caller (see the primal method in
+    # `steady_state/stochastic_steady_state.jl`).
+    A = 𝐒₁̂
+    B = 𝐒₂̂
+    B̂ = B
  
     # Allocate or reuse workspace for partials and SSS kron buffers.
     # NOTE: when this overload is called from a higher-level ForwardDiff path,
@@ -93,7 +91,7 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
     # perturbation solver. Since the SSS Newton iter here is intentionally
     # carried out on the primal (`S`) values only, we allocate fresh `S`-typed
     # local buffers whenever the cached ones are not `S`-typed.
-    MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=false)
     if size(ℂ.∂x_second_order) != (nPast, N) || eltype(ℂ.∂x_second_order) !== S
         ℂ.∂x_second_order = zeros(S, nPast, N)
     else
@@ -144,13 +142,8 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:second_order
             ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
 
-            if filtered
-                ∂A = ∂𝐒₁
-                ∂B̂ = ∂𝐒₂
-            else
-                ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:nPast]
-                ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
-            end
+            ∂A = ∂𝐒₁
+            ∂B̂ = ∂𝐒₂
 
             tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2
 
@@ -172,8 +165,7 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
                                               𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
                                               x::Vector{ℱ.Dual{Z,S,N}},
                                               𝓂::ℳ;
-                                              tol::AbstractFloat = 1e-14,
-                                              filtered::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                              tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
@@ -189,25 +181,18 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
     n_state_aug = nPast + 1
     n_state_pair = n_state_aug * (n_state_aug + 1) ÷ 2
     n_state_triple = n_state_aug * (n_state_aug + 1) * (n_state_aug + 2) ÷ 6
-    if filtered
-        A = 𝐒₁̂
-        B = 𝐒₂̂
-        B̂ = B
-        C = 𝐒₃̂
-        Ĉ = C
-    else
-        A = 𝐒₁̂[T.past_not_future_and_mixed_idx, 1:nPast]
-        B = 𝐒₂̂[T.past_not_future_and_mixed_idx, 1:n_state_pair]
-        B̂ = B
-        C = 𝐒₃̂[T.past_not_future_and_mixed_idx, 1:n_state_triple]
-        Ĉ = C
-    end
+    # Pre-sliced by the caller, as at second order.
+    A = 𝐒₁̂
+    B = 𝐒₂̂
+    B̂ = B
+    C = 𝐒₃̂
+    Ĉ = C
 
     # Allocate or reuse workspace for partials and SSS kron buffers.
     # See note in the `:second_order` overload above — fall back to fresh
     # `S`-typed local buffers when the cached workspace got mutated to a
     # `Dual`-typed one upstream.
-    MacroModelling.ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
+    ensure_sss_kron_buffers!(ℂ, nPast; third_order=true)
     if size(ℂ.∂x_third_order) != (nPast, N) || eltype(ℂ.∂x_third_order) !== S
         ℂ.∂x_third_order = zeros(S, nPast, N)
     else
@@ -271,15 +256,9 @@ function MacroModelling.solve_stochastic_steady_state_newton(::Val{:third_order}
             ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
             ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
 
-            if filtered
-                ∂A = ∂𝐒₁
-                ∂B̂ = ∂𝐒₂
-                ∂Ĉ = ∂𝐒₃
-            else
-                ∂A = ∂𝐒₁[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:nPast]
-                ∂B̂ = ∂𝐒₂[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_pair]
-                ∂Ĉ = ∂𝐒₃[𝓂.constants.post_model_macro.past_not_future_and_mixed_idx, 1:n_state_triple]
-            end
+            ∂A = ∂𝐒₁
+            ∂B̂ = ∂𝐒₂
+            ∂Ĉ = ∂𝐒₃
 
             tmp = ∂A * x̂ + ∂B̂ * kron_x_aug / 2 + ∂Ĉ * kron_x_kron / 6
 
@@ -1196,13 +1175,18 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     # must be compressed too (mirrors the primal find_shocks).
     n_x = length(x_f)
     n_obs = size(Si_f, 1)
-    kIx = MacroModelling.compressed_kron²(x_f, J)
+    kIx = compressed_kron²(x_f, J)
     tmp = Si_f + 2 * Si2e_f * kIx
     λ = tmp' \ (2 .* x_f)
     A_mat = zeros(V, n_x, n_x)
-    MacroModelling.compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
-    A_mat .-= 2 .* Matrix(ℒ.I(n_x))
-    kxx = MacroModelling.compressed_kron²_power(x_f)
+    compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
+    # The KKT block's -2I: a loop over the diagonal, not `2 .* Matrix(I(n_x))`,
+    # which materialised an n_x x n_x dense identity and a second temporary for
+    # no reason. Nothing about `V` required it — this works for `Dual` too.
+    @inbounds for i in 1:n_x
+        A_mat[i, i] -= 2
+    end
+    kxx = compressed_kron²_power(x_f)
 
     fXλp = [A_mat   tmp';
             -tmp    zeros(V, n_obs, n_obs)]
@@ -1285,17 +1269,22 @@ function MacroModelling.find_shocks(::Val{:LagrangeNewton},
     # kron terms must be compressed too (mirrors the primal find_shocks).
     n_x = length(x_f)
     n_obs = size(Si_f, 1)
-    kxx  = MacroModelling.compressed_kron²_power(x_f)
-    kxxx = MacroModelling.compressed_kron³_power(x_f)
-    kIx  = MacroModelling.compressed_kron²(x_f, J)
-    kIxx = MacroModelling.compressed_kron³(x_f, x_f, J)
+    kxx  = compressed_kron²_power(x_f)
+    kxxx = compressed_kron³_power(x_f)
+    kIx  = compressed_kron²(x_f, J)
+    kIxx = compressed_kron³(x_f, x_f, J)
 
     tmp = Si_f + 2 * Si2e_f * kIx + 3 * Si3e_f * kIxx
     λ = tmp' \ (2 .* x_f)
     A_mat = zeros(V, n_x, n_x)
-    MacroModelling.compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
-    MacroModelling.compressed_triple_hessian!(A_mat, 6 .* (Si3e_f' * λ), x_f)
-    A_mat .-= 2 .* Matrix(ℒ.I(n_x))
+    compressed_pair_hessian!(A_mat, 2 .* (Si2e_f' * λ))
+    compressed_triple_hessian!(A_mat, 6 .* (Si3e_f' * λ), x_f)
+    # The KKT block's -2I: a loop over the diagonal, not `2 .* Matrix(I(n_x))`,
+    # which materialised an n_x x n_x dense identity and a second temporary for
+    # no reason. Nothing about `V` required it — this works for `Dual` too.
+    @inbounds for i in 1:n_x
+        A_mat[i, i] -= 2
+    end
 
     fXλp = [A_mat   tmp';
             -tmp    zeros(V, n_obs, n_obs)]
