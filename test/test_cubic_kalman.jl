@@ -105,6 +105,33 @@ import AxisKeys: KeyedArray
     𝒜a, ca, c₀, Λ = MacroModelling.build_cubic_kalman_system(sys, basis)
     @test maximum(abs, 𝒜a - 𝒜) < 1e-9
     @test maximum(abs, ca - c) < 1e-9
+    @testset "conditional innovation covariance" begin
+        Λnoise = Matrix(Λ[:, sys.noise_state_indices])
+        Rstate = randn(sys.nz, sys.nz); Pc = Rstate * Rstate'
+        Ctest = randn(sys.nz, basis.N)
+        Pnoise = zeros(length(sys.noise_state_indices), length(sys.noise_state_indices))
+        mixvec = zeros(sys.nz * basis.N); mixΨ = zeros(sys.nz, basis.N)
+        CΨ = zeros(sys.nz, basis.N); Q = zeros(sys.nz, sys.nz)
+        MacroModelling.cubic_kalman_noise_covariance!(Q, Ctest, Λnoise, basis.Ψ, Pc,
+                                                       sys.noise_state_indices, Pnoise,
+                                                       mixvec, mixΨ, CΨ)
+        expected = Ctest * basis.Ψ * Ctest'
+        Pload = Pc[sys.noise_state_indices, sys.noise_state_indices]
+        for i in eachindex(sys.noise_state_indices), j in eachindex(sys.noise_state_indices)
+            Di = reshape(view(Λnoise, :, i), sys.nz, basis.N)
+            Dj = reshape(view(Λnoise, :, j), sys.nz, basis.N)
+            expected .+= Pload[i, j] .* (Di * basis.Ψ * Dj')
+        end
+        @test Q ≈ (expected + expected') / 2
+        Pc_outside = copy(Pc)
+        outside = setdiff(1:sys.nz, sys.noise_state_indices)
+        Pc_outside[outside, outside] .+= 10
+        Qoutside = similar(Q)
+        MacroModelling.cubic_kalman_noise_covariance!(Qoutside, Ctest, Λnoise, basis.Ψ,
+                                                       Pc_outside, sys.noise_state_indices,
+                                                       Pnoise, mixvec, mixΨ, CΨ)
+        @test Qoutside ≈ Q
+    end
     # Q(z) = C(z) Ψ C(z)' against the quadrature variance, at a non-trivial z
     Ca = reshape(c₀ + Λ * zt, sys.nz, basis.N)
     Qa = Ca * basis.Ψ * Ca'

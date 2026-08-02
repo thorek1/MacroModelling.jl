@@ -1,7 +1,6 @@
 @stable default_mode = "disable" begin
 
-# Quadratic Kalman filter (Monfort, Renne & Roussellet, 2015) for the pruned
-# second-order solution.
+# Kollmann-style quadratic Kalman filter for the pruned second-order solution.
 #
 # The idea. A pruned second-order solution is *linear* in an augmented state —
 # this is the pruned state-space representation of Andreasen, Fernández-Villaverde
@@ -43,8 +42,8 @@
 #   Var(w) = G G' + H (I + K) H',      K the commutation matrix,
 #
 # using E[(ε⊗ε)(ε⊗ε)'] = vec(I)vec(I)' + I + K. `H` is constant; `G` depends on the
-# state, and is evaluated at the filtered mean each period — the defining choice of
-# the quadratic Kalman filter.
+# state. The plug-in term uses the filtered mean, while the recursion also adds the
+# exact covariance of this affine loading under the filtered state covariance.
 #
 # Cost. The augmented state has dimension 2·nVars + nPast², which is 808 for
 # Smets-Wouters (2007). The covariance recursion is therefore O(nz³) per period and
@@ -209,6 +208,58 @@ function quadratic_kalman_affine_G(sys)
     return g0, Λ
 end
 
+# Conditional covariance of the quadratic innovation.  If G(z) = Ḡ + Σᵢ zᵢGᵢ
+# and z has covariance P, the state-dependent part contributes
+#
+#     Σᵢⱼ Pᵢⱼ Gᵢ Gⱼ'
+#
+# in addition to the plug-in term ḠḠ'.  Pz selects the past first-order state
+# from z, so only that small covariance is needed here; the full augmented
+# covariance is still required by the Kalman prediction/update itself.
+function quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
+    ℒ.mul!(PzPc, Pz, Pc)
+    ℒ.mul!(Pa, PzPc, Pz')
+    copyto!(Q, QH)
+    ℒ.mul!(Q, G, G', one(eltype(Q)), one(eltype(Q)))
+    nz, nExo = size(G)
+    @inbounds for j in 1:nExo
+        rows = (j - 1) * nz + 1:j * nz
+        ℒ.mul!(LPa, view(Λ, rows, :), Pa)
+        ℒ.mul!(Q, LPa, view(Λ, rows, :)', one(eltype(Q)), one(eltype(Q)))
+    end
+    @inbounds for j in 1:nz, i in 1:j
+        m = (Q[i, j] + Q[j, i]) / 2
+        Q[i, j] = m; Q[j, i] = m
+    end
+    return Q
+end
+
+# The first-order block is autonomous in the pruned system.  Its stationary
+# covariance can therefore be solved separately and used to evaluate the
+# state-dependent innovation covariance at the ergodic initialization without
+# introducing a nonlinear covariance fixed point.
+function quadratic_kalman_initial_covariance(sys, z0, g0, Λ, Pz;
+                                             workspaces = nothing,
+                                             lyapunov_algorithm::Symbol = :doubling,
+                                             initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0, 0))
+    A1 = Matrix(view(sys.𝒜, sys.r1, sys.r1))
+    Q1 = sys.G1 * sys.G1'
+    Σ1 = qkf_lyapunov(A1, Q1; workspaces = workspaces,
+                      lyapunov_algorithm = lyapunov_algorithm)
+    G0 = reshape(g0 + Λ * (Pz * z0), sys.nz, sys.nExo)
+    Tv = promote_type(eltype(G0), eltype(sys.QH), eltype(Σ1))
+    Q0 = Matrix{Tv}(undef, sys.nz, sys.nz)
+    PzPc = Matrix{Tv}(undef, sys.nPast, sys.nr)
+    Pa = Matrix{Tv}(undef, sys.nPast, sys.nPast)
+    LPa = Matrix{Tv}(undef, sys.nz, sys.nPast)
+    quadratic_kalman_noise_covariance!(Q0, G0, sys.QH, Λ, sys.P, Σ1,
+                                       PzPc, Pa, LPa)
+    Σ0 = qkf_lyapunov(sys.𝒜, Q0; workspaces = workspaces,
+                      lyapunov_algorithm = lyapunov_algorithm,
+                      initial_guess = initial_guess)
+    return Σ0, Σ1
+end
+
 """
 The quadratic Kalman recursion, given the augmented system in the form the
 reverse-mode rule needs. Split out from `run_quadratic_kalman` so that the part
@@ -236,10 +287,14 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
     Pc = Matrix{Tv}(undef, nz, nz); copyto!(Pc, Σ0)
     Pp = Matrix{Tv}(undef, nz, nz)
     Tm = Matrix{Tv}(undef, nz, nz)
+    Q  = Matrix{Tv}(undef, nz, nz)
     z  = Vector{Tv}(undef, nz); copyto!(z, z0)
     zp = Vector{Tv}(undef, nz)
     gv = Vector{Tv}(undef, nz * nExo)
     x1p = Vector{Tv}(undef, size(Pz, 1))
+    PzPc = Matrix{Tv}(undef, size(Pz, 1), nz)
+    Pa = Matrix{Tv}(undef, size(Pz, 1), size(Pz, 1))
+    LPa = Matrix{Tv}(undef, nz, size(Pz, 1))
     CP = Matrix{Tv}(undef, n_obs, nz)
     F  = Matrix{Tv}(undef, n_obs, n_obs)
     Kg = Matrix{Tv}(undef, nz, n_obs)
@@ -254,11 +309,11 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
         copyto!(gv, g0); ℒ.mul!(gv, Λ, x1p, one(Tv), one(Tv))
         G = reshape(gv, nz, nExo)
 
-        # Pp = 𝒜 Pc 𝒜' + G G' + QH   (the rank-nExo term as one gemm update)
+        # Pp = 𝒜 Pc 𝒜' + E[Var(w | z)]
         ℒ.mul!(Tm, 𝒜, Pc)
         ℒ.mul!(Pp, Tm, 𝒜')
-        Pp .+= QH
-        ℒ.mul!(Pp, G, G', one(Tv), one(Tv))
+        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
+        Pp .+= Q
         for j in 1:nz, i in 1:j
             m = (Pp[i, j] + Pp[j, i]) / 2; Pp[i, j] = m; Pp[j, i] = m
         end
@@ -307,14 +362,18 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
                nz::Int, nExo::Int, presample_periods::Int, on_failure_loglikelihood::Real)
     n_obs, nT = size(Y)
     zs = Vector{Vector{Float64}}(undef, nT); Ps = Vector{Matrix{Float64}}(undef, nT)
-    Gs = Vector{Matrix{Float64}}(undef, nT); vs = Vector{Vector{Float64}}(undef, nT)
+    Gs = Vector{Matrix{Float64}}(undef, nT); Pas = Vector{Matrix{Float64}}(undef, nT)
+    vs = Vector{Vector{Float64}}(undef, nT)
     CPs = Vector{Matrix{Float64}}(undef, nT); Fis = Vector{Matrix{Float64}}(undef, nT)
     Ks = Vector{Matrix{Float64}}(undef, nT)
     z = copy(z0); Pc = copy(Σ0); ll = 0.0; log2pi = log(2π); failed = false
+    PzPc = zeros(size(Pz, 1), nz); Pa = zeros(size(Pz, 1), size(Pz, 1))
+    LPa = zeros(nz, size(Pz, 1)); Q = zeros(nz, nz)
     for t in 1:nT
         zs[t] = copy(z); Ps[t] = copy(Pc)
         G = reshape(g0 + Λ * (Pz * z), nz, nExo); Gs[t] = G
-        Q = G * G' + QH
+        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
+        Pas[t] = copy(Pa)
         zp = 𝒜 * z + c
         Pp = 𝒜 * Pc * 𝒜' + Q; Pp = (Pp + Pp') / 2
         v = Y[:, t] - 𝒞 * zp; vs[t] = v
@@ -367,6 +426,16 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
             vḠ = vec(Ḡ)
             ḡ0 .+= vḠ
             Λ̄  .+= vḠ * (Pz * z_)'
+            P̄a = zeros(size(Pz, 1), size(Pz, 1))
+            @inbounds for j in 1:nExo
+                rows = (j - 1) * nz + 1:j * nz
+                L = view(Λ, rows, :)
+                L̄ = 2 .* (Q̄ * L * Pas[t])
+                Λ̄[rows, :] .+= L̄
+                P̄a .+= L' * Q̄ * L
+            end
+            P̄a = (P̄a + P̄a') / 2
+            P̄ .+= Pz' * P̄a * Pz
             𝒜̄ .+= z̄p * z_'
             c̄  .+= z̄p
             z̄   = 𝒜' * z̄p + Pz' * (Λ' * vḠ)
@@ -413,21 +482,19 @@ function run_quadratic_kalman(sys,
     end
 
     z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
-    Gbar = quadratic_kalman_G(sys, z̄)
-    Q̄ = Gbar * Gbar' + QH
-    Q̄ = (Q̄ + Q̄') / 2
 
-    Σ = qkf_lyapunov(𝒜, Q̄; workspaces = workspaces,
-                     lyapunov_algorithm = lyapunov_algorithm)
+    # The first-order block supplies the only covariance needed by the
+    # state-dependent loading at the stationary initialization.
+    g0, Λ = quadratic_kalman_affine_G(sys)
+    Pz = sys.P * [Matrix{Tv}(ℒ.I(sys.nr)) zeros(Tv, sys.nr, nz - sys.nr)]
+    Σ, Σ1 = quadratic_kalman_initial_covariance(sys, z̄, g0, Λ, Pz;
+                                                workspaces = workspaces,
+                                                lyapunov_algorithm = lyapunov_algorithm)
 
     # The reverse pass needs this exact matrix again. Handing it back lets the
     # pullback skip a second identical Lyapunov solve (a residual check on an
     # exact guess instead of a full doubling run).
     initial_covariance_out === nothing || (initial_covariance_out[] = Σ)
-
-    # Hand off to the taped recursion, which carries the hand-written adjoint.
-    g0, Λ = quadratic_kalman_affine_G(sys)
-    Pz = sys.P * [Matrix{Tv}(ℒ.I(sys.nr)) zeros(Tv, sys.nr, nz - sys.nr)]
 
     return quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Matrix(data_in_deviations),
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
@@ -509,11 +576,11 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     Pz = qkf_Pz(sys)
 
     z0 = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜) \ sys.c
+    Σ0, Σ1 = quadratic_kalman_initial_covariance(sys, z0, g0, Λ, Pz;
+                                                  workspaces = workspaces,
+                                                  lyapunov_algorithm = lyapunov_algorithm,
+                                                  initial_guess = initial_covariance)
     G0 = reshape(g0 + Λ * (Pz * z0), nz, nE)
-    Q0 = G0 * G0' + sys.QH; Q0 = (Q0 + Q0') / 2
-    Σ0 = qkf_lyapunov(sys.𝒜, Q0; workspaces = workspaces,
-                      lyapunov_algorithm = lyapunov_algorithm,
-                      initial_guess = initial_covariance)
 
     R = last(rrule(quadratic_kalman_recursion, sys.𝒜, sys.c, sys.QH, g0, Λ, Hm,
                    Matrix(data_in_deviations), sys.𝒞, Pz, z0, Σ0, nz, nE,
@@ -530,6 +597,26 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     Ḡ0 = 2 .* (Q̄0 * G0); Q̄H .+= Q̄0
     vG0 = vec(Ḡ0); ḡ0 .+= vG0; Λ̄ .+= vG0 * (Pz * z0)'
     z̄0 .+= Pz' * (Λ' * vG0)
+
+    # The stationary first-order covariance enters Q0 through the same
+    # state-dependent loading correction as the recursion.  Differentiate its
+    # Lyapunov equation separately; this keeps the pullback analytical and
+    # avoids differentiating through a nonlinear covariance iteration.
+    Pa0 = sys.P * Σ1 * sys.P'
+    P̄a0 = zeros(nP, nP)
+    @inbounds for j in 1:nE
+        rows = (j - 1) * nz + 1:j * nz
+        L = view(Λ, rows, :)
+        Λ̄[rows, :] .+= 2 .* (Q̄0 * L * Pa0)
+        P̄a0 .+= L' * Q̄0 * L
+    end
+    P̄a0 = (P̄a0 + P̄a0') / 2
+    Σ̄1 = sys.P' * P̄a0 * sys.P
+    A1 = Matrix(view(sys.𝒜, r1, r1))
+    X1 = qkf_lyapunov(A1', Σ̄1; workspaces = workspaces,
+                      lyapunov_algorithm = lyapunov_algorithm)
+    Ā1_initial = 2 .* (X1 * A1 * Σ1)
+    Ḡ1_initial = 2 .* ((X1 + X1') / 2 * sys.G1)
     λ = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜)' \ z̄0
     c̄ .+= λ; 𝒜̄ .+= λ * z0'
 
@@ -538,7 +625,8 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     P̄P = zeros(size(sys.PP)); K̄VV = zeros(size(sys.KVV))
 
     Ā1 = 𝒜̄[r1, r1] + 𝒜̄[r2, r2]
-    S̄1 .+= Ā1 * sys.EaP'
+    S̄1 .+= (Ā1 + Ā1_initial) * sys.EaP'
+    S̄1 .+= Ḡ1_initial * sys.S'
     S̄2 .+= 𝒜̄[r2, rq] * Eq' / 2 + 𝒜̄[r2, r1] * sys.EpP' / 2
     P̄P .+= Lp' * 𝒜̄[rq, rq] * Eq' + Lp' * 𝒜̄[rq, r1] * sys.EpP'
     S̄1 .+= c̄[r1] * sys.Ea1'

@@ -194,6 +194,7 @@ include("./filter/kalman.jl")
 include("./filter/particle.jl")
 include("./filter/quadratic_kalman.jl")
 include("./filter/cubic_kalman.jl")
+include("./filter/ivashchenko_kalman.jl")
 
 
 export @model, @parameters, solve!
@@ -402,7 +403,7 @@ function normalize_filtering_options(filter::Symbol,
     # `:particle` is a convenience alias for the bootstrap particle filter.
     filter = get(PARTICLE_FILTER_ALIASES, filter, filter)
 
-    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
+    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), the unpruned Ivashchenko filter (`:ivashchenko_kalman`, second- and third-order models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
 
     is_particle = filter ∈ PARTICLE_FILTERS
 
@@ -427,9 +428,14 @@ function normalize_filtering_options(filter::Symbol,
         filter = :inversion
     end
 
+    if filter == :ivashchenko_kalman && algorithm ∉ (:second_order, :third_order)
+        @info "The Ivashchenko filter is only defined for `algorithm = :second_order` or `:third_order`; got `:$(algorithm)`. Setting `filter = :inversion`." maxlog = maxlog
+        filter = :inversion
+    end
+
     # Higher-order solutions are handled by the inversion filter by default, but
     # the particle filters are explicitly valid at every order too.
-    if algorithm != :first_order && filter != :inversion && filter != :quadratic_kalman && filter != :cubic_kalman && !is_particle
+    if algorithm != :first_order && filter != :inversion && filter != :quadratic_kalman && filter != :cubic_kalman && filter != :ivashchenko_kalman && !is_particle
         @info "Higher order solution algorithms only support the inversion and particle filters. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
         is_particle = false
@@ -456,7 +462,7 @@ function normalize_filtering_options(filter::Symbol,
     # principle redistribute across time; doing so would be a different estimator,
     # not the inversion filter's smoother.
     if filter in (:quadratic_kalman, :cubic_kalman) && smooth
-        @info "The quadratic Kalman filter does not provide smoothed estimates. Setting `smooth = false`." maxlog = maxlog
+        @info "The $(filter) filter does not provide smoothed estimates. Setting `smooth = false`." maxlog = maxlog
         smooth = false
     end
 

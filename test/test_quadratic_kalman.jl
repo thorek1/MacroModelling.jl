@@ -7,8 +7,7 @@ import ForwardDiff
 import Zygote
 
 # -----------------------------------------------------------------------------
-# Quadratic Kalman filter (Monfort, Renne & Roussellet, 2015) on the pruned
-# second-order solution.
+# Kollmann-style quadratic Kalman filter on the pruned second-order solution.
 #
 # Three checks, in increasing strength:
 #
@@ -64,6 +63,27 @@ import Zygote
     @test sys.nq == sys.nPast * (sys.nPast + 1) ÷ 2
     @test sys.nz == 2 * sys.nr + sys.nq
     @test maximum(abs, sys.S2) > 1e-3    # the model really is nonlinear
+
+    @testset "conditional innovation covariance" begin
+        Random.seed!(19)
+        G = randn(sys.nz, sys.nExo)
+        Λ = randn(sys.nz * sys.nExo, sys.nPast)
+        QH = let R = randn(sys.nz, sys.nz); R * R' end
+        Pz = sys.P * [Matrix{Float64}(ℒ.I(sys.nr)) zeros(sys.nr, sys.nz - sys.nr)]
+        Pc = let R = randn(sys.nz, sys.nz); R * R' end
+        PzPc = zeros(sys.nPast, sys.nz); Pa = zeros(sys.nPast, sys.nPast)
+        LPa = zeros(sys.nz, sys.nPast); Q = zeros(sys.nz, sys.nz)
+        MacroModelling.quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc,
+                                                          PzPc, Pa, LPa)
+        expected = G * G' + QH
+        Pa_expected = sys.P * Pc[1:sys.nr, 1:sys.nr] * sys.P'
+        for j in 1:sys.nExo
+            L = view(Λ, (j - 1) * sys.nz + 1:j * sys.nz, :)
+            expected .+= L * Pa_expected * L'
+        end
+        @test Q ≈ (expected + expected') / 2
+        @test maximum(abs, Q - (G * G' + QH)) > 1e-8
+    end
 
     @testset "augmented transition reproduces the pruned conditional mean" begin
         Random.seed!(3)

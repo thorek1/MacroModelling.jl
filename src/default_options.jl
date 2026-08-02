@@ -13,10 +13,11 @@ const DEFAULT_PRESAMPLE_PERIODS = 0
 # Each particle-filter variant is its own `filter` value, so the filter is fully
 # identified by a single symbol (no separate "which particle filter" argument).
 const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle)
-# The quadratic and cubic Kalman filters apply only to the pruned second- and
-# third-order solutions, whose augmented state spaces are linear (see
-# src/filter/quadratic_kalman.jl and src/filter/cubic_kalman.jl).
-const SUPPORTED_FILTERS = (:kalman, :inversion, :quadratic_kalman, :cubic_kalman, PARTICLE_FILTERS...)
+# The quadratic and cubic Kalman filters apply to the pruned second- and
+# third-order solutions. Ivashchenko's filter is the separate unpruned Gaussian
+# moment-closure filter for the raw second- and third-order solutions.
+const SUPPORTED_FILTERS = (:kalman, :inversion, :quadratic_kalman, :cubic_kalman,
+                           :ivashchenko_kalman, PARTICLE_FILTERS...)
 # `:particle` is accepted as a convenience alias for the bootstrap filter.
 const PARTICLE_FILTER_ALIASES = Dict(:particle => :bootstrap_particle)
 # Maps a filter symbol onto the internal variant tag used for dispatch.
@@ -28,9 +29,9 @@ const PARTICLE_FILTER_VARIANT = Dict(:bootstrap_particle => :bootstrap,
 # `measurement_error` is the covariance H of ηₜ ~ N(0, H) in yₜ = C xₜ + ηₜ. It is
 # *not* a standard deviation: a scalar is the common variance of every observable,
 # a vector the per-observable variances, and a matrix the full covariance.
-# `:auto` resolves per filter: no measurement error for the Kalman and inversion
-# filters (their historical behaviour), and a small data-driven value for the
-# particle filters, which are degenerate without it.
+# `:auto` resolves per filter: no measurement error for the Kalman, inversion,
+# and Ivashchenko filters (their historical/deterministic-filter behaviour), and
+# a small data-driven value for the particle filters, which are degenerate without it.
 const DEFAULT_MEASUREMENT_ERROR = :auto
 # Auto measurement-error *standard deviation* as a fraction of each observable's
 # sample standard deviation (squared into a variance before it reaches a filter).

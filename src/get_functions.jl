@@ -357,13 +357,15 @@ And data, 4×2×40 Array{Float64, 3}:
                                       particle_resampling_threshold, particle_initial_state_scaling,
                                       particle_rng, tempering_target_ratio, tempering_mh_steps,
                                       tempering_max_stages, tempering_mh_scale))
+    elseif filter == :ivashchenko_kalman
+        extra_kw = merge(extra_kw, (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)))
     end
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
     end
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none, so only forward it where it means something.
-    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; initial_covariance))
     end
     ensure_name_display_constants!(𝓂)
@@ -530,7 +532,9 @@ And data, 1×40 Matrix{Float64}:
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           tempering_max_stages, tempering_mh_scale) :
+        filter == :ivashchenko_kalman ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -538,7 +542,7 @@ And data, 1×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -688,7 +692,9 @@ And data, 4×40 Matrix{Float64}:
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           tempering_max_stages, tempering_mh_scale) :
+        filter == :ivashchenko_kalman ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -696,7 +702,7 @@ And data, 4×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -955,8 +961,8 @@ And data, 4×40 Matrix{Float64}:
 
     # The inversion filter recovers the state exactly, so it has no dispersion to
     # report. Everything else (Kalman, particle) does.
-    if filter == :inversion || (algorithm != :first_order && filter ∉ PARTICLE_FILTERS && filter != :kalman)
-        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty. The inversion filter identifies the state exactly and has none. Use `filter = :kalman` (first order) or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`), which report the spread of the particle cloud and work at every perturbation order.")
+    if filter == :inversion || (algorithm != :first_order && filter ∉ PARTICLE_FILTERS && filter ∉ (:kalman, :ivashchenko_kalman))
+        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty. The inversion filter identifies the state exactly and has none. Use `filter = :kalman` or `filter = :ivashchenko_kalman` for Gaussian filters, or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`).")
     end
 
     filter, smooth, algorithm, _, _, _ = normalize_filtering_options(filter, smooth, algorithm, false, 0)
@@ -990,7 +996,9 @@ And data, 4×40 Matrix{Float64}:
            n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
            tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           tempering_max_stages, tempering_mh_scale) :
+        filter == :ivashchenko_kalman ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -998,7 +1006,7 @@ And data, 4×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -4454,10 +4462,11 @@ end
 # likelihood under the same H). The Kalman *smoother* path (`filter_and_smooth`)
 # does not take it: the Durbin-Koopman backward recursion would need H threaded
 # through the disturbance smoother as well, which is not implemented. So a
-# `measurement_error` supplied to the estimate entry points only has an effect for
-# the particle filters. Say so rather than silently dropping it.
+# `measurement_error` supplied to the estimate entry points has an effect for
+# the particle and Ivashchenko Gaussian filters. Say so rather than silently
+# dropping it for the other filters.
 function warn_unused_measurement_error(filter::Symbol, measurement_error; maxlog::Int = DEFAULT_MAXLOG)
-    if filter ∉ PARTICLE_FILTERS && measurement_error !== DEFAULT_MEASUREMENT_ERROR
+    if filter ∉ PARTICLE_FILTERS && filter != :ivashchenko_kalman && measurement_error !== DEFAULT_MEASUREMENT_ERROR
         @info "`measurement_error` is only used by the particle filters on this path; it is ignored for `filter = :$(filter)`. Use `get_loglikelihood` if you need measurement error in the Kalman likelihood." maxlog = maxlog
     end
     return nothing
@@ -4543,9 +4552,9 @@ end
 
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, the inversion filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, inversion filter, unpruned Ivashchenko filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-The Kalman and inversion likelihoods are differentiable. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
+The Kalman, inversion, and Ivashchenko likelihoods are differentiable. The Ivashchenko likelihood has analytical reverse-mode rules for its unpruned second- and third-order moment recursions. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4889,6 +4898,28 @@ function get_loglikelihood(𝓂::ℳ,
                                 measurement_error = measurement_error_H,
                                 on_failure_loglikelihood = on_failure_loglikelihood,
                                 opts = opts)
+    elseif filter == :ivashchenko_kalman
+        # Ivashchenko's filter treats the raw perturbation solution as a
+        # polynomial and closes its Gaussian moments; it is separate from the
+        # pruned augmented-state Kalman recursions.
+        if has_missing
+            calculate_loglikelihood_with_missing(Val(:ivashchenko_kalman), Val(algorithm), obs_indices,
+                                                  𝐒, data_in_deviations, constants_obj, state,
+                                                  𝓂.workspaces, obs_idx_per_t,
+                                                  presample_periods = presample_periods,
+                                                  initial_covariance = initial_covariance,
+                                                  measurement_error = measurement_error_H,
+                                                  on_failure_loglikelihood = on_failure_loglikelihood,
+                                                  opts = opts)
+        else
+            calculate_loglikelihood(Val(:ivashchenko_kalman), Val(algorithm), obs_indices,
+                                    𝐒, data_in_deviations, constants_obj, state, 𝓂.workspaces,
+                                    presample_periods = presample_periods,
+                                    initial_covariance = initial_covariance,
+                                    measurement_error = measurement_error_H,
+                                    on_failure_loglikelihood = on_failure_loglikelihood,
+                                    opts = opts)
+        end
     elseif filter == :kalman
         if has_missing
             calculate_loglikelihood_with_missing(Val(:kalman),

@@ -30,6 +30,7 @@ Two inputs cut across all of them and are covered separately below: `measurement
 |---|---|---|---|---|---|---|
 | `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes (Durbin–Koopman) | 1× |
 | `:inversion` | linear and nonlinear | exact given the shocks | yes | not available | n/a (filtered = smoothed) | ~1–10× |
+| `:ivashchenko_kalman` | unpruned `:second_order`, `:third_order` | Gaussian moment closure | forward- and reverse-mode | optional (incl. correlated) | yes (RTS) | polynomial moment contractions |
 | `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~10³× |
 | `:auxiliary_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~2× bootstrap |
 | `:tempered_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | ~5–10× bootstrap |
@@ -38,6 +39,7 @@ A short decision rule:
 
 - **Linear model?** Use `:kalman`. It is exact, fast and differentiable, so gradient-based samplers (NUTS/HMC) work. There is no reason to use anything else.
 - **Nonlinear model, at least as many shocks as observables, no measurement error?** Use `:inversion` (the default at higher order). It is exact and differentiable.
+- **Unpruned second- or third-order model with a Gaussian approximation to the filtering distribution?** Use `:ivashchenko_kalman`. It is separate from the pruned filters, supports measurement error, missing observations, RTS smoothing, and analytical reverse-mode differentiation.
 - **Nonlinear model with measurement error, or fewer shocks than observables?** Use a particle filter. Start with `:tempered_particle` if the observation is informative (small measurement error, many observables), otherwise `:bootstrap_particle`.
 - Particle-filter likelihoods are noisy and non-differentiable: pair them with gradient-free samplers such as slice sampling (Pigeons.jl) or nested sampling.
 
@@ -50,7 +52,7 @@ Every knob discussed on this page has a default, and the defaults are not neutra
 | setting | default | consequence |
 |---|---|---|
 | `filter` | `:kalman` at `:first_order`, `:inversion` at every higher order | nonlinear models are filtered *exactly given the shocks*, with no measurement error |
-| `measurement_error` | `:auto` | **none** for Kalman and inversion; ``(0.1 s_i)^2`` per observable for the particle filters |
+| `measurement_error` | `:auto` | **none** for Kalman, inversion, and Ivashchenko; ``(0.1 s_i)^2`` per observable for the particle filters |
 | `initial_covariance` | `:theoretical` | the ergodic covariance — *not* the inversion filter's implicit ``BB'``, which is why Kalman and inversion likelihoods differ by default |
 | `smooth` | `true` for the Kalman filter, `false` otherwise | the particle filters **do** support smoothing but do not use it unless asked |
 | `presample_periods` | `0` | the initial-condition transient is included in the likelihood |
@@ -163,7 +165,7 @@ Because the estimate is random, a repeated evaluation at the same parameters giv
 
 Without measurement error the observation equation is a deterministic function of the state. A particle would have to reproduce ``y_t`` *exactly* to get non-zero weight, which happens with probability zero — every weight collapses to zero and the filter dies. Measurement error smears the observation density and gives particles something to score against.
 
-`measurement_error = :auto` (the default) therefore resolves, for the particle filters, to a variance of ``(0.1 s_i)^2`` per observable, ``s_i`` being that observable's sample standard deviation — and to *no* measurement error for the Kalman and inversion filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable. See [Measurement error and the initial covariance](@ref) for what ``H`` is and the other jobs it does.
+`measurement_error = :auto` (the default) therefore resolves, for the particle filters, to a variance of ``(0.1 s_i)^2`` per observable, ``s_i`` being that observable's sample standard deviation — and to *no* measurement error for the Kalman, inversion, and Ivashchenko filters. For serious work set it explicitly or estimate it: the level of the likelihood depends on it, so likelihoods computed under different measurement errors are not comparable. See [Measurement error and the initial covariance](@ref) for what ``H`` is and the other jobs it does.
 
 ### Bootstrap (`:bootstrap_particle`)
 
@@ -421,7 +423,7 @@ P  = P̂ − K C P̂                            P   = P̂ − K 𝒞 P̂
 | dimension (SW07) | 34 | 446 |
 | transition | ``x' = Ax + B\varepsilon`` | ``z' = \mathcal{A}z + c + w(z,\varepsilon)`` |
 | drift ``c`` | zero — certainty equivalence empties ``\mathbf{S}_1``'s constant column | non-zero — carries the risk correction |
-| noise covariance | ``\mathbf{B} = BB'``, **constant** | ``G(z)G(z)' + Q_H``, **depends on the state** |
+| noise covariance | ``\mathbf{B} = BB'``, **constant** | ``G(\bar z)G(\bar z)' + Q_H + Q_{\mathrm{state}}``, **depends on state mean and covariance** |
 | innovation | ``B\varepsilon`` — Gaussian | ``G\varepsilon + H(\varepsilon\otimes\varepsilon - \mathrm{vec}\,I)`` — **not** Gaussian |
 | observation | ``y = Cx``, general ``C`` | ``y = (x_1+x_2)[\text{obs}]`` — a selection of two blocks |
 | solve per period | LU of ``F`` (``n_{obs}^3``) | Cholesky of ``F`` (``n_{obs}^3``) |
@@ -436,6 +438,22 @@ is affine in ``z``, so ``Q`` must be rebuilt from the current state estimate at 
 That is precisely the conditional heteroskedasticity a second-order solution adds — the
 model's shock impact depends on where the state is — and it is why the filter is not merely
 a linear filter on a bigger vector.
+
+The covariance is integrated over the filtered state distribution, not only evaluated at its
+mean. Writing ``G(z) = G(\bar z) + \sum_i z_i G_i`` and letting ``P_a`` be the covariance of
+the past first-order state used by the transition,
+
+```math
+Q_{\mathrm{state}} = \sum_{i,j} (P_a)_{ij}G_iG_j',\qquad
+P_a = P_z P_{t-1|t-1}P_z'.
+```
+
+The timing is posterior-then-predict: in the loop this is the covariance before the current
+observation update (`Pc`), because it describes uncertainty in the state that generates the
+next shock loading. The full ``P_{t-1|t-1}`` remains necessary for the Kalman prediction and
+update, but the added term reads only ``P_a``. Thus the correction adds small ``n_{past}``
+and ``n_z\times n_{past}`` workspaces; it does not require another full ``n_z\times n_z``
+covariance.
 
 **The innovation is no longer Gaussian.** ``\varepsilon\otimes\varepsilon`` is a
 ``\chi^2``-type object; matching only its first two moments discards every higher cumulant.
@@ -460,11 +478,12 @@ parts are uncorrelated and, using
 ``E[(\varepsilon\otimes\varepsilon)(\varepsilon\otimes\varepsilon)'] = \mathrm{vec}(I)\mathrm{vec}(I)' + I + K``,
 
 ```math
-\mathrm{Var}(w) = GG' + H(I+K)H',
+\mathrm{Var}(w) = G(\bar z)G(\bar z)' + Q_{\mathrm{state}} + H(I+K)H',
 ```
 
-with ``K`` the commutation matrix. ``H`` is constant; ``G`` depends on the state and is
-evaluated at the filtered mean.
+with ``K`` the commutation matrix. ``H`` is constant; the first ``G`` term is evaluated at
+the filtered mean and ``Q_{\mathrm{state}}`` integrates its affine state dependence over
+the filtered covariance.
 
 What is approximated is the conditional *distribution*. ``\varepsilon\otimes\varepsilon`` is a
 squared Gaussian — skewed, not Gaussian — so the recursion delivers the best **linear**
@@ -552,6 +571,44 @@ augmented state altogether.
     in the transition and the observation is a plain selection with zero loading on the
     Kronecker block. The machinery is shared, the regime is not.
 
+!!! note "Ivashchenko's QKF is a different filter"
+    Ivashchenko (2014) applies a Gaussian moment closure directly to the **unpruned**
+    second-order solution. Its conditional covariance therefore requires fourth moments of the
+    state and innovation errors. That is not a drop-in replacement for this pruned augmented
+    recursion: without pruning the quadratic transition generates quartic, then higher-order,
+    state products and the finite linear state representation no longer closes. The package
+    implements it separately as `:ivashchenko_kalman`.
+
+## Ivashchenko's unpruned Gaussian filter
+
+`filter = :ivashchenko_kalman` is available for `algorithm = :second_order` and
+`:third_order`. It treats the raw perturbation solution as a polynomial map in the previous
+period's state and the current shocks:
+
+```math
+f(u) = S_1 u + \tfrac12 S_2(u\otimes u) + \tfrac16 S_3(u\otimes u\otimes u),
+\qquad u = [x_{t-1};\ 1;\varepsilon_t].
+```
+
+The filter expands this map around the current Gaussian mean. At second order, the mean and
+covariance use Gaussian moments through order four. The third-order implementation is the
+corresponding extension through order six: the cubic Hermite component contributes both to the
+effective linear loading and to the covariance. The third-order extension is an implementation
+of the same moment-closure idea, not a claim that the 2014 paper itself derives a cubic QKF.
+
+The `:theoretical` initial covariance solves the coupled unpruned mean/covariance fixed point,
+starting from the linear Lyapunov covariance. A supplied covariance or `:diagonal` uses that
+prior directly. The filter supports Gaussian measurement error and partial or fully missing
+observation periods: the update is restricted to the observed rows, and a fully missing period
+is prediction-only. `smooth = true` applies a fixed-interval Rauch–Tung–Striebel smoother to
+the Gaussian state moments. Its reverse-mode rule differentiates the moment contractions,
+measurement updates, and theoretical fixed-point initialization analytically; it does not use
+automatic differentiation internally.
+
+This is computationally different from `:quadratic_kalman` and `:cubic_kalman`: it avoids the
+large pruned augmented covariance, but the cubic moment contraction scales with the cube of the
+state-and-shock dimension and is intended for relatively small models.
+
 ### Cost
 
 The augmented dimension is ``2n_r + n_{past}(n_{past}+1)/2``, where ``n_r`` counts the retained
@@ -565,7 +622,7 @@ dominates everything else — per period, measured:
 | ``(\mathcal{A}P_c)\mathcal{A}'`` | ``n_z^3`` (88.7M flops) | 1.26 | 49% |
 | symmetrisation ×2 | ``n_z^2`` | 0.10 | 4% |
 | ``P_p - K\,CP`` | ``n_z^2 n_{obs}`` | 0.03 | 1% |
-| ``GG'`` | ``n_z^2 n_\varepsilon`` | 0.03 | 1% |
+| ``G G'`` plus covariance correction | ``n_z^2 n_\varepsilon + n_\varepsilon(n_z n_{past}^2+n_z^2 n_{past})`` | small relative to the two ``n_z^3`` products | — |
 | ``\mathcal{C}P_p`` | ``n_{obs}n_z^2`` | 0.06 | 2% |
 | build ``G`` | ``n_z n_\varepsilon n_{past}`` | 0.02 | 1% |
 
@@ -576,12 +633,15 @@ of propagating a covariance over the Kronecker-augmented state, and no amount of
 it. Sparsity does not help either — ``\mathcal{A}`` is about 50% dense, and a sparse
 representation measures 10× *slower* than the dense one.
 
-**References:** Kollmann (2015), *Computational Economics* 45, 239–260 — the filter implemented
-here. Andreasen, Fernández-Villaverde & Rubio-Ramírez (2018) — the pruned state-space
-representation. Monfort, Renne & Roussellet (2015), *Journal of Econometrics* 187, 43–56 — the
-quadratic Kalman filter for quadratic measurement equations. Andreasen (2013), *Journal of
-Applied Econometrics* 28, 929–955 — the central difference Kalman filter, the unpruned
-alternative.
+**References:** Kollmann (2015), [*Tractable Latent State Filtering for Non-Linear DSGE Models
+Using a Second-Order Approximation and Pruning](https://doi.org/10.1007/s10614-013-9418-3),
+*Computational Economics* 45, 239–260 — the filter implemented here. Ivashchenko (2014),
+[*DSGE Model Estimation on the Basis of Second-Order Approximation](https://doi.org/10.1007/s10614-013-9363-1),
+*Computational Economics* 43, 71–82 — the non-pruned Gaussian QKF. Andreasen,
+Fernández-Villaverde & Rubio-Ramírez (2018) — the pruned state-space representation. Monfort,
+Renne & Roussellet (2015), *Journal of Econometrics* 187, 43–56 — the quadratic Kalman filter
+for quadratic measurement equations. Andreasen (2013), *Journal of Applied Economics* 28,
+929–955 — the central difference Kalman filter, the unpruned alternative.
 
 ## The cubic Kalman filter
 
@@ -654,7 +714,7 @@ closed form:
 
 ```math
 \mathbb{E}[f] = C(z)\,m,\qquad
-\mathrm{Var}(f) = C(z)\,\Psi\,C(z)',
+\mathrm{Var}(f) = C(\bar z)\,\Psi\,C(\bar z)' + Q_{\mathrm{state}},
 ```
 
 with ``m_\alpha = \mathbb{E}[\varepsilon^\alpha]`` and
@@ -662,7 +722,20 @@ with ``m_\alpha = \mathbb{E}[\varepsilon^\alpha]`` and
 Because the shocks are *independent* standard normals, ``\mathbb{E}[\varepsilon^\alpha]``
 factorises into double factorials, so ``\Psi`` is a closed form rather than a sum over
 Isserlis pairings. This is the exact analogue of the quadratic filter's affine ``G(z)`` with
-``Q = GG'``: a period costs one matvec and two gemms, not a quadrature sweep.
+``Q = C\Psi C'``: a period costs one matvec and two gemms, not a quadrature sweep.
+
+As in the quadratic filter, ``Q_{\mathrm{state}}`` integrates the affine loading over the
+filtered state distribution. If ``C(z)=C(\bar z)+\sum_i z_iD_i``, then
+
+```math
+Q_{\mathrm{state}} = \sum_{i,j}P_{ij}D_i\Psi D_j'.
+```
+
+Only the structurally supported blocks of ``z`` can appear in ``C(z)``: past ``x_1``, past
+``x_2`` and ``q_{11}``. The full augmented covariance is still propagated for the Kalman
+update, but the correction contracts only the corresponding submatrix. Since ``q_{11}`` is
+in that support, the stationary initialization solves a coupled covariance fixed point; its
+adjoint uses the corresponding implicit fixed-point equation.
 
 ``C(z)`` is recovered by interpolation on ``\binom{n_\varepsilon+3}{3}`` points, which is
 also where a tensor Gauss-Hermite rule is left behind — its node count grows as
@@ -697,7 +770,7 @@ than merely moving the end-to-end number:
 |---|---|
 | step adjoint | ``\partial f(z,\varepsilon)`` onto ``\mathbf{S}_1,\mathbf{S}_2,\mathbf{S}_3`` and the derived blocks |
 | build adjoint | ``\partial(\mathcal{A}, c, c_0, \Lambda)`` replayed over the same ``(n_z+1)N`` points the forward pass visited |
-| recursion adjoint | the Kalman loop, with ``Q = C\Psi C'`` in place of the quadratic filter's ``GG' + Q_H`` |
+| recursion adjoint | the Kalman loop, with ``Q = C(\bar z)\Psi C(\bar z)' + Q_{\mathrm{state}}`` |
 
 Everything the step builds from ``z`` and ``\varepsilon`` alone — ``\mathrm{aug}``, ``K_2``,
 ``K_{12}``, ``K_3``, the ``Q`` blocks — is constant for the adjoint, so only the paths

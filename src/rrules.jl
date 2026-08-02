@@ -1862,9 +1862,8 @@ function rrule(::typeof(get_loglikelihood),
 
     filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
-    # The particle filter is a stochastic, non-differentiable estimator and the
-    # Kalman likelihood with measurement error does not yet ship an analytical
-    # reverse-mode rule. Fail loudly rather than return an incorrect gradient.
+    # The particle filter is a stochastic, non-differentiable estimator. The
+    # Gaussian filters use analytical reverse-mode rules.
     if filter ∈ PARTICLE_FILTERS
         error("The particle filters (`filter = :$(filter)`) are not differentiable and cannot be used with reverse-mode automatic differentiation (Zygote/Mooncake). Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
     end
@@ -1877,9 +1876,10 @@ function rrule(::typeof(get_loglikelihood),
     else
         measurement_error != 0
     end
-    # The quadratic and cubic Kalman filters carry their own hand-written adjoints,
-    # which include the measurement-error covariance, so the guard skips them.
-    if me_active && filter ∉ (:quadratic_kalman, :cubic_kalman)
+    # The quadratic, cubic, and Ivashchenko Kalman filters carry hand-written
+    # adjoints, which include the measurement-error covariance, so the guard
+    # skips them.
+    if me_active && filter ∉ (:quadratic_kalman, :cubic_kalman, :ivashchenko_kalman)
         error("Reverse-mode automatic differentiation of the Kalman likelihood with measurement error (`measurement_error`) is not yet supported. Use forward-mode AD (e.g. `AutoForwardDiff`) or a gradient-free sampler.")
     end
 
@@ -1968,7 +1968,7 @@ function rrule(::typeof(get_loglikelihood),
     # The quadratic and cubic Kalman filters are the ones whose inner rrules take
     # the measurement-error covariance; for the others it is inactive (the guard
     # above) and the kwarg would not be accepted.
-    me_kw = filter ∈ (:quadratic_kalman, :cubic_kalman) ?
+    me_kw = filter ∈ (:quadratic_kalman, :cubic_kalman, :ivashchenko_kalman) ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
         NamedTuple()
 
@@ -2092,6 +2092,104 @@ function rrule(::typeof(get_loglikelihood),
     end
 
     return llh, pullback
+end
+
+# Analytical reverse-mode rule for the unpruned Gaussian moment-closure
+# recursion.  The forward pass records the Gaussian update and each Hermite
+# moment contraction; the pullback reverses those algebraic contractions and
+# the fixed-point initialization directly.
+function ivashchenko_likelihood_rrule(observables_index::Vector{Int}, 𝐒,
+                                      data_in_deviations::AbstractMatrix,
+                                      constants::constants, state, workspaces::workspaces,
+                                      val_algo::Val{O};
+                                      presample_periods::Int = 0,
+                                      initial_covariance = :theoretical,
+                                      measurement_error = nothing,
+                                      on_failure_loglikelihood = -Inf,
+                                      lyapunov_algorithm::Symbol = :doubling,
+                                      obs_idx_per_t = nothing) where {O}
+    sys = build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O)
+    initial_mean = state[sys.past]
+    ll, tape = ivashchenko_filter_pass(sys, data_in_deviations, initial_mean;
+                                       measurement_error = measurement_error,
+                                       initial_covariance = initial_covariance,
+                                       presample_periods = presample_periods,
+                                       on_failure_loglikelihood = on_failure_loglikelihood,
+                                       workspaces = workspaces,
+                                       lyapunov_algorithm = lyapunov_algorithm,
+                                       record = true)
+    tape === nothing && return ll, nothing
+
+    pullback = function (cotangent)
+        scale = unthunk(cotangent)
+        if scale isa Union{NoTangent, AbstractZero} || scale == 0
+            zeros_solution = [zeros(eltype(𝐒[i]), size(𝐒[i])) for i in eachindex(𝐒)]
+            zeros_data = zeros(eltype(data_in_deviations), size(data_in_deviations))
+            zeros_state = zeros(eltype(state), length(state))
+            return (NoTangent(), NoTangent(), NoTangent(), NoTangent(),
+                    zeros_solution, zeros_data, NoTangent(), zeros_state,
+                    NoTangent())
+        end
+        solution_bar, data_bar, state_bar = ivashchenko_filter_pullback(
+            sys, tape, 𝐒, scale;
+            initial_covariance = initial_covariance,
+            lyapunov_algorithm = lyapunov_algorithm)
+        return (NoTangent(), NoTangent(), NoTangent(), NoTangent(),
+                solution_bar, data_bar, NoTangent(), state_bar, NoTangent())
+    end
+    return ll, pullback
+end
+
+function rrule(::typeof(calculate_loglikelihood),
+                ::Val{:ivashchenko_kalman}, val_algo::Val{O},
+                observables_index::Vector{Int}, 𝐒, data_in_deviations::AbstractMatrix,
+                constants::constants, state, workspaces::workspaces;
+                warmup_iterations::Int = 0,
+                presample_periods::Int = 0,
+                initial_covariance = :theoretical,
+                filter_algorithm::Symbol = :LagrangeNewton,
+                lyapunov_algorithm::Symbol = :doubling,
+                on_failure_loglikelihood = -Inf,
+                measurement_error = nothing,
+                opts::CalculationOptions = merge_calculation_options()) where {O}
+    ll, pullback = ivashchenko_likelihood_rrule(observables_index, 𝐒, data_in_deviations,
+                                                constants, state, workspaces, val_algo;
+                                                presample_periods = presample_periods,
+                                                initial_covariance = initial_covariance,
+                                                measurement_error = measurement_error,
+                                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                                lyapunov_algorithm = lyapunov_algorithm)
+    pullback === nothing && return ll, _ ->
+        (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),
+         NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    return ll, pullback
+end
+
+function rrule(::typeof(calculate_loglikelihood_with_missing),
+                ::Val{:ivashchenko_kalman}, val_algo::Val{O},
+                observables_index::Vector{Int}, 𝐒, data_in_deviations::AbstractMatrix,
+                constants::constants, state, workspaces::workspaces,
+                obs_idx_per_t::Vector{Vector{Int}};
+                warmup_iterations::Int = 0,
+                presample_periods::Int = 0,
+                initial_covariance = :theoretical,
+                filter_algorithm::Symbol = :LagrangeNewton,
+                lyapunov_algorithm::Symbol = :doubling,
+                on_failure_loglikelihood = -Inf,
+                measurement_error = nothing,
+                opts::CalculationOptions = merge_calculation_options()) where {O}
+    ll, pullback = ivashchenko_likelihood_rrule(observables_index, 𝐒, data_in_deviations,
+                                                constants, state, workspaces, val_algo;
+                                                presample_periods = presample_periods,
+                                                initial_covariance = initial_covariance,
+                                                measurement_error = measurement_error,
+                                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                obs_idx_per_t = obs_idx_per_t)
+    pullback === nothing && return ll, _ ->
+        (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),
+         NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    return ll, cotangent -> (pullback(cotangent)..., NoTangent())
 end
 
 # 3-arg shim: preserves the original (no AD through initial_state) contract so

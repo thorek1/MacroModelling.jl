@@ -181,6 +181,10 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "quadratic_kalman"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "ivashchenko_kalman"
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2
@@ -211,14 +215,18 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
-      # - name: Restrict DynamicPPL to 0.40 for pigeons runs
-      #   if: contains(matrix.test_set, 'pigeons')
-      #   shell: bash
-      #   run: |
-      #     sed -i.bak \
-      #       -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$/DynamicPPL = "0.40"/g' \
-      #       Project.toml
-      #     rm -f Project.toml.bak
+      - name: Restrict DynamicPPL to 0.40 for pigeons runs
+        if: contains(matrix.test_set, 'pigeons')
+        shell: bash
+        run: |
+          # Pigeons 0.4 and FlexiChains require disjoint DynamicPPL ranges.
+          # FlexiChains is removed below for these jobs; keep the compatible
+          # DynamicPPL line explicit so a future resolver update cannot select
+          # the incompatible 0.41/0.42 branch.
+          sed -i.bak \
+            -e '/^\[compat\]/,/^\[/ s/^DynamicPPL[[:space:]]*=.*$/DynamicPPL = "0.40"/g' \
+            Project.toml
+          rm -f Project.toml.bak
 
       - name: Remove Mooncake from pigeons runs
         if: contains(matrix.test_set, 'pigeons')

@@ -376,10 +376,19 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
                  mod(fld(r - 1, nPast), nPast) + 1,
                  mod(r - 1, nPast) + 1) for r in can3]
 
+    # Only these augmented-state blocks can enter the affine noise loading:
+    # past x₁ rows, past x₂ rows, and q₁₁.  The larger covariance is still needed
+    # by the Kalman recursion, but the additional Kollmann correction only reads
+    # this structural support.
+    past_positions = [findfirst(!iszero, view(Pm, i, :)) for i in 1:nPast]
+    noise_state_indices = vcat(first(r1) .+ past_positions .- 1,
+                               first(r2) .+ past_positions .- 1,
+                               collect(i11))
+
     return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C, op1, op2, op3,
             r1, r2, r3, i11, i12, i111, nq11, nq12, nq111,
             exp2, can2, exp3, can3, can2_ij, can3_ijk,
-            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail,
+            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail, noise_state_indices,
             k2cols, k2_ij, S2k2, k12cols, k12_ij, S2k12, k3cols, k3_ijk, S3k3)
 end
 
@@ -752,6 +761,148 @@ function build_cubic_kalman_system(sys, basis; ws = cubic_kalman_workspace(sys))
     return 𝒜, c, c₀, Λ
 end
 
+# Fill the conditional covariance of a cubic innovation.  With
+# C(z) = C̄ + Σᵢ zᵢDᵢ and shock-moment covariance Ψ,
+#
+#   E[C(Z)ΨC(Z)'] = C̄ΨC̄' + Σᵢⱼ Cov(Zᵢ,Zⱼ) DᵢΨDⱼ'.
+#
+# `Λnoise` contains only the columns Dᵢ that can be nonzero structurally.  This
+# avoids forming or multiplying by the full augmented covariance for the extra
+# term while retaining the full matrix Q required by the Kalman update.
+function cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
+                                        Pnoise, mixvec, mixΨ, CΨ)
+    nI = length(noise_state_indices)
+    nz, N = size(C)
+    ℒ.mul!(CΨ, C, Ψ)
+    ℒ.mul!(Q, CΨ, C')
+    @inbounds for j in 1:nI, i in 1:nI
+        Pnoise[i, j] = Pc[noise_state_indices[i], noise_state_indices[j]]
+    end
+    @inbounds for i in 1:nI
+        ℒ.mul!(mixvec, Λnoise, view(Pnoise, :, i))
+        mix = reshape(mixvec, nz, N)
+        ℒ.mul!(mixΨ, mix, Ψ)
+        Di = reshape(view(Λnoise, :, i), nz, N)
+        ℒ.mul!(Q, mixΨ, Di', one(eltype(Q)), one(eltype(Q)))
+    end
+    @inbounds for j in 1:nz, i in 1:j
+        m = (Q[i, j] + Q[j, i]) / 2
+        Q[i, j] = m; Q[j, i] = m
+    end
+    return Q
+end
+
+# Solve the cubic stationary covariance fixed point
+#
+#   Σ = 𝒜Σ𝒜' + C̄ΨC̄' + K(Σ),
+#
+# where K is the state-covariance correction above.  Unlike the quadratic case,
+# q₁₁ is itself in the loading support, so the correction is coupled to the
+# augmented covariance.  The Float64 path stops on convergence; the dual path
+# runs a fixed number of iterations so ForwardDiff sees a smooth computation.
+function cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, Ψ, noise_state_indices;
+                                         workspaces = nothing,
+                                         lyapunov_algorithm::Symbol = :doubling,
+                                         max_iterations::Int = 100,
+                                         tolerance::Real = 1e-12)
+    nz, N = size(Cbar)
+    Tv = promote_type(eltype(𝒜), eltype(Cbar), eltype(Λnoise), eltype(Ψ))
+    Qbase = Matrix{Tv}(undef, nz, nz)
+    CΨ = Matrix{Tv}(undef, nz, N)
+    ℒ.mul!(CΨ, Cbar, Ψ)
+    ℒ.mul!(Qbase, CΨ, Cbar')
+    Qbase = (Qbase + Qbase') / 2
+
+    Pnoise = Matrix{Tv}(undef, length(noise_state_indices), length(noise_state_indices))
+    mixvec = Vector{Tv}(undef, nz * N)
+    mixΨ = Matrix{Tv}(undef, nz, N)
+    Q = Matrix{Tv}(undef, nz, nz)
+    Σ = qkf_lyapunov(𝒜, Qbase; workspaces = workspaces,
+                     lyapunov_algorithm = lyapunov_algorithm)
+    float_path = eltype(𝒜) <: AbstractFloat
+    converged = false
+    for iteration in 1:max_iterations
+        copyto!(Q, Qbase)
+        @inbounds for j in 1:length(noise_state_indices), i in 1:length(noise_state_indices)
+            Pnoise[i, j] = Σ[noise_state_indices[i], noise_state_indices[j]]
+        end
+        @inbounds for i in 1:length(noise_state_indices)
+            ℒ.mul!(mixvec, Λnoise, view(Pnoise, :, i))
+            mix = reshape(mixvec, nz, N)
+            ℒ.mul!(mixΨ, mix, Ψ)
+            Di = reshape(view(Λnoise, :, i), nz, N)
+            ℒ.mul!(Q, mixΨ, Di', one(Tv), one(Tv))
+        end
+        @inbounds for j in 1:nz, i in 1:j
+            m = (Q[i, j] + Q[j, i]) / 2
+            Q[i, j] = m; Q[j, i] = m
+        end
+        Σnew = qkf_lyapunov(𝒜, Q; workspaces = workspaces,
+                            lyapunov_algorithm = lyapunov_algorithm)
+        if float_path
+            difference = maximum(abs, Σnew - Σ)
+            scale = max(1.0, maximum(abs, Σnew))
+            if difference <= tolerance * scale
+                Σ = Σnew
+                converged = true
+                break
+            end
+        end
+        Σ = Σnew
+    end
+    float_path && !converged && error("The cubic Kalman stationary covariance fixed point did not converge " *
+                                     "within $max_iterations iterations.")
+    return Σ
+end
+
+# Adjoint of the coupled stationary covariance equation.  This is the transpose
+# fixed point X = 𝒜'X𝒜 + K*(X) + Σ̄, solved with a Lyapunov-preconditioned
+# iteration because K* is inexpensive on the restricted loading support.  It
+# supplies the exact implicit pullback of the converged Float64 covariance
+# iteration without differentiating through it.
+function cubic_kalman_stationary_adjoint(𝒜, Λnoise, Ψ, noise_state_indices, Σ̄;
+                                         workspaces = nothing,
+                                         lyapunov_algorithm::Symbol = :doubling,
+                                         max_iterations::Int = 100,
+                                         tolerance::Real = 1e-12)
+    nz = size(Σ̄, 1)
+    coefficient_count = size(Λnoise, 1) ÷ nz
+    nI = length(noise_state_indices)
+    X = (Σ̄ + Σ̄') / 2
+    P̄noise = zeros(eltype(X), nI, nI)
+    E = zeros(eltype(X), nz, coefficient_count)
+    EΨ = zeros(eltype(X), nz, coefficient_count)
+    Xnew = similar(X)
+    rhs = copy(Σ̄)
+    X = qkf_lyapunov(Matrix(𝒜'), rhs; workspaces = workspaces,
+                     lyapunov_algorithm = lyapunov_algorithm)
+    for iteration in 1:max_iterations
+        fill!(P̄noise, zero(eltype(P̄noise)))
+        @inbounds for i in 1:nI
+            Di = reshape(view(Λnoise, :, i), nz, coefficient_count)
+            ℒ.mul!(E, X, Di)
+            ℒ.mul!(EΨ, E, Ψ)
+            for j in 1:nI
+                Dj = reshape(view(Λnoise, :, j), nz, coefficient_count)
+                P̄noise[i, j] = sum(EΨ .* Dj)
+            end
+        end
+        copyto!(rhs, Σ̄)
+        @inbounds for j in 1:nI, i in 1:nI
+            rhs[noise_state_indices[i], noise_state_indices[j]] += P̄noise[i, j]
+        end
+        Xnew = qkf_lyapunov(Matrix(𝒜'), rhs; workspaces = workspaces,
+                            lyapunov_algorithm = lyapunov_algorithm)
+        Xnew = (Xnew + Xnew') / 2
+        difference = maximum(abs, Xnew - X)
+        scale = max(1.0, maximum(abs, Xnew))
+        X = copy(Xnew)
+        difference <= tolerance * scale && return X
+    end
+    error("The cubic Kalman stationary covariance adjoint did not converge " *
+          "within $max_iterations iterations.")
+end
+
 """
 Adjoint of `build_cubic_kalman_system`. The build is linear in the collected step
 evaluations — `C(z) = F(z) W`, then `c = C(0)m`, `c₀ = vec C(0)`,
@@ -831,27 +982,29 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     basis = cubic_noise_basis(sys.nExo)
     𝒜, c, c₀, Λ = build_cubic_kalman_system(sys, basis; ws = ws)
     N, Ψ = basis.N, basis.Ψ
+    noise_state_indices = sys.noise_state_indices
+    Λnoise = Matrix(Λ[:, noise_state_indices])
 
     cvec = Vector{Tv}(undef, nz * N)
     CΨ = Matrix{Tv}(undef, nz, N)
     Q = Matrix{Tv}(undef, nz, nz)
+    Pnoise = Matrix{Tv}(undef, length(noise_state_indices), length(noise_state_indices))
+    mixvec = Vector{Tv}(undef, nz * N)
+    mixΨ = Matrix{Tv}(undef, nz, N)
     # Q(z) = C(z) Ψ C(z)' with vec(C) = c₀ + Λz.
-    noise_covariance! = function (Q, z)
+    noise_covariance! = function (Q, z, Pc)
         copyto!(cvec, c₀)
         ℒ.mul!(cvec, Λ, z, one(Tv), one(Tv))
         C = reshape(cvec, nz, N)
-        ℒ.mul!(CΨ, C, Ψ)
-        ℒ.mul!(Q, CΨ, C')
-        for j in 1:nz, i in 1:j
-            m = (Q[i, j] + Q[j, i]) / 2
-            Q[i, j] = m; Q[j, i] = m
-        end
-        return Q
+        cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
+                                       Pnoise, mixvec, mixΨ, CΨ)
     end
 
     z = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
-    Σ = qkf_lyapunov(𝒜, noise_covariance!(Q, z); workspaces = workspaces,
-                     lyapunov_algorithm = lyapunov_algorithm)
+    Cbar = reshape(c₀ + Λ * z, nz, N)
+    Σ = cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, Ψ, noise_state_indices;
+                                        workspaces = workspaces,
+                                        lyapunov_algorithm = lyapunov_algorithm)
 
     # Preallocate the recursion's working matrices once, as the quadratic filter
     # does: the covariance propagation is the whole cost, and allocating an nz×nz
@@ -870,7 +1023,7 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     ll = zero(Tv)
     log2pi = log(2π)
     @inbounds for t in 1:nT
-        noise_covariance!(Q, z)
+        noise_covariance!(Q, z, Pc)
 
         # Pp = 𝒜 Pc 𝒜' + Q
         ℒ.mul!(Tm, 𝒜, Pc)
@@ -929,25 +1082,33 @@ end
 """
 Taped forward pass plus adjoint for the cubic Kalman recursion. Mirrors
 `quadratic_kalman_recursion`'s verified adjoint; the one structural difference is
-the noise term, `Q = CΨC'` with `vec(C) = c₀ + Λz`, in place of `GG' + Q_H`.
+the noise term, `Q = C(\bar z)ΨC(\bar z)' + Q_state` with `vec(C) = c₀ + Λz`, in place of
+`G(\bar z)G(\bar z)' + Q_H + Q_state`.
 
 `Q̄` is symmetric here because `P̄p` is symmetrised before use, so the cotangent of
 `C` is `2 Q̄ C Ψ` rather than `(Q̄ + Q̄')CΨ`.
 """
 function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ0, nz, N,
-                                      presample_periods, on_failure_loglikelihood)
+                                      presample_periods, on_failure_loglikelihood,
+                                      noise_state_indices)
     n_obs, nT = size(Y)
     z = copy(z0); Pc = copy(Σ0)
     zs = Vector{Vector{Float64}}(); Ps = Vector{Matrix{Float64}}()
-    Cs = Vector{Matrix{Float64}}(); vs = Vector{Vector{Float64}}()
+    Cs = Vector{Matrix{Float64}}(); Pas = Vector{Matrix{Float64}}()
+    vs = Vector{Vector{Float64}}()
     CPs = Vector{Matrix{Float64}}(); Fis = Vector{Matrix{Float64}}()
     Ks = Vector{Matrix{Float64}}()
     ll = 0.0; log2pi = log(2π)
+    Λnoise = Matrix(Λ[:, noise_state_indices])
+    Pnoise = zeros(length(noise_state_indices), length(noise_state_indices))
+    mixvec = zeros(nz * N); mixΨ = zeros(nz, N); CΨ = zeros(nz, N); Q = zeros(nz, nz)
 
     for t in 1:nT
         push!(zs, copy(z)); push!(Ps, copy(Pc))
         C = reshape(c₀ + Λ * z, nz, N)
-        Q = C * Ψ * C'
+        cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
+                                       Pnoise, mixvec, mixΨ, CΨ)
+        push!(Pas, copy(Pnoise))
         zp = 𝒜 * z + c
         Pp = 𝒜 * Pc * 𝒜' + Q; Pp = (Pp + Pp') / 2
         v = Y[:, t] - 𝒞 * zp
@@ -964,12 +1125,12 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
         Pc = Pp - K * CP; Pc = (Pc + Pc') / 2
         push!(Cs, C); push!(vs, v); push!(CPs, CP); push!(Fis, Fi); push!(Ks, K)
     end
-    return ll, (; zs, Ps, Cs, vs, CPs, Fis, Ks)
+    return ll, (; zs, Ps, Cs, Pas, vs, CPs, Fis, Ks)
 end
 
 function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, N, n_obs, nT,
-                                         presample_periods, ∂ll)
-    (; zs, Ps, Cs, vs, CPs, Fis, Ks) = tape
+                                         presample_periods, ∂ll, noise_state_indices)
+    (; zs, Ps, Cs, Pas, vs, CPs, Fis, Ks) = tape
     𝒜̄ = zeros(nz, nz); c̄ = zeros(nz); c̄₀ = zeros(length(c₀)); Λ̄ = zeros(size(Λ))
     H̄m = zeros(n_obs, n_obs); Ȳ = zeros(n_obs, nT)
     z̄ = zeros(nz); P̄ = zeros(nz, nz)
@@ -1002,6 +1163,22 @@ function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, 
         vC̄ = vec(C̄)
         c̄₀ .+= vC̄
         Λ̄ .+= vC̄ * z_'
+        P̄noise = zeros(length(noise_state_indices), length(noise_state_indices))
+        Λnoise = view(Λ, :, noise_state_indices)
+        @inbounds for i in 1:length(noise_state_indices)
+            Di = reshape(view(Λnoise, :, i), nz, N)
+            E = Q̄ * Di * Ψ
+            for j in 1:length(noise_state_indices)
+                Dj = reshape(view(Λnoise, :, j), nz, N)
+                P̄noise[i, j] = sum(E .* Dj)
+            end
+            Dmix = reshape(Λnoise * view(Pas[t], :, i), nz, N)
+            D̄ = 2 .* (Q̄ * Dmix * Ψ)
+            Λ̄[:, noise_state_indices[i]] .+= vec(D̄)
+        end
+        @inbounds for j in 1:length(noise_state_indices), i in 1:length(noise_state_indices)
+            P̄[noise_state_indices[i], noise_state_indices[j]] += P̄noise[i, j]
+        end
         𝒜̄ .+= z̄p * z_'
         c̄ .+= z̄p
         z̄ = 𝒜' * z̄p + Λ' * vC̄
@@ -1066,14 +1243,18 @@ function rrule(::typeof(calculate_loglikelihood),
     basis = cubic_noise_basis(sys.nExo)
     𝒜, c, c₀, Λ = build_cubic_kalman_system(sys, basis; ws = ws)
     N, Ψ, 𝒞 = basis.N, basis.Ψ, sys.C
+    noise_state_indices = sys.noise_state_indices
+    Λnoise = Matrix(Λ[:, noise_state_indices])
 
     z₀ = (Matrix{Float64}(ℒ.I(nz)) - 𝒜) \ c
     C₀ = reshape(c₀ + Λ * z₀, nz, N)
-    Q₀ = C₀ * Ψ * C₀'; Q₀ = (Q₀ + Q₀') / 2
-    Σ₀ = qkf_lyapunov(𝒜, Q₀; workspaces = workspaces, lyapunov_algorithm = lyapunov_algorithm)
+    Σ₀ = cubic_kalman_initial_covariance(𝒜, C₀, Λnoise, Ψ, noise_state_indices;
+                                          workspaces = workspaces,
+                                          lyapunov_algorithm = lyapunov_algorithm)
 
     llh, tape = cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Matrix(data_in_deviations),
-                                             𝒞, z₀, Σ₀, nz, N, presample, on_failure_loglikelihood)
+                                             𝒞, z₀, Σ₀, nz, N, presample, on_failure_loglikelihood,
+                                             noise_state_indices)
 
     nine(x...) = (NoTangent(), NoTangent(), NoTangent(), NoTangent(), x[1], x[2],
                   NoTangent(), x[3], NoTangent())
@@ -1086,11 +1267,14 @@ function rrule(::typeof(calculate_loglikelihood),
         ∂llh = unthunk(∂llh_bar)
         𝒜̄, c̄, c̄₀, Λ̄, _, Ȳ, z̄₀, Σ̄₀ =
             cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, N, n_obs, nT,
-                                            presample, ∂llh)
+                                            presample, ∂llh, noise_state_indices)
 
-        # Σ₀ = 𝒜Σ₀𝒜' + Q₀  ⇒  X solves X = 𝒜'X𝒜 + Σ̄₀
-        X = qkf_lyapunov(Matrix(𝒜'), (Σ̄₀ + Σ̄₀') / 2; workspaces = workspaces,
-                         lyapunov_algorithm = lyapunov_algorithm)
+        # Σ₀ = 𝒜Σ₀𝒜' + C̄ΨC̄' + K(Σ₀).  The adjoint is the corresponding
+        # coupled fixed point, so this remains the exact pullback of the
+        # state-dependent stationary covariance.
+        X = cubic_kalman_stationary_adjoint(𝒜, Λnoise, Ψ, noise_state_indices,
+                                            Σ̄₀; workspaces = workspaces,
+                                            lyapunov_algorithm = lyapunov_algorithm)
         𝒜̄ .+= 2 .* (X * 𝒜 * Σ₀)
         Q̄₀ = (X + X') / 2
         C̄₀ = 2 .* (Q̄₀ * C₀ * Ψ)
@@ -1098,6 +1282,12 @@ function rrule(::typeof(calculate_loglikelihood),
         c̄₀ = c̄₀ .+ vC̄₀
         Λ̄ = Λ̄ .+ vC̄₀ * z₀'
         z̄₀ = z̄₀ .+ Λ' * vC̄₀
+        P₀ = Σ₀[noise_state_indices, noise_state_indices]
+        @inbounds for i in 1:length(noise_state_indices)
+            Dmix = reshape(Λnoise * view(P₀, :, i), nz, N)
+            D̄ = 2 .* (Q̄₀ * Dmix * Ψ)
+            Λ̄[:, noise_state_indices[i]] .+= vec(D̄)
+        end
 
         # z₀ = (I − 𝒜)⁻¹ c
         y = (Matrix{Float64}(ℒ.I(nz)) - 𝒜)' \ z̄₀
