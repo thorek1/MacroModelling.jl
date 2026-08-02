@@ -39,9 +39,9 @@ A short decision rule:
 
 - **Linear model?** Use `:kalman`. It is exact, fast and differentiable, so gradient-based samplers (NUTS/HMC) work. There is no reason to use anything else.
 - **Nonlinear model, at least as many shocks as observables, no measurement error?** Use `:inversion` (the default at higher order). It is exact and differentiable.
-- **Nonlinear model with measurement error, or fewer shocks than observables?** Use a particle filter. `filter = :particle` gives you `:guided_particle`, which is the right default: it draws the shock from its own conditional rather than blindly, and is usually both the cheapest and the most accurate of the four. Fall back to `:tempered_particle` when the model is strongly nonlinear; the filter warns you when it is (see [Guided (`:guided_particle`)](@ref)). `:bootstrap_particle` and `:auxiliary_particle` are baselines, not recommendations.
+- **Nonlinear model with measurement error, or fewer shocks than observables?** Use a particle filter. `filter = :particle` gives you `:guided_particle`, which is the right default: it draws the shock from its own conditional rather than blindly, and measures both cheaper and more accurate than `:tempered_particle` on every comparison in [Guided (`:guided_particle`, which `:particle` selects)](@ref). It buys that with one assumption — that the observation is close to linear in the shock, which is what the proposal is built from. Fall back to `:tempered_particle`, which anneals from the prior and assumes nothing, when that assumption fails badly enough that the guided filter's own bridge cannot repair it. You do not have to guess when: the filter warns if the post-bridge effective sample size averages under 5 % of `n_particles`. Expect to pay roughly ten times the compute. `:bootstrap_particle` and `:auxiliary_particle` are baselines, not recommendations.
 - Particle-filter likelihoods are noisy and non-differentiable: pair them with gradient-free samplers such as slice sampling (Pigeons.jl) or nested sampling.
-- **Want *estimates* (`get_estimated_shocks`, `get_estimated_variables`, the estimate plots) rather than a likelihood?** Use `:tempered_particle`, and treat the others as diagnostics. See [Estimates versus likelihoods](@ref) — the distinction matters more than it looks.
+- **Want *estimates* (`get_estimated_shocks`, `get_estimated_variables`, the estimate plots) rather than a likelihood?** The choice of filter matters more here than it does for the likelihood — see [Estimates versus likelihoods](@ref). Stay with `:guided_particle`: what estimates need is a filter that *moves* particles onto the observation, and of the two that do, it is the more accurate and the cheaper. Use `:bootstrap_particle` and `:auxiliary_particle` as diagnostics only.
 
 By default the package picks `:kalman` for `:first_order` and `:inversion` for the nonlinear algorithms.
 
@@ -61,7 +61,7 @@ Every knob discussed on this page has a default, and the defaults are not neutra
 | `n_particles` | `10_000` | |
 | `particle_resampling` | `:systematic`, threshold `0.5` | resample only when the effective sample size halves |
 | `particle_initial_state_scaling` | `1.0` | the initial cloud has exactly the ergodic spread |
-| `tempering_mh_steps` | `2` for `:guided_particle`, `4` otherwise | the guided filter bridges from a proposal already close to the target and needs far less mutation; the tempered filter bridges from the prior and needs it badly (0.221 against 0.106 at one step versus four) |
+| `particle_mh_steps` | `2` for `:guided_particle`, `4` otherwise | the guided filter bridges from a proposal already close to the target and needs far less mutation; the tempered filter bridges from the prior and needs it badly (0.221 against 0.106 at one step versus four) |
 | tempering, other | ratio `1.5`, ≤100 stages, starting scale `1.0` | the ratio is set more aggressively than Herbst & Schorfheide's own value because for the tempered filter the mutation, not the particle count, limits accuracy; the scale adapts during the run |
 
 Three consequences are worth internalising, because they surprise people:
@@ -194,7 +194,7 @@ Helps most when the signal is informative *and* the one-step-ahead state is well
 
 Instead of confronting the particles with the full observation in one step, the tempered filter introduces the information gradually. Within each period it walks a bridging sequence ``0 = \phi_0 < \phi_1 < \dots < \phi_N = 1``, at each stage using an inflated measurement covariance ``H/\phi``: early stages are nearly uninformative and easy to match, later stages sharpen towards the true density. At every stage the particles are reweighted by the incremental density, resampled, and then **mutated** by a few random-walk Metropolis steps on their shocks that target the stage's tempered posterior. The stage contributions telescope back to the period's likelihood.
 
-The mutation is what makes this powerful: it *moves* particles towards the data rather than merely reweighting the ones that happen to be well placed, so the cloud does not degenerate even when the observation is sharp. The bridging schedule is chosen adaptively to hit a target inefficiency ratio (`tempering_target_ratio`), so hard periods automatically get more stages than easy ones.
+The mutation is what makes this powerful: it *moves* particles towards the data rather than merely reweighting the ones that happen to be well placed, so the cloud does not degenerate even when the observation is sharp. The bridging schedule is chosen adaptively to hit a target inefficiency ratio (`particle_target_ratio`), so hard periods automatically get more stages than easy ones.
 
 The mutation only earns that if its steps are the right size, and the right size is neither known in advance nor constant. The stage-``\phi`` target on the shocks is
 
@@ -202,7 +202,7 @@ The mutation only earns that if its steps are the right size, and the right size
 \pi_\phi(\varepsilon) \;\propto\; N(\varepsilon; 0, I)\,\exp\!\left(-\tfrac{\phi}{2}\, e(\varepsilon)' H^{-1} e(\varepsilon)\right),
 ```
 
-which contracts as ``\phi`` rises and is strongly anisotropic — the observables pin some shocks far more tightly than others. Two things keep the sweep well scaled. First, the proposal is **preconditioned**: linearising ``e(\varepsilon) \approx e(0) - B_o \varepsilon`` with ``B_o`` the first-order impact of the shocks on the observables makes ``\pi_\phi`` Gaussian with covariance ``(I + \phi\, B_o' H^{-1} B_o)^{-1}``, and the step is drawn from that shape (an ``n_\varepsilon \times n_\varepsilon`` Cholesky per stage — negligible next to a transition evaluation). Second, the overall step **scale adapts** during the run towards a 25 % acceptance rate. `tempering_mh_scale` is therefore only the starting point, expressed in units of the stage's own posterior scale, so a value near one is right whatever the model — on Smets–Wouters it settles at ``\approx 0.92``, essentially the textbook ``2.38/\sqrt{n_\varepsilon}``.
+which contracts as ``\phi`` rises and is strongly anisotropic — the observables pin some shocks far more tightly than others. Two things keep the sweep well scaled. First, the proposal is **preconditioned**: linearising ``e(\varepsilon) \approx e(0) - B_o \varepsilon`` with ``B_o`` the first-order impact of the shocks on the observables makes ``\pi_\phi`` Gaussian with covariance ``(I + \phi\, B_o' H^{-1} B_o)^{-1}``, and the step is drawn from that shape (an ``n_\varepsilon \times n_\varepsilon`` Cholesky per stage — negligible next to a transition evaluation). Second, the overall step **scale adapts** during the run towards a 25 % acceptance rate. `particle_mh_scale` is therefore only the starting point, expressed in units of the stage's own posterior scale, so a value near one is right whatever the model — on Smets–Wouters it settles at ``\approx 0.92``, essentially the textbook ``2.38/\sqrt{n_\varepsilon}``.
 
 In practice this buys a large variance reduction per particle — several times lower standard deviation than the bootstrap filter at the same ``N`` — at several times the cost per particle. It is the right default when the bootstrap filter degenerates.
 
@@ -214,9 +214,11 @@ The unbiasedness result above is about the *likelihood*. It says nothing about t
 
 That is where the bootstrap filter's blind proposal bites hardest. With as many observables as shocks and a small ``H`` — the standard DSGE setup — the weights concentrate on a handful of particles, so the effective sample size collapses. The likelihood estimate survives this (it is still unbiased, just noisy, and the noise averages out over a sampler's iterations); a single reported shock path does not. Re-run it with a different `particle_rng` and the numbers move, sometimes enough to flip the sign of the shock the period is being attributed to.
 
-The tempered filter fixes this at the source: its within-period Metropolis sweeps *move* particles onto the observation instead of discarding the ones that missed, so the cloud that the moments are taken over has many more distinct support points. On the nonlinear Smets–Wouters model at pruned second order (seven observables, seven shocks, the default ``(0.1 s_i)^2`` measurement error), `:tempered_particle` is the difference between shock estimates that agree across seeds and shock estimates that are essentially noise.
+Mutation fixes this at the source. Both `:guided_particle` and `:tempered_particle` run within-period Metropolis sweeps that *move* particles onto the observation instead of discarding the ones that missed, so the cloud the moments are taken over has many more distinct support points. On the nonlinear Smets–Wouters model at pruned second order (seven observables, seven shocks, the default ``(0.1 s_i)^2`` measurement error), that is the difference between shock estimates that agree across seeds and shock estimates that are essentially noise.
 
-If you do use a non-tempered variant for estimates, the filter tells you when the cloud has degenerated: it warns when the average effective sample size falls below 5 % of `n_particles`. Take that warning literally — raising `n_particles` shifts the threshold but not the underlying problem, which is the proposal.
+Between the two, the guided filter is the better default for estimates just as it is for likelihoods. It bridges from the conditional rather than from the prior, so it needs far fewer stages to reach the same place: on that same problem its across-seed spread of the shock estimates is 0.078 against the tempered filter's 0.093, in an eighth of the time (the table under [Guided (`:guided_particle`, which `:particle` selects)](@ref)). Reach for `:tempered_particle` when the guided proposal itself is the problem, which it tells you about.
+
+If you do use one of the non-mutating variants for estimates, the filter tells you when the cloud has degenerated: it warns when the average effective sample size falls below 5 % of `n_particles`. Take that warning literally — raising `n_particles` shifts the threshold but not the underlying problem, which is the proposal.
 
 #### What actually limits the precision
 
@@ -236,9 +238,9 @@ That plateau is *not* a statement about what the data can identify. It is the mu
 
 (Measured at ``N = 4\,000`` over ten seeds. A lower ratio makes each bridging step gentler, so fewer ancestors are lost at its resampling; more MH steps rejuvenate harder within each step. The two compound, and both improve the likelihood as well as the estimates — which is why both defaults are set above Herbst & Schorfheide's values of 2.0 and 1. Per unit of compute both beat raising `n_particles`, and for the estimates `n_particles` stops helping altogether past a few thousand.)
 
-The investment-specific shock `eqs` makes the point sharply. At the defaults its seed spread is 0.26 against an estimate of 0.36 — it looks unidentified, and quadrupling the particle count barely moves it. At `tempering_mh_steps = 8` the spread falls to 0.068. Nothing about the data changed; the cloud simply started mixing. **A shock that looks unidentified under a particle filter should be retested with harder rejuvenation before that is believed.**
+The investment-specific shock `eqs` makes the point sharply. At the defaults its seed spread is 0.26 against an estimate of 0.36 — it looks unidentified, and quadrupling the particle count barely moves it. At `particle_mh_steps = 8` the spread falls to 0.068. Nothing about the data changed; the cloud simply started mixing. **A shock that looks unidentified under a particle filter should be retested with harder rejuvenation before that is believed.**
 
-The practical reading: past `n_particles` of a few thousand, spend the next unit of compute on `tempering_mh_steps` (or a lower `tempering_target_ratio`), not on more particles. `tempering_mh_steps = 8` is worth trying whenever a shock looks unstable.
+The practical reading: past `n_particles` of a few thousand, spend the next unit of compute on `particle_mh_steps` (or a lower `particle_target_ratio`), not on more particles. `particle_mh_steps = 8` is worth trying whenever a shock looks unstable.
 
 **The direct check, and the one worth running:** call the same estimate under two or three different `particle_rng` seeds and compare. That takes seconds now and tells you exactly which of your shock estimates you can lean on. `tasks/particle_filter_diagnostics.jl` in the repository does this and prints the per-shock table above.
 
@@ -335,8 +337,8 @@ Every option was swept on the pruned second-order euro-area problem at ``N = 4\,
 
 | option | values tried | dispersion | cost | best `sd·√t` at |
 |---|---|---|---|---|
-| `tempering_mh_steps` | 0, 1, 2, **4**, 8 | 0.097 – 0.091 | 2.4 – 9.2 s | 1 |
-| `tempering_target_ratio` | 1.2, **1.5**, 2, 3, 10 | 0.085 – 0.102 | 5.2 – 7.2 s | 1.5 / 10 |
+| `particle_mh_steps` | 0, 1, 2, **4**, 8 | 0.097 – 0.091 | 2.4 – 9.2 s | 1 |
+| `particle_target_ratio` | 1.2, **1.5**, 2, 3, 10 | 0.085 – 0.102 | 5.2 – 7.2 s | 1.5 / 10 |
 | `particle_resampling_threshold` | 0.25, **0.5**, 0.75 | 0.084 – 0.091 | 5.7 – 5.9 s | 0.25 |
 | `particle_resampling` | **`:systematic`**, `:stratified` | 0.091, 0.102 | 5.8 – 5.9 s | `:systematic` |
 | Gauss–Newton steps (internal) | 0, 1, **2**, 3 | 0.107 – 0.092 | 6.0 – 8.0 s | 2 |
@@ -344,14 +346,14 @@ Every option was swept on the pruned second-order euro-area problem at ``N = 4\,
 Every dispersion in that table lies between 0.084 and 0.107, against a measurement standard error of about 13 %. **No option changes the accuracy by a detectable amount**; they change the cost by a factor of four. The defaults are what they are for reasons that survive that:
 
 - **Gauss–Newton steps = 2** is a genuine optimum rather than a tie. Cutting it does not even save time: a worse-centred proposal makes the bridge take more stages, and a stage costs the same transition a Newton step does (0 steps → 2.07 stages and 8.0 s; 2 steps → 1.30 stages and 6.0 s).
-- **`tempering_mh_steps = 4`** is *not* what the guided filter would choose alone — it is insensitive to this knob and 1 would save about 40 % of its runtime. The knob is shared with `:tempered_particle`, which is not insensitive at all (0.221 at one step against 0.106 at four), and the asymmetry decides it: over-spending on the guided filter is cheap, under-spending on the fallback costs a factor of two. Set `tempering_mh_steps = 1` yourself if you are only using `:guided_particle`.
-- The nominally-best `particle_resampling_threshold = 0.25` and `tempering_target_ratio = 1.2` beat the defaults by 8 % and 7 %, comfortably inside the noise. Chasing those would be fitting to one sample of one problem.
+- **`particle_mh_steps` is resolved per filter** — 2 for `:guided_particle`, 4 otherwise — because the two filters are not remotely equally sensitive to it. The guided filter's estimates are flat in this knob (any value from 0 to 8 lands inside the measurement noise) and only its likelihood discriminates, putting the optimum at 2; `:tempered_particle`, which bridges from the prior, halves its dispersion going from one step to four (0.221 against 0.106). Setting `particle_mh_steps = 1` explicitly saves the guided filter roughly 40 % of its runtime at no measured cost to the estimates.
+- The nominally-best `particle_resampling_threshold = 0.25` and `particle_target_ratio = 1.2` beat the defaults by 8 % and 7 %, comfortably inside the noise. Chasing those would be fitting to one sample of one problem.
 
 #### What does not work: buying accuracy with particles
 
 The one thing worth knowing before spending anything is that on this problem **more particles do not help**. Quadrupling ``N`` from 4 000 to 16 000 leaves the dispersion where it was, at every mutation setting:
 
-| `tempering_mh_steps` | ``N = 4\,000`` | ``N = 16\,000`` | ratio (2.0 would be textbook) |
+| `particle_mh_steps` | ``N = 4\,000`` | ``N = 16\,000`` | ratio (2.0 would be textbook) |
 |---|---|---|---|
 | 0 | 0.099 | 0.108 | 0.91 |
 | 1 | 0.094 | 0.104 | 0.90 |
@@ -382,7 +384,7 @@ shocks = mean(collect(get_estimated_shocks(model, data;
 
 The runs are independent, so this parallelises trivially. It is also the honest way to *report* the uncertainty: the spread across those runs is the Monte-Carlo error of the estimate, and it costs nothing extra to look at.
 
-One detail worth knowing about the reported shocks. With `tempering_mh_steps = 0` the filter reports the conditional mean ``\mu_p`` rather than the shock it drew. Both are consistent for ``E[\varepsilon_t \mid y_{1:t}] = E[\mu(x_{t-1}) \mid y_{1:t}]``, but the conditional mean has already integrated the draw out and so carries none of its variance — a Rao-Blackwellisation, exact to the order the linearisation is. With rejuvenation switched on the particles are draws from the exact conditional instead, so the drawn shock is reported.
+One detail worth knowing about the reported shocks. With `particle_mh_steps = 0` the filter reports the conditional mean ``\mu_p`` rather than the shock it drew. Both are consistent for ``E[\varepsilon_t \mid y_{1:t}] = E[\mu(x_{t-1}) \mid y_{1:t}]``, but the conditional mean has already integrated the draw out and so carries none of its variance — a Rao-Blackwellisation, exact to the order the linearisation is. With rejuvenation switched on the particles are draws from the exact conditional instead, so the drawn shock is reported.
 
 **References:** the conditionally optimal importance function is Doucet, Godsill & Andrieu (2000); building it from a local Gaussian approximation is the "unscented"/optimised particle filter family (van der Merwe, Doucet, de Freitas & Wan, 2000; Andreasen, 2013, for DSGE); solving for the shock that explains the observation before sampling around it is the implicit particle filter of Chorin, Morzfeld & Tu (2010) from geophysical data assimilation. Full adaptation in the sense of Pitt & Shephard (1999) was tried and deliberately *not* kept — see the source comment in `src/filter/particle.jl` for the measurement that rules it out here.
 
