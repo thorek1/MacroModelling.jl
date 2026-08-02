@@ -305,10 +305,10 @@ And data, 4×2×40 Array{Float64, 3}:
                                 particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(),
-                                tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                                tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                                tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                                tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                                particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -355,8 +355,8 @@ And data, 4×2×40 Array{Float64, 3}:
     if filter ∈ PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
                                       particle_resampling_threshold, particle_initial_state_scaling,
-                                      particle_rng, tempering_target_ratio, tempering_mh_steps,
-                                      tempering_max_stages, tempering_mh_scale))
+                                      particle_rng, particle_target_ratio, particle_mh_steps,
+                                      particle_max_stages, particle_mh_scale))
     end
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -477,10 +477,10 @@ And data, 1×40 Matrix{Float64}:
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                             particle_rng::Random.AbstractRNG = Random.default_rng(), 
-                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                             smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -529,8 +529,8 @@ And data, 1×40 Matrix{Float64}:
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
-           tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -634,10 +634,10 @@ And data, 4×40 Matrix{Float64}:
                                 particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                 particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                 particle_rng::Random.AbstractRNG = Random.default_rng(), 
-                                tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                                tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                                tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                                tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                                particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 levels::Bool = DEFAULT_LEVELS,
@@ -687,8 +687,8 @@ And data, 4×40 Matrix{Float64}:
     particle_kw = filter ∈ PARTICLE_FILTERS ?
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
-           tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -795,10 +795,10 @@ And data, 5×40 Matrix{Float64}:
                              particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                              particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                              particle_rng::Random.AbstractRNG = Random.default_rng(),
-                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                              data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                              levels::Bool = DEFAULT_LEVELS,
@@ -931,10 +931,10 @@ And data, 4×40 Matrix{Float64}:
                                                     particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                                                     particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                                                     particle_rng::Random.AbstractRNG = Random.default_rng(),
-                                                    tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                                                    tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                                                    tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                                                    tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                                                    particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                                    particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                                    particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                                    particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                                     smooth::Bool = DEFAULT_SMOOTH_FLAG,
                                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -989,8 +989,8 @@ And data, 4×40 Matrix{Float64}:
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations),
            n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
-           tempering_target_ratio, tempering_mh_steps,
-           tempering_max_stages, tempering_mh_scale) : NamedTuple()
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -4616,10 +4616,10 @@ function get_loglikelihood(𝓂::ℳ,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                             particle_rng::Random.AbstractRNG = Random.default_rng(),
-                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -4645,10 +4645,10 @@ function get_loglikelihood(𝓂::ℳ,
                              particle_resampling_threshold = particle_resampling_threshold,
                              particle_initial_state_scaling = particle_initial_state_scaling,
                              particle_rng = particle_rng,
-                             tempering_target_ratio = tempering_target_ratio,
-                             tempering_mh_steps = tempering_mh_steps,
-                             tempering_max_stages = tempering_max_stages,
-                             tempering_mh_scale = tempering_mh_scale,
+                             particle_target_ratio = particle_target_ratio,
+                             particle_mh_steps = particle_mh_steps,
+                             particle_max_stages = particle_max_stages,
+                             particle_mh_scale = particle_mh_scale,
                              tol = tol,
                              quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                              lyapunov_algorithm = lyapunov_algorithm,
@@ -4676,10 +4676,10 @@ function get_loglikelihood(𝓂::ℳ,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
                             particle_rng::Random.AbstractRNG = Random.default_rng(),
-                            tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                            tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS_SELECTOR(filter),
-                            tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                            tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -4830,7 +4830,6 @@ function get_loglikelihood(𝓂::ℳ,
         if measurement_error_H === nothing
             error("The particle filters require measurement error (they are degenerate without it); set `measurement_error` to a positive variance (scalar, per-observable vector, or covariance matrix), or leave it at `:auto`.")
         end
-        particle_measurement_error = measurement_error_H::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}}
         # The particle filter evaluates in Float64 and is not differentiable; a
         # forward-mode `Dual` parameter type would silently yield a zero gradient.
         if !(S <: AbstractFloat)
@@ -4849,7 +4848,12 @@ function get_loglikelihood(𝓂::ℳ,
                             constants_obj,
                             state,
                             𝓂,
-                            particle_measurement_error,
+                            # Narrowed here rather than into a local above: the
+                            # `nothing` case is already rejected in the guard
+                            # block, but that guard is a separate `if` and JET
+                            # cannot correlate the two, so a local binding reads
+                            # as possibly undefined.
+                            measurement_error_H::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
                             obs_idx_per_t,
                             has_missing;
                             n_particles = n_particles,
@@ -4860,10 +4864,10 @@ function get_loglikelihood(𝓂::ℳ,
                             presample_periods = presample_periods,
                             initial_covariance = initial_covariance,
                             on_failure_loglikelihood = on_failure_loglikelihood,
-                            tempering_target_ratio = tempering_target_ratio,
-                            tempering_mh_steps = tempering_mh_steps,
-                            tempering_max_stages = tempering_max_stages,
-                            tempering_mh_scale = tempering_mh_scale,
+                            particle_target_ratio = particle_target_ratio,
+                            particle_mh_steps = particle_mh_steps,
+                            particle_max_stages = particle_max_stages,
+                            particle_mh_scale = particle_mh_scale,
                             opts = opts)
     elseif filter == :kalman
         if has_missing

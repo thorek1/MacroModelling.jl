@@ -520,19 +520,17 @@ pruned_components(::Val{:pruned_third_order})  = Val(3)
 
 n_components(::Val{K}) where {K} = K::Int
 
-# Upper bound on the memory the augmented/Kronecker scratch may occupy in total,
-# across all threads. It is what caps the column-block size at third order, where
-# the compressed cube of the augmented state already has thousands of rows.
-const PARTICLE_SCRATCH_BYTES = 256 * 2^20
-
-# Smallest useful block: below this the `gemm` calls stop amortising their own
-# overhead.
-const PARTICLE_MIN_BLOCK = 64
-
-# Below this much arithmetic per sweep (scratch rows × particles) the task
-# overhead outweighs the parallelism and the swarm is propagated on the calling
-# thread. Small models with few particles therefore behave exactly as before.
-const PARTICLE_PARALLEL_MIN_WORK = 1 << 20
+# Block sizing, from `default_options.jl`:
+#   DEFAULT_PARTICLE_SCRATCH_BYTES       upper bound on the memory the
+#     augmented/Kronecker scratch may occupy in total across all threads. It is
+#     what caps the column-block size at third order, where the compressed cube of
+#     the augmented state already has thousands of rows.
+#   DEFAULT_PARTICLE_MIN_BLOCK           below this the `gemm` calls stop
+#     amortising their own overhead.
+#   DEFAULT_PARTICLE_PARALLEL_MIN_WORK   below this much arithmetic per sweep
+#     (scratch rows × particles) the task overhead outweighs the parallelism and
+#     the swarm is propagated on the calling thread, so small models with few
+#     particles behave exactly as if none of this existed.
 
 # The perturbation solution in the form the batched kernels want: `𝐒₁` is always
 # the *augmented* first-order matrix (nVars × (nPast+1+nExo), constant column
@@ -551,20 +549,28 @@ struct ParticleTransition
     naug::Int
 end
 
-function build_particle_transition(::Val{algo}, 𝐒, T) where {algo}
+# First order is the only case that has to build its own augmented `𝐒₁`: the
+# solution has no constant term, so the constant column is inserted as zeros.
+function build_particle_transition(::Val{:first_order}, 𝐒, T)
     nVars = T.nVars
     nPast = T.nPast_not_future_and_mixed
     nExo  = T.nExo
     naug  = nPast + 1 + nExo
     empty = Matrix{Float64}(undef, nVars, 0)
 
-    if algo == :first_order
-        S = Matrix{Float64}(𝐒 isa AbstractMatrix ? 𝐒 : 𝐒[1])
-        𝐒₁ = zeros(Float64, nVars, naug)
-        @views 𝐒₁[:, 1:nPast]      .= S[:, 1:nPast]
-        @views 𝐒₁[:, nPast+2:naug] .= S[:, nPast+1:end]   # constant column stays zero
-        return ParticleTransition(𝐒₁, empty, empty, T.past_not_future_and_mixed_idx, nVars, nPast, nExo, naug)
-    end
+    S = Matrix{Float64}(𝐒 isa AbstractMatrix ? 𝐒 : 𝐒[1])
+    𝐒₁ = zeros(Float64, nVars, naug)
+    @views 𝐒₁[:, 1:nPast]      .= S[:, 1:nPast]
+    @views 𝐒₁[:, nPast+2:naug] .= S[:, nPast+1:end]   # constant column stays zero
+    return ParticleTransition(𝐒₁, empty, empty, T.past_not_future_and_mixed_idx, nVars, nPast, nExo, naug)
+end
+
+function build_particle_transition(::Val{algo}, 𝐒, T) where {algo}
+    nVars = T.nVars
+    nPast = T.nPast_not_future_and_mixed
+    nExo  = T.nExo
+    naug  = nPast + 1 + nExo
+    empty = Matrix{Float64}(undef, nVars, 0)
 
     𝐒₁ = Matrix{Float64}(𝐒[1])
     𝐒₂ = length(𝐒) >= 2 ? Matrix{Float64}(𝐒[2]) : empty
@@ -594,52 +600,54 @@ end
 
 no_buffer() = Matrix{Float64}(undef, 0, 0)
 
-function build_scratch_slot(::Val{algo}, naug::Int, blk::Int)::ScratchSlot where {algo}
-    naug2 = naug * (naug + 1) ÷ 2
-    naug3 = naug * (naug + 1) * (naug + 2) ÷ 6
-    aug(n) = Matrix{Float64}(undef, n, blk)
-    if algo == :first_order
-        return ScratchSlot(aug(naug), no_buffer(), no_buffer(), no_buffer(),
-                           no_buffer(), no_buffer(), no_buffer())
-    elseif algo == :second_order
-        return ScratchSlot(aug(naug), no_buffer(), no_buffer(), no_buffer(),
-                           aug(naug2), no_buffer(), no_buffer())
-    elseif algo == :third_order
-        return ScratchSlot(aug(naug), no_buffer(), no_buffer(), no_buffer(),
-                           aug(naug2), no_buffer(), aug(naug3))
-    elseif algo == :pruned_second_order
-        return ScratchSlot(aug(naug), aug(naug), no_buffer(), no_buffer(),
-                           aug(naug2), no_buffer(), no_buffer())
-    else   # :pruned_third_order
-        return ScratchSlot(aug(naug), aug(naug), aug(naug), aug(naug),
-                           aug(naug2), aug(naug2), aug(naug3))
-    end
+# Rows of a compressed square/cube of an `n`-vector.
+@inline n_pair_rows(n::Int)   = n * (n + 1) ÷ 2
+@inline n_triple_rows(n::Int) = n * (n + 1) * (n + 2) ÷ 6
+
+@inline scratch_buffer(n::Int, blk::Int) = Matrix{Float64}(undef, n, blk)
+
+function build_scratch_slot(::Val{:first_order}, naug::Int, blk::Int)
+    return ScratchSlot(scratch_buffer(naug, blk), no_buffer(), no_buffer(), no_buffer(),
+                       no_buffer(), no_buffer(), no_buffer())
+end
+
+function build_scratch_slot(::Val{:second_order}, naug::Int, blk::Int)
+    return ScratchSlot(scratch_buffer(naug, blk), no_buffer(), no_buffer(), no_buffer(),
+                       scratch_buffer(n_pair_rows(naug), blk), no_buffer(), no_buffer())
+end
+
+function build_scratch_slot(::Val{:third_order}, naug::Int, blk::Int)
+    return ScratchSlot(scratch_buffer(naug, blk), no_buffer(), no_buffer(), no_buffer(),
+                       scratch_buffer(n_pair_rows(naug), blk), no_buffer(),
+                       scratch_buffer(n_triple_rows(naug), blk))
+end
+
+function build_scratch_slot(::Val{:pruned_second_order}, naug::Int, blk::Int)
+    return ScratchSlot(scratch_buffer(naug, blk), scratch_buffer(naug, blk), no_buffer(), no_buffer(),
+                       scratch_buffer(n_pair_rows(naug), blk), no_buffer(), no_buffer())
+end
+
+function build_scratch_slot(::Val{:pruned_third_order}, naug::Int, blk::Int)
+    return ScratchSlot(scratch_buffer(naug, blk), scratch_buffer(naug, blk),
+                       scratch_buffer(naug, blk), scratch_buffer(naug, blk),
+                       scratch_buffer(n_pair_rows(naug), blk), scratch_buffer(n_pair_rows(naug), blk),
+                       scratch_buffer(n_triple_rows(naug), blk))
 end
 
 # Scratch rows the algorithm needs per column, which is what sets the memory cost
 # of a block.
-function scratch_rows(::Val{algo}, naug::Int) where {algo}
-    naug2 = naug * (naug + 1) ÷ 2
-    naug3 = naug * (naug + 1) * (naug + 2) ÷ 6
-    if algo == :first_order
-        return naug
-    elseif algo == :second_order
-        return naug + naug2
-    elseif algo == :third_order
-        return naug + naug2 + naug3
-    elseif algo == :pruned_second_order
-        return 2 * naug + naug2
-    else   # :pruned_third_order
-        return 4 * naug + 2 * naug2 + naug3
-    end
-end
+scratch_rows(::Val{:first_order}, naug::Int)         = naug
+scratch_rows(::Val{:second_order}, naug::Int)        = naug + n_pair_rows(naug)
+scratch_rows(::Val{:third_order}, naug::Int)         = naug + n_pair_rows(naug) + n_triple_rows(naug)
+scratch_rows(::Val{:pruned_second_order}, naug::Int) = 2 * naug + n_pair_rows(naug)
+scratch_rows(::Val{:pruned_third_order}, naug::Int)  = 4 * naug + 2 * n_pair_rows(naug) + n_triple_rows(naug)
 
 # The transition scratch, one slot per worker task. Column blocks read disjoint
 # columns of the current cloud and write disjoint columns of the next one, so the
 # swarm can be propagated in parallel and the result is bit-identical whatever
 # the thread count — every random draw happens outside this loop. The block size
 # is chosen to give each task roughly one block while keeping the total scratch
-# inside `PARTICLE_SCRATCH_BYTES`.
+# inside `DEFAULT_PARTICLE_SCRATCH_BYTES`.
 struct BatchScratch
     slots::Vector{ScratchSlot}
     blk::Int
@@ -647,9 +655,9 @@ end
 
 function build_batch_scratch(::Val{algo}, naug::Int, n_particles::Int)::BatchScratch where {algo}
     rows = scratch_rows(Val(algo), naug)
-    nt = rows * n_particles >= PARTICLE_PARALLEL_MIN_WORK ? max(Threads.nthreads(), 1) : 1
-    blk_mem = max(PARTICLE_MIN_BLOCK, PARTICLE_SCRATCH_BYTES ÷ (8 * rows * nt))
-    blk = clamp(cld(n_particles, nt), PARTICLE_MIN_BLOCK, blk_mem)
+    nt = rows * n_particles >= DEFAULT_PARTICLE_PARALLEL_MIN_WORK ? max(Threads.nthreads(), 1) : 1
+    blk_mem = max(DEFAULT_PARTICLE_MIN_BLOCK, DEFAULT_PARTICLE_SCRATCH_BYTES ÷ (8 * rows * nt))
+    blk = clamp(cld(n_particles, nt), DEFAULT_PARTICLE_MIN_BLOCK, blk_mem)
     blk = min(blk, n_particles)
     n_slots = max(1, min(nt, cld(n_particles, blk)))
     slots = ScratchSlot[build_scratch_slot(Val(algo), naug, blk) for _ in 1:n_slots]
@@ -738,7 +746,7 @@ function kron³_power_block!(out::AbstractMatrix{Float64}, a::AbstractMatrix{Flo
 end
 
 # One column block of the transition, written into `Xn`. `X` is the current
-# cloud, `E` the shocks. Each branch mirrors the corresponding closure built by
+# cloud, `E` the shocks. Each method mirrors the corresponding closure built by
 # `parse_algorithm_to_state_update`, with `aug = [x[past]; 1; ε]`:
 #
 #   :second_order         x⁺ = 𝐒₁·aug + ½ 𝐒₂·(aug⊗aug)
@@ -748,71 +756,127 @@ end
 #
 # where the higher pruned components zero the constant and shock slots of their
 # augmented vector, and aug¹̂ is aug¹ with the constant slot zeroed.
-function propagate_block!(::Val{algo}, tr::ParticleTransition, scr,
+function propagate_block!(::Val{:first_order}, tr::ParticleTransition, scr,
                           Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
-                          E::Matrix{Float64}, cols::UnitRange{Int}) where {algo, K}
+                          E::Matrix{Float64}, cols::UnitRange{Int}) where {K}
     b = length(cols)
-    past_idx = tr.past_idx
     a1 = view(scr.aug1, :, 1:b)
     o1 = view(Xn[1], :, cols)
 
-    if algo == :first_order
-        fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
-        ℒ.mul!(o1, tr.𝐒₁, a1)                       # x⁺ = 𝐒₁·aug
-    elseif algo == :second_order
-        kk = view(scr.kk, :, 1:b)
-        fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
-        kron²_power_block!(kk, a1)
-        ℒ.mul!(o1, tr.𝐒₁, a1)                       # x⁺ = 𝐒₁·aug
-        ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)             # x⁺ += ½ 𝐒₂·(aug⊗aug)
-    elseif algo == :third_order
-        kk  = view(scr.kk, :, 1:b)
-        kkk = view(scr.kkk, :, 1:b)
-        fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
-        kron²_power_block!(kk, a1)
-        kron³_power_block!(kkk, a1)
-        ℒ.mul!(o1, tr.𝐒₁, a1)                       # x⁺ = 𝐒₁·aug
-        ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)             # x⁺ += ½ 𝐒₂·(aug⊗aug)
-        ℒ.mul!(o1, tr.𝐒₃, kkk, 1 / 6, 1.0)          # x⁺ += ⅙ 𝐒₃·(aug⊗aug⊗aug)
-    elseif algo == :pruned_second_order
-        a2 = view(scr.aug2, :, 1:b)
-        kk = view(scr.kk, :, 1:b)
-        o2 = view(Xn[2], :, cols)
-        fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
-        fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
-        kron²_power_block!(kk, a1)
-        ℒ.mul!(o1, tr.𝐒₁, a1)                       # x¹⁺ = 𝐒₁·aug¹
-        ℒ.mul!(o2, tr.𝐒₁, a2)                       # x²⁺ = 𝐒₁·aug²
-        ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)             # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
-    else   # :pruned_third_order
-        a2 = view(scr.aug2, :, 1:b)
-        a3 = view(scr.aug3, :, 1:b)
-        aĥ = view(scr.augĥ, :, 1:b)
-        kk  = view(scr.kk, :, 1:b)
-        kk2 = view(scr.kk2, :, 1:b)
-        kkk = view(scr.kkk, :, 1:b)
-        o2 = view(Xn[2], :, cols)
-        o3 = view(Xn[3], :, cols)
-        fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
-        fill_aug_block!(aĥ, X[1], past_idx, E, cols, 0.0, true)
-        fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
-        fill_aug_block!(a3, X[3], past_idx, E, cols, 0.0, false)
-        kron²_power_block!(kk, a1)
-        kron²_block!(kk2, aĥ, a2)
-        kron³_power_block!(kkk, a1)
-        ℒ.mul!(o1, tr.𝐒₁, a1)                       # x¹⁺ = 𝐒₁·aug¹
-        ℒ.mul!(o2, tr.𝐒₁, a2)                       # x²⁺ = 𝐒₁·aug²
-        ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)             # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
-        ℒ.mul!(o3, tr.𝐒₁, a3)                       # x³⁺ = 𝐒₁·aug³
-        ℒ.mul!(o3, tr.𝐒₂, kk2, 1.0, 1.0)            # x³⁺ += 𝐒₂·(aug¹̂⊗aug²)
-        ℒ.mul!(o3, tr.𝐒₃, kkk, 1 / 6, 1.0)          # x³⁺ += ⅙ 𝐒₃·(aug¹⊗aug¹⊗aug¹)
-    end
+    fill_aug_block!(a1, X[1], tr.past_idx, E, cols, 1.0, true)
+    ℒ.mul!(o1, tr.𝐒₁, a1)                           # x⁺ = 𝐒₁·aug
+    return Xn
+end
+
+function propagate_block!(::Val{:second_order}, tr::ParticleTransition, scr,
+                          Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
+                          E::Matrix{Float64}, cols::UnitRange{Int}) where {K}
+    b = length(cols)
+    a1 = view(scr.aug1, :, 1:b)
+    kk = view(scr.kk, :, 1:b)
+    o1 = view(Xn[1], :, cols)
+
+    fill_aug_block!(a1, X[1], tr.past_idx, E, cols, 1.0, true)
+    kron²_power_block!(kk, a1)
+    ℒ.mul!(o1, tr.𝐒₁, a1)                           # x⁺ = 𝐒₁·aug
+    ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)                 # x⁺ += ½ 𝐒₂·(aug⊗aug)
+    return Xn
+end
+
+function propagate_block!(::Val{:third_order}, tr::ParticleTransition, scr,
+                          Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
+                          E::Matrix{Float64}, cols::UnitRange{Int}) where {K}
+    b = length(cols)
+    a1  = view(scr.aug1, :, 1:b)
+    kk  = view(scr.kk, :, 1:b)
+    kkk = view(scr.kkk, :, 1:b)
+    o1  = view(Xn[1], :, cols)
+
+    fill_aug_block!(a1, X[1], tr.past_idx, E, cols, 1.0, true)
+    kron²_power_block!(kk, a1)
+    kron³_power_block!(kkk, a1)
+    ℒ.mul!(o1, tr.𝐒₁, a1)                           # x⁺ = 𝐒₁·aug
+    ℒ.mul!(o1, tr.𝐒₂, kk, 0.5, 1.0)                 # x⁺ += ½ 𝐒₂·(aug⊗aug)
+    ℒ.mul!(o1, tr.𝐒₃, kkk, 1 / 6, 1.0)              # x⁺ += ⅙ 𝐒₃·(aug⊗aug⊗aug)
+    return Xn
+end
+
+function propagate_block!(::Val{:pruned_second_order}, tr::ParticleTransition, scr,
+                          Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
+                          E::Matrix{Float64}, cols::UnitRange{Int}) where {K}
+    b = length(cols)
+    past_idx = tr.past_idx
+    a1 = view(scr.aug1, :, 1:b)
+    a2 = view(scr.aug2, :, 1:b)
+    kk = view(scr.kk, :, 1:b)
+    o1 = view(Xn[1], :, cols)
+    o2 = view(Xn[2], :, cols)
+
+    fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
+    fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
+    kron²_power_block!(kk, a1)
+    ℒ.mul!(o1, tr.𝐒₁, a1)                           # x¹⁺ = 𝐒₁·aug¹
+    ℒ.mul!(o2, tr.𝐒₁, a2)                           # x²⁺ = 𝐒₁·aug²
+    ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)                 # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
+    return Xn
+end
+
+function propagate_block!(::Val{:pruned_third_order}, tr::ParticleTransition, scr,
+                          Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
+                          E::Matrix{Float64}, cols::UnitRange{Int}) where {K}
+    b = length(cols)
+    past_idx = tr.past_idx
+    a1 = view(scr.aug1, :, 1:b)
+    a2 = view(scr.aug2, :, 1:b)
+    a3 = view(scr.aug3, :, 1:b)
+    aĥ = view(scr.augĥ, :, 1:b)
+    kk  = view(scr.kk, :, 1:b)
+    kk2 = view(scr.kk2, :, 1:b)
+    kkk = view(scr.kkk, :, 1:b)
+    o1 = view(Xn[1], :, cols)
+    o2 = view(Xn[2], :, cols)
+    o3 = view(Xn[3], :, cols)
+
+    fill_aug_block!(a1, X[1], past_idx, E, cols, 1.0, true)
+    fill_aug_block!(aĥ, X[1], past_idx, E, cols, 0.0, true)
+    fill_aug_block!(a2, X[2], past_idx, E, cols, 0.0, false)
+    fill_aug_block!(a3, X[3], past_idx, E, cols, 0.0, false)
+    kron²_power_block!(kk, a1)
+    kron²_block!(kk2, aĥ, a2)
+    kron³_power_block!(kkk, a1)
+    ℒ.mul!(o1, tr.𝐒₁, a1)                           # x¹⁺ = 𝐒₁·aug¹
+    ℒ.mul!(o2, tr.𝐒₁, a2)                           # x²⁺ = 𝐒₁·aug²
+    ℒ.mul!(o2, tr.𝐒₂, kk, 0.5, 1.0)                 # x²⁺ += ½ 𝐒₂·(aug¹⊗aug¹)
+    ℒ.mul!(o3, tr.𝐒₁, a3)                           # x³⁺ = 𝐒₁·aug³
+    ℒ.mul!(o3, tr.𝐒₂, kk2, 1.0, 1.0)                # x³⁺ += 𝐒₂·(aug¹̂⊗aug²)
+    ℒ.mul!(o3, tr.𝐒₃, kkk, 1 / 6, 1.0)              # x³⁺ += ⅙ 𝐒₃·(aug¹⊗aug¹⊗aug¹)
     return Xn
 end
 
 # Push the whole swarm one period forward, block by block, one task per scratch
 # slot. Blocks are handed out in contiguous chunks so the assignment — and hence
 # the result — does not depend on how the scheduler interleaves them.
+#
+# Why this is threaded at all, when most of a block is `mul!`. `𝐒₂`/`𝐒₃` are
+# densified in `build_particle_transition`, so those are dense `gemm` calls and
+# BLAS is already threading them. What BLAS cannot touch is the other part of a
+# block: `fill_aug_block!` and the compressed Kronecker kernels are plain
+# sequential Julia loops, and they are not a rounding error — measured per block
+# at 10 000 particles they are ~26 % of the time at pruned second order and ~37 %
+# at pruned third, where the cube of the augmented state is the dominant buffer.
+#
+# So the two layers overlap, and how much this buys depends entirely on what BLAS
+# is doing. On a 4-thread machine, spawning over blocks against a 4-thread BLAS is
+# worth nothing at first order (the guard below keeps it single-tasked anyway),
+# ~1.1x at pruned second order and ~1.2-1.4x at pruned third. Against a
+# single-threaded BLAS the same code is worth 2.6-2.9x.
+#
+# That second number is the one that matters, because a particle filter's usual
+# job is supplying a likelihood to a sampler, and samplers are run with BLAS
+# pinned to one thread so the chains do not fight over cores. Keeping the
+# block-level parallelism means the filter still scales in exactly that setting,
+# and costs nothing measurable in the setting where BLAS is doing the work
+# instead.
 function propagate_cloud!(::Val{algo}, tr::ParticleTransition, bs::BatchScratch,
                           Xn::NTuple{K,Matrix{Float64}}, X::NTuple{K,Matrix{Float64}},
                           E::Matrix{Float64}) where {algo, K}
@@ -843,19 +907,18 @@ end
 
 @inline block_cols(b::Int, blk::Int, N::Int) = ((b - 1) * blk + 1):min(b * blk, N)
 
-# Columns per task for the pure-copy passes (the resampling gather and the
+# `DEFAULT_PARTICLE_COPY_CHUNK` and `DEFAULT_PARTICLE_COPY_MAX_TASKS` set the
+# columns per task for the pure-copy passes (the resampling gather and the
 # Metropolis accept). Those are memory-bound rather than arithmetic-bound, so
 # they saturate after a handful of threads and want far coarser chunks than the
 # transition does — splitting them finely just buys task overhead.
-const PARTICLE_COPY_CHUNK = 2048
-const PARTICLE_COPY_MAX_TASKS = 8
-
+#
 # Run `f` over a fixed partition of `1:N` into contiguous column ranges, in
 # parallel once there are enough of them to be worth it. The partition does not
 # depend on the scheduler, and neither does the result: every use below writes
 # into columns its own range owns.
 @inline function foreach_column_chunk(f::F, N::Int) where {F}
-    nt = min(max(Threads.nthreads(), 1), PARTICLE_COPY_MAX_TASKS, N ÷ PARTICLE_COPY_CHUNK)
+    nt = min(max(Threads.nthreads(), 1), DEFAULT_PARTICLE_COPY_MAX_TASKS, N ÷ DEFAULT_PARTICLE_COPY_CHUNK)
     if nt <= 1
         f(1:N)
         return nothing
@@ -1016,10 +1079,10 @@ function run_particle_filter(::Val{algo},
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
-                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
-                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
     nT = size(data_in_deviations, 2)
@@ -1121,11 +1184,20 @@ end
 # evaluation per particle per period, so with a weak signal (large measurement
 # error) the plain bootstrap filter is the better trade.
 
-# One-step-ahead predictive variance of each observable due to the structural
-# shocks (diagonal of Cₒ BBᵀ Cₒᵀ from the first-order shock loading), plus the
-# measurement-error variance. Evaluating the predictive density at the transition
-# mean alone would be near-degenerate when the observable is shock-driven;
-# inflating by the shock spread keeps the proxy well-conditioned.
+# How far each observable can plausibly move in one period, used to spread the
+# preview density above.
+#
+# The preview scores an ancestor at its zero-shock prediction. Judging it with the
+# measurement-error variance alone would be far too strict: next period's shock
+# will move the observable too, and an ancestor should not be discarded for
+# missing the data by an amount a normal shock could easily cover. So the spread
+# used here is "how much next period's shock moves this observable" plus "how
+# noisily it is measured" — the first term being the row's own shock loading, the
+# variance of the observable under a unit-normal shock draw.
+#
+# Getting this wrong is a matter of efficiency rather than correctness (the second
+# stage divides the preview back out either way), but too tight a spread makes the
+# preview reject almost every ancestor and collapses the cloud.
 function auxiliary_predictive_variance(𝓂::ℳ, T, observables_index, me_var)
     nPast = T.nPast_not_future_and_mixed
     S₁ = 𝓂.caches.first_order_solution_matrix
@@ -1151,10 +1223,10 @@ function run_particle_filter(::Val{algo},
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
-                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
-                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
     nT = size(data_in_deviations, 2)
@@ -1258,25 +1330,39 @@ end
 # how well they explain yₜ before drawing any shock, then draw the shock from its
 # own conditional.
 #
-# Why the ancestors are *not* preselected. The predictive density p(yₜ|xₜ₋₁) is
-# available in closed form too, so the filter could be "fully adapted" in the sense
-# of Pitt & Shephard: choose ancestors by it before drawing any shock. That was
-# implemented and measured, and it is actively harmful here. λ is only a Laplace
-# approximation, and for an ancestor far out in the tail it *overstates* how well
-# that ancestor explains yₜ; the ancestor then wins the first-stage resampling and
-# its correction weight turns out to be negligible. The cloud collapses onto a
-# particle that should never have been picked, and because a bigger cloud reaches
-# further into the tail the failure got *worse* with `n_particles` — the seed
-# dispersion degraded from 0.065 to 0.136 going from 4 000 to 40 000 particles, with
-# the worst period's effective sample size stuck at two to four particles whatever N
-# was.
+# Why the ancestors are *not* preselected. Being able to score ancestors before
+# drawing a shock is tempting: kill the hopeless ones early and spend the whole
+# cloud on the promising ones, which is what "full adaptation" in the sense of
+# Pitt & Shephard means. That was implemented and measured, and it made things
+# worse, for a reason worth stating.
 #
-# Resampling once on the *combined* weight removes that failure mode, and does it
-# algebraically: λ cancels out of
+# The score λ is not the real predictive density, only the Gaussian approximation
+# to it. Where the model fits, the two agree. Where it does not — a crisis period,
+# an ancestor far out in the tail — the approximation is optimistic: it claims the
+# ancestor can explain the observation much better than it actually can. Selecting
+# on λ then hands most of the cloud to exactly the particles whose score is least
+# trustworthy. The correction weight that follows does mark them down, but by then
+# the selection has happened and there is nothing left to correct: the cloud is
+# already made of copies of one bad ancestor.
+#
+# What makes this pathological rather than merely inefficient is that it does not
+# improve with `n_particles`. A larger cloud reaches further into the tail, so it
+# finds more of the ancestors the approximation flatters — measured on a euro-area
+# model, a tenfold increase in particles left the worst period's effective sample
+# size at a handful of particles and made the run-to-run spread of the estimates
+# visibly *worse*. The usual remedy for a noisy particle filter does not apply.
+#
+# Resampling once on the combined weight removes the failure mode outright, and it
+# is worth seeing why it is free rather than a trade-off. Draw the shock first and
+# form a single weight afterwards:
+#
 #     wⱼ = N(εⱼ;0,I)·p(yₜ|g(xₜ₋₁,εⱼ)) / q(εⱼ)
-#         = exp(logZ - ½(‖εⱼ‖² + rⱼᵀH⁻¹rⱼ - ‖zⱼ‖²)),
-# so an over-confident λ is corrected before anything is selected on it. λ is kept
-# only as a diagnostic.
+#         = exp(logZ - ½(‖εⱼ‖² + rⱼᵀH⁻¹rⱼ - ‖zⱼ‖²)).
+#
+# The proposal q contains λ, so λ appears in the numerator and the denominator and
+# divides out exactly before anything is selected. An over-confident λ therefore
+# costs nothing — it never gets a vote on which particles survive. It is kept only
+# as a diagnostic.
 #
 # What this buys. The bootstrap proposal ignores yₜ when drawing εₜ, and the
 # tempered filter recovers the lost information by running a within-period MCMC —
@@ -1304,15 +1390,43 @@ end
 # observed shock loading, the Cholesky factor of M (`U`, upper, M = UᵀU), its
 # inverse (so `Uinv·z` has covariance M⁻¹), the map `K` from residual to
 # conditional mean, and the log normalisation of p(yₜ|xₜ₋₁).
-struct GuidedProposal
-    U::Matrix{Float64}       # nExo × nExo, upper Cholesky factor of M = I + BₒᵀH⁻¹Bₒ
-    Uinv::Matrix{Float64}    # nExo × nExo, U⁻¹; Uinv·Uinvᵀ = M⁻¹
-    Minv::Matrix{Float64}    # nExo × nExo, M⁻¹, for the Newton refinement below
-    K::Matrix{Float64}       # nExo × d,    M⁻¹BₒᵀH⁻¹, so μ = K·r
-    logZ::Float64            # -½(d·log2π + log|H| + log|M|)
+#
+# Every buffer is allocated once at the full observable count and refilled in
+# place by `rebuild_guided_proposal!` whenever the missing-data pattern changes.
+# `d` is how many observables are live; `Bo`, `HinvBo` and `K` use only their
+# first `d` rows (columns for `K`), the rest are stale.
+#
+# Everything here is sized by model dimensions — one row per shock, one per
+# observable — so a rebuild was never expensive. The preallocation is worth having
+# because with ragged data the pattern can change every period, and it keeps that
+# case down to a constant handful of bytes per rebuild (the factorization
+# wrapper) instead of a fresh set of matrices; it is not expected to save
+# measurable time in the common case of one rebuild per run.
+mutable struct GuidedProposal
+    const U::Matrix{Float64}       # nExo × nExo, upper Cholesky factor of M = I + BₒᵀH⁻¹Bₒ
+    const Uinv::Matrix{Float64}    # nExo × nExo, U⁻¹; Uinv·Uinvᵀ = M⁻¹
+    const Minv::Matrix{Float64}    # nExo × nExo, M⁻¹, for the Newton refinement below
+    const K::Matrix{Float64}       # nExo × nObs, M⁻¹BₒᵀH⁻¹ in columns 1:d, so μ = K·r
+    const Bo::Matrix{Float64}      # nObs × nExo, observed shock loading in rows 1:d
+    const HinvBo::Matrix{Float64}  # nObs × nExo, H⁻¹Bₒ in rows 1:d
+    const M::Matrix{Float64}       # nExo × nExo, overwritten by its own Cholesky factor
+    logZ::Float64                  # -½(d·log2π + log|H| + log|M|)
+    d::Int                         # live observables
 end
 
-# How many Newton steps refine the proposal's centre.
+function GuidedProposal(nObs::Int, nExo::Int)
+    return GuidedProposal(Matrix{Float64}(undef, nExo, nExo), Matrix{Float64}(undef, nExo, nExo),
+                          Matrix{Float64}(undef, nExo, nExo), Matrix{Float64}(undef, nExo, nObs),
+                          Matrix{Float64}(undef, nObs, nExo), Matrix{Float64}(undef, nObs, nExo),
+                          Matrix{Float64}(undef, nExo, nExo), 0.0, 0)
+end
+
+# The live blocks. `K` is what the filters multiply the residual by, so it is the
+# one that has to be sliced at every use.
+@inline proposal_K(gp::GuidedProposal) = view(gp.K, :, 1:gp.d)
+
+# How many Newton steps refine the proposal's centre
+# (`DEFAULT_GUIDED_NEWTON_STEPS`).
 #
 # `μ = K·r(0)` is the mode only when the observed transition is linear in the
 # shock. At pruned second order it is not, and a mis-centred proposal in seven
@@ -1324,21 +1438,17 @@ end
 # and sampling around it with the Laplace covariance is the implicit particle
 # filter of Chorin, Morzfeld & Tu (2010).
 #
-# Two is measured to be the right number. Each step costs one batched transition,
-# but so does each extra bridging stage, and a worse centre needs more of those —
-# so cutting the steps does not even save time. On the euro-area problem at 4 000
-# particles over 32 paired seeds (dispersion of the last periods' shock estimates,
-# and `sd·√time`, lower better):
-#
-#   steps   sd      bridge stages   time    sd·√t
-#     0     0.107       2.07        8.0 s   0.304
-#     1     0.101       1.33        6.0 s   0.248
-#     2     0.092       1.30        6.0 s   0.227
-#     3     0.092       1.26        6.2 s   0.229
-const GUIDED_NEWTON_STEPS = 2
+# Two is measured to be the right number on mid-sized models, and the reason it is
+# not a speed/accuracy trade-off is worth knowing: a Newton step costs one batched
+# transition, but so does a bridging stage, and a badly centred proposal needs more
+# bridging stages. Skipping the refinement therefore buys no time — it just moves
+# the same work somewhere less useful. Going from none to two improves the
+# estimates and gets slightly *faster*; past two the centre has stopped moving and
+# the extra transitions are wasted.
 
-# Width of the proposal, as a multiple of the Laplace scale. Kept at one, and the
-# measurement that says so is worth recording.
+# Width of the proposal, as a multiple of the Laplace scale
+# (`DEFAULT_GUIDED_PROPOSAL_SCALE`). Kept at one, and the measurement that says so
+# is worth recording.
 #
 # `M⁻¹` is the curvature of a *linearised* problem, so it is a guess at the true
 # conditional's spread. Importance sampling is not symmetric in that error — a
@@ -1355,46 +1465,70 @@ const GUIDED_NEWTON_STEPS = 2
 # somewhere the Gaussian approximation does not put it, not that the Gaussian is too
 # narrow — so it wants a remedy that *relocates* (annealing from this proposal to the
 # true conditional, or a block move over several periods), not one that inflates.
-const GUIDED_PROPOSAL_SCALE = 1.0
 
-# H⁻¹ applied to the observed shock loading, for either measurement-error form.
-function observed_shock_loading(S₁::AbstractMatrix, observables_index::Vector{Int}, nPast::Int, rows)
-    nExo = size(S₁, 2) - nPast
-    Bo = Matrix{Float64}(undef, length(rows), nExo)
+# Observed rows of the first-order shock loading, into the proposal's own buffer.
+function observed_shock_loading!(Bo::AbstractMatrix{Float64}, S₁::AbstractMatrix,
+                                 observables_index::Vector{Int}, nPast::Int, rows)
     @inbounds for (k, r) in enumerate(rows)
         Bo[k, :] .= @view S₁[observables_index[r], nPast+1:end]
     end
     return Bo
 end
 
-function guided_hinv_loading(Bo::Matrix{Float64}, me_var::AbstractVector, rows)
-    HinvBo = similar(Bo)
+# H⁻¹Bₒ, for either measurement-error form, written into `HinvBo`. Returns log|H|.
+function guided_hinv_loading!(HinvBo::AbstractMatrix{Float64}, Bo::AbstractMatrix{Float64},
+                              me_var::AbstractVector, rows)
     @inbounds for (k, r) in enumerate(rows)
         HinvBo[k, :] .= @view(Bo[k, :]) ./ me_var[r]
     end
-    return HinvBo, sum(log(me_var[r]) for r in rows)
+    return sum(log(me_var[r]) for r in rows)
 end
 
-function guided_hinv_loading(Bo::Matrix{Float64}, me::DenseMeasurementError, rows)
+function guided_hinv_loading!(HinvBo::AbstractMatrix{Float64}, Bo::AbstractMatrix{Float64},
+                              me::DenseMeasurementError, rows)
     me_sync!(me, rows)
     Lo = ℒ.LowerTriangular(me.last_L)
-    Y = Lo \ Bo                       # L⁻¹Bₒ
-    return (Lo' \ Y), me.last_logdet  # H⁻¹Bₒ = L⁻ᵀL⁻¹Bₒ
+    copyto!(HinvBo, Bo)
+    ℒ.ldiv!(Lo, HinvBo)               # L⁻¹Bₒ
+    ℒ.ldiv!(Lo', HinvBo)              # H⁻¹Bₒ = L⁻ᵀL⁻¹Bₒ
+    return me.last_logdet
 end
 
-function build_guided_proposal(S₁::AbstractMatrix, observables_index::Vector{Int}, nPast::Int,
-                               me_var, rows, log2pi::Float64)
-    Bo = observed_shock_loading(S₁, observables_index, nPast, rows)
-    HinvBo, logdetH = guided_hinv_loading(Bo, me_var, rows)
-    nExo = size(Bo, 2)
-    M = Matrix{Float64}(ℒ.I, nExo, nExo) + Bo' * HinvBo          # M = I + BₒᵀH⁻¹Bₒ
-    F = ℒ.cholesky(ℒ.Symmetric(M))
-    U = Matrix{Float64}(F.U)
-    Uinv = Matrix{Float64}(inv(F.U))
-    K = Matrix{Float64}(F \ HinvBo')                              # M⁻¹BₒᵀH⁻¹
-    logdetM = 2 * sum(log, ℒ.diag(U))
-    Minv = Uinv * Uinv'
-    return GuidedProposal(U, Uinv, Minv, K, -0.5 * (length(rows) * log2pi + logdetH + logdetM))
+# Refill `gp` for the missing-data pattern `rows`, reusing its buffers throughout.
+#
+# The solve is a Cholesky of M = I + BₒᵀH⁻¹Bₒ, which is nExo × nExo — one row and
+# column per structural shock. `cholesky!`/`ldiv!` are the direct LAPACK calls at
+# that size; routing them through a `LinearSolve` cache the way the
+# stochastic-steady-state Newton solves do would add the cache indirection without
+# reaching a different kernel, so it is deliberately not done here.
+function rebuild_guided_proposal!(gp::GuidedProposal, S₁::AbstractMatrix,
+                                  observables_index::Vector{Int}, nPast::Int,
+                                  me_var, rows, log2pi::Float64)
+    d = length(rows)
+    gp.d = d
+    Bo     = view(gp.Bo, 1:d, :)
+    HinvBo = view(gp.HinvBo, 1:d, :)
+
+    observed_shock_loading!(Bo, S₁, observables_index, nPast, rows)
+    logdetH = guided_hinv_loading!(HinvBo, Bo, me_var, rows)
+
+    copyto!(gp.M, ℒ.I)
+    ℒ.mul!(gp.M, Bo', HinvBo, 1.0, 1.0)                # M = I + BₒᵀH⁻¹Bₒ
+    F = ℒ.cholesky!(ℒ.Symmetric(gp.M))                 # overwrites gp.M with its factor
+
+    copyto!(gp.U, F.U)
+    logdetM = 2 * sum(log, ℒ.diag(gp.U))
+
+    copyto!(gp.Uinv, ℒ.I)
+    ℒ.ldiv!(ℒ.UpperTriangular(gp.U), gp.Uinv)          # U⁻¹, so Uinv·Uinvᵀ = M⁻¹
+    ℒ.mul!(gp.Minv, gp.Uinv, gp.Uinv')
+
+    K = view(gp.K, :, 1:d)
+    ℒ.transpose!(K, HinvBo)
+    ℒ.ldiv!(F, K)                                      # K = M⁻¹BₒᵀH⁻¹
+
+    gp.logZ = -0.5 * (d * log2pi + logdetH + logdetM)
+    return gp
 end
 
 # Annealing from the proposal to the truth.
@@ -1550,8 +1684,7 @@ end
 # `R` holds the residuals at the current `Mu`; `Tmp` is nExo × N scratch.
 function guided_newton_step!(Mu::Matrix{Float64}, R::Matrix{Float64}, Tmp::Matrix{Float64},
                              gp::GuidedProposal)
-    d = size(gp.K, 2)
-    ℒ.mul!(Tmp, gp.K, view(R, 1:d, :))          # M⁻¹BₒᵀH⁻¹r(μ)
+    ℒ.mul!(Tmp, proposal_K(gp), view(R, 1:gp.d, :))   # M⁻¹BₒᵀH⁻¹r(μ)
     ℒ.mul!(Tmp, gp.Minv, Mu, -1.0, 1.0)         # ... - M⁻¹μ
     @inbounds for i in eachindex(Mu)
         Mu[i] += Tmp[i]
@@ -1600,10 +1733,10 @@ function run_particle_filter(::Val{algo},
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
-                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
-                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
     nT = size(data_in_deviations, 2)
@@ -1630,8 +1763,8 @@ function run_particle_filter(::Val{algo},
                         me_var, inv_me_var,
                         𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
                         particle_resampling, Float64(particle_resampling_threshold),
-                        tempering_mh_steps, Float64(tempering_mh_scale),
-                        Float64(tempering_target_ratio), tempering_max_stages, particle_rng,
+                        particle_mh_steps, Float64(particle_mh_scale),
+                        Float64(particle_target_ratio), particle_max_stages, particle_rng,
                         Float64(on_failure_loglikelihood), log(2π))
 end
 
@@ -1658,7 +1791,8 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
     loglik = 0.0
 
     gp_rows = Int[]
-    gp = build_guided_proposal(S₁, observables_index, nPast, me_var, eachindex(observables_index), log2pi)
+    gp = GuidedProposal(length(observables_index), nExo)
+    rebuild_guided_proposal!(gp, S₁, observables_index, nPast, me_var, eachindex(observables_index), log2pi)
 
     for t in 1:nT
         rows = has_missing ? obs_idx_per_t[t] : eachindex(observables_index)
@@ -1671,7 +1805,7 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
             continue
         end
         if !same_rows(gp_rows, rows)
-            gp = build_guided_proposal(S₁, observables_index, nPast, me_var, rows, log2pi)
+            rebuild_guided_proposal!(gp, S₁, observables_index, nPast, me_var, rows, log2pi)
             gp_rows = collect(Int, rows)
         end
 
@@ -1681,8 +1815,8 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
         fill!(E, 0.0)
         propagate_cloud!(Val(algo), tr, scr, X2, X, E)
         residual_cloud!(R, full_states!(Fbuf, X2), data_col, observables_index, rows)
-        ℒ.mul!(Mu, gp.K, view(R, 1:length(rows), :))
-        for _ in 1:GUIDED_NEWTON_STEPS
+        ℒ.mul!(Mu, proposal_K(gp), view(R, 1:length(rows), :))
+        for _ in 1:DEFAULT_GUIDED_NEWTON_STEPS
             propagate_cloud!(Val(algo), tr, scr, X2, X, Mu)
             residual_cloud!(R, full_states!(Fbuf, X2), data_col, observables_index, rows)
             guided_newton_step!(Mu, R, Tmp, gp)
@@ -1690,7 +1824,7 @@ function guided_loop!(::Val{algo}, tr, scr, X::NTuple{K,Matrix{Float64}}, X2::NT
 
         # Draw from the conditional, εⱼ = μⱼ + U⁻¹zⱼ, and weight.
         Random.randn!(rng, Z)
-        ℒ.mul!(E, gp.Uinv, Z, GUIDED_PROPOSAL_SCALE, 0.0)
+        ℒ.mul!(E, gp.Uinv, Z, DEFAULT_GUIDED_PROPOSAL_SCALE, 0.0)
         @inbounds for i in eachindex(E)
             E[i] += Mu[i]
         end
@@ -1841,12 +1975,11 @@ end
 #     adds no new kind of dependence; each individual Metropolis kernel is still
 #     exactly π_φ-invariant.
 
-# Average effective sample size, as a fraction of `n_particles`, below which the
-# reported estimates are flagged. At that point the weighted moments are the
-# average of a handful of distinct particles, so they move materially from seed
-# to seed however many particles are nominally in the cloud — the fix is a better
-# proposal, not a longer run.
-const PARTICLE_LOW_ESS_FRACTION = 0.05
+# `DEFAULT_PARTICLE_LOW_ESS_FRACTION` is the average effective sample size, as a
+# fraction of `n_particles`, below which the reported estimates are flagged. At
+# that point the weighted moments are the average of a handful of distinct
+# particles, so they move materially from seed to seed however many particles are
+# nominally in the cloud — the fix is a better proposal, not a longer run.
 
 # Why every tempering stage resamples, following Herbst & Schorfheide.
 #
@@ -1866,10 +1999,6 @@ const PARTICLE_LOW_ESS_FRACTION = 0.05
 # What does move the number is the particle count, roughly linearly — which is
 # why `n_particles` is the lever to reach for when the estimates need to be
 # steadier, and why making the swarm cheap to propagate was worth doing.
-
-const TEMPERING_MH_TARGET_ACCEPTANCE = 0.25
-const TEMPERING_MH_ADAPTATION_GAIN = 1.0
-const TEMPERING_MH_SCALE_BOUNDS = (1e-8, 1e2)
 
 # G = Bₒᵀ H⁻¹ Bₒ over the observed rows, from the first-order shock loading.
 function shock_information_matrix(S₁::AbstractMatrix, observables_index::Vector{Int},
@@ -1969,8 +2098,8 @@ end
 # Multiplicative step towards the target acceptance rate, bounded so a pathological
 # period cannot drive the scale to zero or blow it up.
 @inline function adapt_mh_scale(c::Float64, acceptance::Float64)
-    lo, hi = TEMPERING_MH_SCALE_BOUNDS
-    return clamp(c * exp(TEMPERING_MH_ADAPTATION_GAIN * (acceptance - TEMPERING_MH_TARGET_ACCEPTANCE)), lo, hi)
+    lo, hi = DEFAULT_PARTICLE_MH_SCALE_BOUNDS
+    return clamp(c * exp(DEFAULT_PARTICLE_MH_ADAPTATION_GAIN * (acceptance - DEFAULT_PARTICLE_MH_TARGET_ACCEPTANCE)), lo, hi)
 end
 
 function run_particle_filter(::Val{algo},
@@ -1992,10 +2121,10 @@ function run_particle_filter(::Val{algo},
                              presample_periods::Int = 0,
                              initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                              on_failure_loglikelihood::Real = -Inf,
-                             tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-                             tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
-                             tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-                             tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              opts::CalculationOptions = merge_calculation_options())::Float64 where {algo}
     T = constants.post_model_macro
     nT = size(data_in_deviations, 2)
@@ -2022,8 +2151,8 @@ function run_particle_filter(::Val{algo},
                           observables_index, data_in_deviations, obs_idx_per_t, has_missing,
                           me_var, inv_me_var,
                           𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
-                          particle_resampling, Float64(tempering_target_ratio),
-                          Float64(tempering_mh_scale), tempering_mh_steps, tempering_max_stages,
+                          particle_resampling, Float64(particle_target_ratio),
+                          Float64(particle_mh_scale), particle_mh_steps, particle_max_stages,
                           particle_rng, Float64(on_failure_loglikelihood), log(2π))
 end
 
@@ -2164,10 +2293,10 @@ end
     warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
     smooth::Bool = true,
-    tempering_target_ratio::Real = DEFAULT_TEMPERING_TARGET_RATIO,
-    tempering_mh_steps::Int = DEFAULT_TEMPERING_MH_STEPS,
-    tempering_max_stages::Int = DEFAULT_TEMPERING_MAX_STAGES,
-    tempering_mh_scale::Real = DEFAULT_TEMPERING_MH_SCALE,
+    particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+    particle_mh_steps::Int = DEFAULT_TEMPERED_MH_STEPS,
+    particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+    particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
     measurement_error::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
     n_particles::Int = DEFAULT_N_PARTICLES,
     particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
@@ -2226,8 +2355,8 @@ end
                                obs_idx_per_t, has_missing, me_var, inv_me_var,
                                𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
                                particle_resampling, Float64(particle_resampling_threshold),
-                               tempering_mh_steps, Float64(tempering_mh_scale),
-                               Float64(tempering_target_ratio), tempering_max_stages,
+                               particle_mh_steps, Float64(particle_mh_scale),
+                               Float64(particle_target_ratio), particle_max_stages,
                                particle_rng, smooth, log(2π))
     else
         particle_estimates_loop!(Val(algo), Val(pf == :tempered_particle), tr, scr,
@@ -2236,8 +2365,8 @@ end
                                  obs_idx_per_t, has_missing, me_var, inv_me_var,
                                  𝓂.caches.first_order_solution_matrix, T.nPast_not_future_and_mixed,
                                  particle_resampling, Float64(particle_resampling_threshold),
-                                 Float64(tempering_target_ratio), Float64(tempering_mh_scale),
-                                 tempering_mh_steps, tempering_max_stages, particle_rng, smooth, log(2π))
+                                 Float64(particle_target_ratio), Float64(particle_mh_scale),
+                                 particle_mh_steps, particle_max_stages, particle_rng, smooth, log(2π))
     end
 
     # ── Shock decomposition ──────────────────────────────────────────────────
@@ -2471,7 +2600,7 @@ function particle_estimates_loop!(::Val{algo}, ::Val{tempered}, tr, scr,
     # mistake for a modelling problem.
     if n_scored > 0
         ess_fraction = ess_sum / (n_scored * n_particles)
-        if ess_fraction < PARTICLE_LOW_ESS_FRACTION
+        if ess_fraction < DEFAULT_PARTICLE_LOW_ESS_FRACTION
             @warn "The particle cloud carried an effective sample size of only $(round(100 * ess_fraction, digits = 2))% of `n_particles` on average, so these estimates rest on a handful of distinct particles and will change materially from one `particle_rng` seed to the next. Use `filter = :tempered_particle`, which mutates the particles towards the data instead of only reweighting them, or raise `n_particles` / `measurement_error`." maxlog = 1
         end
     end
@@ -2487,8 +2616,7 @@ end
 # of that draw's variance — a Rao-Blackwellisation. It is exact whenever the
 # correction weights are constant, which is precisely when the linearisation
 # behind μ is exact, so the residual bias is of the same (second) order as the
-# proposal's own approximation error.
-const GUIDED_RAO_BLACKWELL = true
+# proposal's own approximation error. Switched by `DEFAULT_GUIDED_RAO_BLACKWELL`.
 
 function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Float64}},
                                 parts2::NTuple{K,Matrix{Float64}}, anc::NTuple{K,Matrix{Float64}},
@@ -2526,7 +2654,8 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
     terminal_weights = smooth ? fill(1.0 / n_particles, n_particles) : Float64[]
 
     gp_rows = Int[]
-    gp = build_guided_proposal(S₁, observables_index, nPast, me_var, eachindex(observables_index), log2pi)
+    gp = GuidedProposal(length(observables_index), nExo)
+    rebuild_guided_proposal!(gp, S₁, observables_index, nPast, me_var, eachindex(observables_index), log2pi)
     ess_sum = 0.0
     n_scored = 0
 
@@ -2547,7 +2676,7 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
             continue
         end
         if !same_rows(gp_rows, rows)
-            gp = build_guided_proposal(S₁, observables_index, nPast, me_var, rows, log2pi)
+            rebuild_guided_proposal!(gp, S₁, observables_index, nPast, me_var, rows, log2pi)
             gp_rows = collect(Int, rows)
         end
 
@@ -2555,8 +2684,8 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
         fill!(E, 0.0)
         propagate_cloud!(Val(algo), tr, scr, parts2, parts, E)
         residual_cloud!(R, full_states!(Fbuf, parts2), data_col, observables_index, rows)
-        ℒ.mul!(Mu, gp.K, view(R, 1:length(rows), :))
-        for _ in 1:GUIDED_NEWTON_STEPS
+        ℒ.mul!(Mu, proposal_K(gp), view(R, 1:length(rows), :))
+        for _ in 1:DEFAULT_GUIDED_NEWTON_STEPS
             propagate_cloud!(Val(algo), tr, scr, parts2, parts, Mu)
             residual_cloud!(R, full_states!(Fbuf, parts2), data_col, observables_index, rows)
             guided_newton_step!(Mu, R, Tmp, gp)
@@ -2567,7 +2696,7 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
         copy_cloud!(anc, parts)
 
         Random.randn!(rng, Z)
-        ℒ.mul!(E, gp.Uinv, Z, GUIDED_PROPOSAL_SCALE, 0.0)
+        ℒ.mul!(E, gp.Uinv, Z, DEFAULT_GUIDED_PROPOSAL_SCALE, 0.0)
         @inbounds for i in eachindex(E)
             E[i] += Mu[i]
         end
@@ -2637,7 +2766,7 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
         # particles have been mutated they are draws from the exact conditional
         # rather than from the Gaussian μ centres, so μ is no longer their mean and
         # the drawn shock is the consistent estimator.
-        reported = (GUIDED_RAO_BLACKWELL && n_mh == 0 && max_stages <= 1) ? Mu : E
+        reported = (DEFAULT_GUIDED_RAO_BLACKWELL && n_mh == 0 && max_stages <= 1) ? Mu : E
         if smooth
             copyto!(terminal_weights, W)
             copyto!(hist_states[t], F)
@@ -2655,7 +2784,7 @@ function guided_estimates_loop!(::Val{algo}, tr, scr, parts::NTuple{K,Matrix{Flo
 
     if n_scored > 0
         ess_fraction = ess_sum / (n_scored * n_particles)
-        if ess_fraction < PARTICLE_LOW_ESS_FRACTION
+        if ess_fraction < DEFAULT_PARTICLE_LOW_ESS_FRACTION
             @warn "The guided proposal's importance weights carried an effective sample size of only $(round(100 * ess_fraction, digits = 2))% of `n_particles` on average, which means the observation is far from linear in the shock over this cloud and the closed-form proposal is a poor fit. Use `filter = :tempered_particle`, which makes no such assumption." maxlog = 1
         end
     end

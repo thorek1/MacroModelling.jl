@@ -49,6 +49,12 @@ const DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION = 0.1
 const DEFAULT_ON_FAILURE_LOGLIKELIHOOD_SELECTOR = filter -> get(PARTICLE_FILTER_ALIASES, filter, filter) ∈ PARTICLE_FILTERS ? -1e6 : -Inf
 
 # ── Particle filter defaults (see `src/filter/particle.jl`) ──────────────────
+#
+# Naming: a setting shared by more than one particle filter is `PARTICLE_…` and
+# its keyword argument is `particle_…`; a setting that belongs to one variant
+# carries that variant's name instead (`GUIDED_…`, `TEMPERED_…`). The one
+# deliberate exception is `n_particles`, kept under its conventional name.
+#
 # 10_000 particles keeps a Smets-Wouters-sized problem (7 observables, ~180
 # periods) accurate to a couple of log-likelihood points in well under a second
 # per evaluation; raise it when the likelihood is used inside a sampler.
@@ -56,59 +62,73 @@ const DEFAULT_N_PARTICLES = 10_000
 const DEFAULT_PARTICLE_RESAMPLING = :systematic
 const DEFAULT_PARTICLE_RESAMPLING_THRESHOLD = 0.5
 const DEFAULT_PARTICLE_INITIAL_STATE_SCALING = 1.0
-# Tempering controls, shared by `:tempered_particle` and `:guided_particle`.
+
+# ── Bridging controls, shared by `:tempered_particle` and `:guided_particle` ──
+# Both filters reach the period's target through a sequence of intermediate
+# distributions, reweighting, resampling and mutating along the way; these set how
+# finely they step and how hard they mutate.
+
+# How much weight inefficiency one bridging step is allowed to add, which is what
+# picks the step sizes. Lower means more, smaller steps. Set below Herbst &
+# Schorfheide's own value of 2 because for the tempered filter — which has to
+# bridge all the way from the prior — the bridging, not the particle count, is
+# what limits accuracy, and buying accuracy here is cheaper per unit of compute
+# than raising `n_particles`.
+const DEFAULT_PARTICLE_TARGET_RATIO = 1.5
+
+# Metropolis-Hastings mutation steps per bridging stage. The two filters want
+# different amounts and get their own defaults, resolved by the selector below.
 #
-# Both are set more aggressively than Herbst & Schorfheide's own values (ratio 2,
-# one MH step) because for the *tempered* filter the mutation, not the particle
-# count, is what binds. Measured on the euro-area problem at 4 000 particles:
-#
-#   ratio  mh   tempered: seed sd   log-likelihood sd   cost
-#    2.0    2         0.199               147.8         1.0x
-#    2.0    4         0.144                85.9         1.7x
-#    1.5    2         0.161                67.6         1.3x
-#    1.5    4         0.106                39.1         2.3x
-#
-# The two compound, both improve the likelihood as well as the estimates, and both
-# do so more per unit of compute than raising `n_particles`.
-#
-# The *guided* filter is insensitive to `tempering_mh_steps`: over 32 paired seeds
-# its dispersion was 0.097 / 0.092 / 0.095 / 0.091 / 0.097 at 0 / 1 / 2 / 4 / 8
-# steps — a spread well inside the measurement's own ~13% standard error — while
-# the cost ran from 2.4 s to 9.2 s. Four is kept because the knob is shared and the
-# asymmetry is stark: over-spending on the guided filter costs about 40% of its
-# (already small) runtime, while under-spending on the tempered filter costs a
-# factor of two in accuracy. A guided-filter user who wants that 40% back can set
-# `tempering_mh_steps = 1` with no measured loss.
-const DEFAULT_TEMPERING_TARGET_RATIO = 1.5
-const DEFAULT_TEMPERING_MH_STEPS = 4
-# The guided filter's own value. It mutates against a bridge that starts from a good
-# proposal rather than from the prior, so it needs far less of it than the tempered
-# filter does.
-#
-# Two is chosen on the *likelihood*, which is the measurement that discriminates. The
-# estimates do not: over 32 paired seeds their dispersion was 0.100 / 0.095 / 0.093 /
-# 0.091 / 0.097 at 0 / 1 / 2 / 4 / 8 steps, flat inside the ~13% standard error, which
-# would argue for the cheapest value. The log likelihood is not flat, and 32 paired
-# seeds put the minimum squarely at two steps at both perturbation orders (dispersion,
-# and `sd·√time` in brackets, on the euro-area problem at 4 000 particles):
-#
-#            mh = 1        mh = 2        mh = 4
-#   1st ord  31.4 (32.9)   24.2 (28.9)   27.3 (39.0)
-#   pruned2  34.4 (62.6)   24.9 (50.6)   35.0 (84.9)
-#
-# A caution for anyone re-running this: the log-likelihood dispersion is a far noisier
-# statistic than the estimates one — it is the log of an average of heavy-tailed
-# weights, and two *unpaired* runs of one configuration gave 22.5 and 55.1. Only
-# paired seeds, and plenty of them, separate these.
+# The tempered filter is highly sensitive to this: it bridges from the prior, so
+# mutation is what rejuvenates a cloud that would otherwise be badly degenerate,
+# and going from one step to four roughly halves the run-to-run spread of both the
+# estimates and the likelihood.
+const DEFAULT_TEMPERED_MH_STEPS = 4
+# The guided filter bridges from a proposal already close to the target, so it
+# needs far less. Its *estimates* are flat in this knob — any value from zero
+# upwards is within measurement noise — and only the likelihood discriminates,
+# putting the optimum at two at both perturbation orders. Anyone re-measuring this
+# should know the likelihood dispersion is a much noisier statistic than the
+# estimates one (it is the log of an average of heavy-tailed weights) and needs
+# paired seeds, and plenty of them, to resolve at all.
 const DEFAULT_GUIDED_MH_STEPS = 2
 # Which of the two a call gets, from the filter it selected.
-const DEFAULT_TEMPERING_MH_STEPS_SELECTOR = filter -> get(PARTICLE_FILTER_ALIASES, filter, filter) == :guided_particle ? DEFAULT_GUIDED_MH_STEPS : DEFAULT_TEMPERING_MH_STEPS
-const DEFAULT_TEMPERING_MAX_STAGES = 100
+const DEFAULT_PARTICLE_MH_STEPS_SELECTOR = filter -> get(PARTICLE_FILTER_ALIASES, filter, filter) == :guided_particle ? DEFAULT_GUIDED_MH_STEPS : DEFAULT_TEMPERED_MH_STEPS
+
+const DEFAULT_PARTICLE_MAX_STAGES = 100
 # Starting value for the Metropolis mutation step, in units of the stage's own
 # posterior scale (the proposal is preconditioned by it, see `src/filter/particle.jl`).
 # 2.38/sqrt(d) is the textbook optimum for a d-dimensional random walk; the filter
-# adapts from here towards a 25 % acceptance rate, so this only sets where it starts.
-const DEFAULT_TEMPERING_MH_SCALE = 1.0
+# adapts from here towards the target acceptance rate below, so this only sets
+# where it starts.
+const DEFAULT_PARTICLE_MH_SCALE = 1.0
+# Adaptation of that scale: the target acceptance rate, the gain of the log-scale
+# update towards it, and the bounds the scale is clamped to.
+const DEFAULT_PARTICLE_MH_TARGET_ACCEPTANCE = 0.25
+const DEFAULT_PARTICLE_MH_ADAPTATION_GAIN = 1.0
+const DEFAULT_PARTICLE_MH_SCALE_BOUNDS = (1e-8, 1e2)
+
+# ── Guided-filter specifics ──────────────────────────────────────────────────
+# Newton steps refining the proposal's centre, the width of the proposal as a
+# multiple of the Laplace scale, and whether filtered shock estimates are reported
+# from the proposal mean rather than the draw. The reasoning behind each value is
+# at its point of use in `src/filter/particle.jl`.
+const DEFAULT_GUIDED_NEWTON_STEPS = 2
+const DEFAULT_GUIDED_PROPOSAL_SCALE = 1.0
+const DEFAULT_GUIDED_RAO_BLACKWELL = true
+
+# ── Internal sizing and diagnostics, common to every particle filter ──────────
+# Transition scratch budget, smallest block worth a `gemm`, and the arithmetic per
+# sweep below which the swarm is propagated on the calling thread.
+const DEFAULT_PARTICLE_SCRATCH_BYTES = 256 * 2^20
+const DEFAULT_PARTICLE_MIN_BLOCK = 64
+const DEFAULT_PARTICLE_PARALLEL_MIN_WORK = 1 << 20
+# Chunking for the memory-bound copy passes (resampling gather, Metropolis accept).
+const DEFAULT_PARTICLE_COPY_CHUNK = 2048
+const DEFAULT_PARTICLE_COPY_MAX_TASKS = 8
+# Mean effective sample size below which the filter warns that its proposal is a
+# poor fit to the data.
+const DEFAULT_PARTICLE_LOW_ESS_FRACTION = 0.05
 
 const DEFAULT_DATA_IN_LEVELS = true
 const DEFAULT_LEVELS = true

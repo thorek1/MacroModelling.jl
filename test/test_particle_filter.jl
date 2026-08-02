@@ -205,8 +205,8 @@ threw(f) = try; f(); false; catch; true; end
         tp_coarse = collect(get_estimated_variables(RBC_pf, data; filter = :tempered_particle,
                         algorithm = :first_order, smooth = true, measurement_error = me^2,
                         n_particles = 20_000, particle_rng = Random.Xoshiro(1),
-                        tempering_target_ratio = 50.0, tempering_mh_steps = 3,
-                        tempering_mh_scale = 0.9))
+                        particle_target_ratio = 50.0, particle_mh_steps = 3,
+                        particle_mh_scale = 0.9))
         @test tp_coarse != tp_sm
         @test all(isfinite, tp_coarse)
     end
