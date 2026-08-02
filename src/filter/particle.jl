@@ -1438,6 +1438,50 @@ end
 # the same work somewhere less useful. Going from none to two improves the
 # estimates and gets slightly *faster*; past two the centre has stopped moving and
 # the extra transitions are wasted.
+#
+# Relation to the inversion filter.
+# This iteration is the inversion filter's shock-finding problem with the shock
+# prior left in. The inversion filter solves r(ε) = 0 — the shock that reproduces
+# the observation exactly — while this solves the regularised version, maximising
+# -½‖ε‖² - ½r(ε)ᵀH⁻¹r(ε): the shock that best explains the observation *and* is
+# plausible under its own N(0,I). Drop the prior and let the measurement error
+# vanish and the two coincide, because M = I + BₒᵀH⁻¹Bₒ → BₒᵀH⁻¹Bₒ and
+# K = M⁻¹BₒᵀH⁻¹ → Bₒ⁺. Checked numerically: ‖K·r - Bₒ⁺r‖ falls as O(σ²) —
+# 2e-1, 2e-3, 2e-7 at σ² = 1e-2, 1e-4, 1e-8 — for square Bₒ and for both
+# rectangular shapes. At first order the transition is linear in ε, μ = K·r(0) is
+# already the mode, and no Newton step moves it.
+#
+# The starting point is ε = 0 for every particle: one transition with no shock
+# gives r(0) = yₜ - ŷ(xₜ₋₁ᵖ, 0), the part of the observation this ancestor cannot
+# explain by itself, and μ = K·r(0) is the linear-Gaussian answer to it. Note the
+# *per particle*: each ancestor gets its own residual and its own centre, which is
+# what a proposal has to be and what a single inversion solve is not.
+#
+# It does not fail the way the inversion filter fails. `find_shocks` returns
+# `matched = false` — and the likelihood becomes `on_failure_loglikelihood`,
+# usually -Inf — when the Jacobian is singular, when there are fewer shocks than
+# observables so no exact solution exists, or when its Newton iteration does not
+# converge. None of those apply here: M is positive definite by construction
+# (that is what the `I` from the prior buys), so this solve always succeeds, at
+# any shape, and a period no shock can reproduce exactly is an ordinary period
+# with a nonzero residual rather than a failure. What degrades instead is
+# efficiency — a badly located mode gives heavy-tailed weights and a low ESS,
+# which is what the bridging above is for. The guided filter does bail to
+# `on_failure_loglikelihood`, but on a different condition: a non-finite
+# incremental weight in the bridge, meaning the *whole cloud* scored zero against
+# the observation. That is degeneracy of the sample, not insolvability of a
+# system, and more particles or more bridging stages address it.
+#
+# Which is also why the cheap-inversion-then-the-rest route is not taken. Beyond
+# needing measurement error to be zero and shocks to outnumber observables, a
+# particle filter needs a density to draw from and evaluate, not a point: the
+# covariance M⁻¹ would have to be built anyway, and it is the expensive part.
+# M depends only on 𝐒₁ and H, so it is common to the whole cloud and factorised
+# once per missing-data pattern; the per-particle work is then two batched gemms.
+# N independent nonlinear inversion solves per period, one per ancestor, would
+# give exactly that up. And a per-particle failure would not be neutral — it
+# would drop the ancestors whose states make inversion hard, which is selection
+# on the state, not on the data.
 
 # Width of the proposal, as a multiple of the Laplace scale
 # (`DEFAULT_GUIDED_PROPOSAL_SCALE`). Kept at one, and the measurement that says so

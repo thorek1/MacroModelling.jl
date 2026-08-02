@@ -202,7 +202,6 @@ function Third_order_indices()
         Int[],               # shockvar3_idxs
         Int[],               # shockvar³2_idxs
         Int[],               # shockvar³_idxs
-        empty_sparse_float,  # I_exo2
         Int[],               # shock_state_state_idxs
         Int[],               # shock_state_state_rows
         Int[],               # shock_shock_state_idxs
@@ -1949,24 +1948,10 @@ function ensure_conditional_forecast_constants!(constants::constants; third_orde
 
         if isempty(to.shock_state_state_idxs)
             state_length = nˢ + 1
-            shock_offset = state_length
-            shock_state_state_loop = [compressed_triple_index(shock_offset + q, i, j)
-                                      for q in 1:nᵉ for i in 1:state_length for j in 1:i]
-            shock_state_state_order = sortperm(shock_state_state_loop)
-            to.shock_state_state_idxs = shock_state_state_loop[shock_state_state_order]
-            to.shock_state_state_rows = invperm(shock_state_state_order)
-
-            shock_shock_state_loop = [compressed_triple_index(shock_offset + i,
-                                                              shock_offset + j,
-                                                              state_index)
-                                      for i in 1:nᵉ for j in 1:i for state_index in 1:state_length]
-            shock_shock_state_order = sortperm(shock_shock_state_loop)
-            to.shock_shock_state_idxs = shock_shock_state_loop[shock_shock_state_order]
-            to.shock_shock_state_rows = invperm(shock_shock_state_order)
-        end
-
-        if size(to.I_exo2, 1) != constants.post_model_macro.nExo^2
-            to.I_exo2 = sparse(ℒ.I(constants.post_model_macro.nExo^2))
+            to.shock_state_state_idxs, to.shock_state_state_rows =
+                compressed_shock_state_state_index_map(state_length, nᵉ)
+            to.shock_shock_state_idxs, to.shock_shock_state_rows =
+                compressed_shock_shock_state_index_map(state_length, nᵉ)
         end
     end
 

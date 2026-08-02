@@ -13476,7 +13476,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = tc.shock_state_state_idxs,
+            shock_state_state_rows = tc.shock_state_state_rows,
+            shock_shock_state_indices = tc.shock_shock_state_idxs,
+            shock_shock_state_rows = tc.shock_shock_state_rows)
         if !matched
             if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed during warmup") end
             return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -14343,7 +14347,11 @@ function rrule(::typeof(calculate_loglikelihood),
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = tc.shock_state_state_idxs,
+            shock_state_state_rows = tc.shock_state_state_rows,
+            shock_shock_state_indices = tc.shock_shock_state_idxs,
+            shock_shock_state_rows = tc.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (pruned 3rd) failed during warmup") end
@@ -15136,7 +15144,11 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = tc.shock_state_state_idxs,
+            shock_state_state_rows = tc.shock_state_state_rows,
+            shock_shock_state_indices = tc.shock_shock_state_idxs,
+            shock_shock_state_rows = tc.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (3rd, missing) failed during warmup") end
@@ -15839,11 +15851,16 @@ function third_order_warmup_observation_and_jacobian_pullback!(
     kron_shock_state = ℒ.kron(final_shock, state_vol)
     kron_shock_shock = compressed_kron²_power(final_shock)
     shock_offset = n_past + 1
-    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
-    shock_state_state_indices = isnothing(shock_state_state_indices) ? cubic_maps.shock_state_state_indices : shock_state_state_indices
-    shock_state_state_rows    = isnothing(shock_state_state_rows)    ? cubic_maps.shock_state_state_rows    : shock_state_state_rows
-    shock_shock_state_indices = isnothing(shock_shock_state_indices) ? cubic_maps.shock_shock_state_indices : shock_shock_state_indices
-    shock_shock_state_rows    = isnothing(shock_shock_state_rows)    ? cubic_maps.shock_shock_state_rows    : shock_shock_state_rows
+    # The caller normally hands these down from the model's `third_order_indices`;
+    # build them only if it did not.
+    if isnothing(shock_state_state_indices)
+        shock_state_state_indices, shock_state_state_rows =
+            compressed_shock_state_state_index_map(n_state_vol, n_exo)
+    end
+    if isnothing(shock_shock_state_indices)
+        shock_shock_state_indices, shock_shock_state_rows =
+            compressed_shock_shock_state_index_map(n_state_vol, n_exo)
+    end
     kron_shock_state2 = compressed_triple_shock_state_state(
         final_shock, state_vol, shock_offset, shock_state_state_indices;
         index_rows = shock_state_state_rows)
@@ -16154,11 +16171,16 @@ function third_order_joint_warmup_solver_pullback!(
 
     n_state_vol = n_past + 1
     shock_offset = n_state_vol
-    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
-    shock_state_state_indices = isnothing(shock_state_state_indices) ? cubic_maps.shock_state_state_indices : shock_state_state_indices
-    shock_state_state_rows    = isnothing(shock_state_state_rows)    ? cubic_maps.shock_state_state_rows    : shock_state_state_rows
-    shock_shock_state_indices = isnothing(shock_shock_state_indices) ? cubic_maps.shock_shock_state_indices : shock_shock_state_indices
-    shock_shock_state_rows    = isnothing(shock_shock_state_rows)    ? cubic_maps.shock_shock_state_rows    : shock_shock_state_rows
+    # As above: the rrule passes the model's cached sets in, and these are only
+    # built when it did not.
+    if isnothing(shock_state_state_indices)
+        shock_state_state_indices, shock_state_state_rows =
+            compressed_shock_state_state_index_map(n_state_vol, n_exo)
+    end
+    if isnothing(shock_shock_state_indices)
+        shock_shock_state_indices, shock_shock_state_rows =
+            compressed_shock_shock_state_index_map(n_state_vol, n_exo)
+    end
 
     if size(warmup_jac, 1) == size(warmup_jac, 2)
         n_z = length(warmup_x)
@@ -16650,7 +16672,11 @@ function rrule(::typeof(calculate_loglikelihood),
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = tc.shock_state_state_idxs,
+            shock_state_state_rows = tc.shock_state_state_rows,
+            shock_shock_state_indices = tc.shock_shock_state_idxs,
+            shock_shock_state_rows = tc.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter rrule (3rd) failed during warmup") end

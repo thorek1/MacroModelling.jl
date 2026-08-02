@@ -871,8 +871,6 @@ function calculate_loglikelihood(::Val{:inversion},
     kron_buffer = ws.kron_buffer
     kron_buffer² = ws.kron_buffer²
     J = ℒ.I(T.nExo)
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = ℒ.I(n_exo_pair)
     kron_buffer2 = ws.kron_buffer2
     kron_buffer3 = ws.kron_buffer3
     kron_buffer4 = ws.kron_buffer4
@@ -939,7 +937,11 @@ function calculate_loglikelihood(::Val{:inversion},
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter failed during pruned third-order warmup") end
@@ -1383,9 +1385,6 @@ function calculate_loglikelihood(::Val{:inversion},
 
     kron_buffer4 = ws.kron_buffer4
 
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = sparse(ℒ.I(n_exo_pair))
-
     # Use workspace buffers for state/estimation temporaries
     state_vol = ws.state_vol
     kronstate_vol = ws.kronstate_vol
@@ -1425,7 +1424,11 @@ function calculate_loglikelihood(::Val{:inversion},
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter failed during third-order warmup") end
@@ -2658,9 +2661,6 @@ end
 
     kron_buffer4 = ws.kron_buffer4
 
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = ℒ.I(n_exo_pair)
-
     state¹⁻_vol = ws.state_vol
     kronstate_vol = ws.kronstate_vol
     kronstate_vol³ = ws.kronstate_vol³
@@ -2706,7 +2706,11 @@ end
             ws,
             computational_constants.I_aug,
             computational_constants.I_state_vol,
-            computational_constants.I_exo)
+            computational_constants.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             @error "Inversion filter (3rd) failed during joint warmup"
@@ -3064,9 +3068,6 @@ end
 
     kron_buffer² = ws.kron_buffer²
 
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = ℒ.I(n_exo_pair)
-    
     J = ℒ.I(T.nExo)
 
     kron_buffer2 = ws.kron_buffer2
@@ -3125,7 +3126,11 @@ end
             ws,
             computational_constants.I_aug,
             computational_constants.I_state_vol,
-            computational_constants.I_exo)
+            computational_constants.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             @error "Inversion filter (pruned 3rd) failed during joint warmup"
@@ -3603,12 +3608,6 @@ function second_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     n_aug = n_past + 1 + n_exo
     n_state_vol = n_past + 1
     n_z = n_exo * n_warm
-    shock_offset = n_state_vol
-    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
-    shock_state_state_indices = cubic_maps.shock_state_state_indices
-    shock_state_state_rows    = cubic_maps.shock_state_state_rows
-    shock_shock_state_indices = cubic_maps.shock_shock_state_indices
-    shock_shock_state_rows    = cubic_maps.shock_shock_state_rows
 
     state = copy(state0)
     state_next = similar(state0)
@@ -4001,7 +4000,11 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
                                                       ws::inversion_workspace{R},
                                                       I_aug::AbstractMatrix{<:Real},
                                                       I_state_vol::AbstractMatrix{<:Real},
-                                                      I_exo::AbstractMatrix{<:Real}) where R <: Real
+                                                      I_exo::AbstractMatrix{<:Real};
+                                                      shock_state_state_indices = nothing,
+                                                      shock_state_state_rows = nothing,
+                                                      shock_shock_state_indices = nothing,
+                                                      shock_shock_state_rows = nothing) where R <: Real
     n_past = length(state0)
     n_exo = size(warmup_shocks, 1)
     n_warm = size(warmup_shocks, 2)
@@ -4066,14 +4069,19 @@ function third_order_warmup_observation_and_jacobian(state0::AbstractVector{R},
     state_vol[end] = one(R)
     final_shock = view(warmup_shocks, :, n_warm)
 
-    # Compressed triple coordinates mixing shocks and states. The index sets and
-    # their row maps mirror third_order_warmup_observation_and_jacobian_pullback!.
+    # Compressed triple coordinates mixing shocks and states. The model's
+    # `third_order_indices` already holds these, and every caller in the filters
+    # passes them in; the fallback is for direct calls without the model's
+    # constants in scope. The pullback resolves the same sets the same way.
     shock_offset = n_past + 1
-    cubic_maps = compressed_cubic_shock_maps(shock_offset, n_state_vol, n_exo)
-    shock_state_state_indices = cubic_maps.shock_state_state_indices
-    shock_state_state_rows    = cubic_maps.shock_state_state_rows
-    shock_shock_state_indices = cubic_maps.shock_shock_state_indices
-    shock_shock_state_rows    = cubic_maps.shock_shock_state_rows
+    if isnothing(shock_state_state_indices)
+        shock_state_state_indices, shock_state_state_rows =
+            compressed_shock_state_state_index_map(n_state_vol, n_exo)
+    end
+    if isnothing(shock_shock_state_indices)
+        shock_shock_state_indices, shock_shock_state_rows =
+            compressed_shock_shock_state_index_map(n_state_vol, n_exo)
+    end
 
     fill!(y_pred, zero(R))
     ℒ.mul!(y_pred, 𝐒¹⁻ᵛ, state_vol)
@@ -4167,6 +4175,10 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                              I_aug::AbstractMatrix{<:Real},
                                                              I_state_vol::AbstractMatrix{<:Real},
                                                              I_exo::AbstractMatrix{<:Real};
+                                                             shock_state_state_indices = nothing,
+                                                             shock_state_state_rows = nothing,
+                                                             shock_shock_state_indices = nothing,
+                                                             shock_shock_state_rows = nothing,
                                                              max_iter::Int = 80,
                                                              tol::Real = 1e-10) where R <: Real
     n_exo = size(𝐒¹ᵉ, 2)
@@ -4202,13 +4214,20 @@ function solve_third_order_joint_warmup_shocks_with_jacobian(state0::AbstractVec
                                                                       ws,
                                                                       I_aug,
                                                                       I_state_vol,
-                                                                      I_exo)
+                                                                      I_exo,
+                                                                      shock_state_state_indices = shock_state_state_indices,
+                                                                      shock_state_state_rows = shock_state_state_rows,
+                                                                      shock_shock_state_indices = shock_shock_state_indices,
+                                                                      shock_shock_state_rows = shock_shock_state_rows)
         copyto!(y, y_new)
         copyto!(jac, jac_new)
         r .= target .- y
 
         residual = ℒ.norm(r) / max(ℒ.norm(target), ℒ.norm(y), 1.0)
-        residual < tol && (matched = true; break)
+        if residual < tol
+            matched = true
+            break
+        end
 
         JJt = jac * jac'
         JJt_lu = ℒ.lu(JJt, check = false)
@@ -4839,8 +4858,6 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
     st3 = convert(Vector{R}, state[3][T.past_not_future_and_mixed_idx])
 
     J  = ℒ.I(n_exo)
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = ℒ.I(n_exo_pair)
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
     state_vol         = ws.state_vol
@@ -4897,7 +4914,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter (pruned 3rd, missing) failed during warmup") end
@@ -5105,8 +5126,6 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
     st = convert(Vector{R}, state[T.past_not_future_and_mixed_idx])
 
     J  = ℒ.I(n_exo)
-    n_exo_pair = n_exo * (n_exo + 1) ÷ 2
-    II = sparse(ℒ.I(n_exo_pair))
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
     state_vol         = ws.state_vol
@@ -5158,7 +5177,11 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
             ws,
             cc.I_aug,
             cc.I_state_vol,
-            cc.I_exo)
+            cc.I_exo,
+            shock_state_state_indices = to.shock_state_state_idxs,
+            shock_state_state_rows = to.shock_state_state_rows,
+            shock_shock_state_indices = to.shock_shock_state_idxs,
+            shock_shock_state_rows = to.shock_shock_state_rows)
 
         if !matched
             if opts.verbose println("Inversion filter (3rd, missing) failed during warmup") end

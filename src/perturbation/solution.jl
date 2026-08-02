@@ -2959,43 +2959,35 @@ end
 
 # The cubic index sets that mix shocks with states, and the row maps into them.
 #
-# Both depend only on the model's dimensions, but every caller was rebuilding
-# them: a comprehension over O(n_exo·n_state²) triples, a sort, then a binary
-# search per row — once per likelihood evaluation, and in the warmup routines
-# once per period. Memoise on the dimensions instead. The key space is one entry
-# per model shape, the vectors are read-only once built (callers only
-# `searchsortedfirst` into them), and the lock covers the threaded filters
-# racing to fill an entry on the first call.
-struct CompressedCubicShockMaps
-    shock_state_state_indices::Vector{Int}
-    shock_state_state_rows::Vector{Int}
-    shock_shock_state_indices::Vector{Int}
-    shock_shock_state_rows::Vector{Int}
+# Both depend only on the model's dimensions, so they live with the model's other
+# index constants: `third_order_indices` holds them as `shock_state_state_idxs` /
+# `shock_state_state_rows` and `shock_shock_state_idxs` / `shock_shock_state_rows`,
+# filled once by `ensure_conditional_forecast_constants!`. Everything downstream —
+# the inversion filter loops, the joint-warmup solvers and their pullbacks — takes
+# them from there rather than rebuilding a comprehension over O(n_exo·n_state²)
+# triples per call.
+#
+# These two builders are the single construction shared by that cache and by the
+# handful of pullback entry points that can be called without the model's
+# constants in scope, so the two can never disagree. The shock offset is always
+# the state length (states, then the volatility slot, then the shocks), so it is
+# not a separate argument. Sorting the loop-ordered indices and inverting the
+# permutation yields both the sorted set and the loop-position-to-row map in one
+# pass, which is what the callers index with.
+function compressed_shock_state_state_index_map(n_state::Int, n_exo::Int)
+    shock_offset = n_state
+    loop_order = [compressed_triple_index(shock_offset + q, i, j)
+                  for q in 1:n_exo for i in 1:n_state for j in 1:i]
+    permutation = sortperm(loop_order)
+    return loop_order[permutation], invperm(permutation)
 end
 
-const COMPRESSED_CUBIC_SHOCK_MAPS = Dict{NTuple{3,Int},CompressedCubicShockMaps}()
-const COMPRESSED_CUBIC_SHOCK_MAPS_LOCK = ReentrantLock()
-
-function compressed_cubic_shock_maps(shock_offset::Int, n_state::Int, n_exo::Int)::CompressedCubicShockMaps
-    key = (shock_offset, n_state, n_exo)
-    hit = lock(COMPRESSED_CUBIC_SHOCK_MAPS_LOCK) do
-        get(COMPRESSED_CUBIC_SHOCK_MAPS, key, nothing)
-    end
-    hit === nothing || return hit
-
-    shock_state_state_indices = sort!([compressed_triple_index(shock_offset + q, i, j)
-                                       for q in 1:n_exo for i in 1:n_state for j in 1:i])
-    shock_shock_state_indices = sort!([compressed_triple_index(shock_offset + i, shock_offset + j, k)
-                                       for i in 1:n_exo for j in 1:i for k in 1:n_state])
-    maps = CompressedCubicShockMaps(
-        shock_state_state_indices,
-        compressed_shock_state_state_rows(shock_state_state_indices, shock_offset, n_state, n_exo),
-        shock_shock_state_indices,
-        compressed_shock_shock_state_rows(shock_shock_state_indices, shock_offset, n_state, n_exo))
-
-    return lock(COMPRESSED_CUBIC_SHOCK_MAPS_LOCK) do
-        get!(COMPRESSED_CUBIC_SHOCK_MAPS, key, maps)
-    end
+function compressed_shock_shock_state_index_map(n_state::Int, n_exo::Int)
+    shock_offset = n_state
+    loop_order = [compressed_triple_index(shock_offset + i, shock_offset + j, k)
+                  for i in 1:n_exo for j in 1:i for k in 1:n_state]
+    permutation = sortperm(loop_order)
+    return loop_order[permutation], invperm(permutation)
 end
 
 """Fill a compressed matrix for fixing one state coordinate in a cubic term."""
@@ -3455,15 +3447,6 @@ function compressed_triple_state_shock_to_shock_vjp!(dstate::AbstractVector,
         end
     end
     return nothing
-end
-
-function compressed_shock_shock_state_indices(n_past::Int, n_exo::Int)
-    state_length = n_past + 1
-    shock_offset = state_length
-    sort!([compressed_triple_index(shock_offset + i,
-                                   shock_offset + j,
-                                   state_index)
-           for i in 1:n_exo for j in 1:i for state_index in 1:state_length])
 end
 
 @inline function compressed_pair_index(i::Int, j::Int)

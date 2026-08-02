@@ -437,7 +437,6 @@ mutable struct third_order_indices
     shockvar3_idxs::Vector{Int}          # Shock × var indices (position 3)
     shockvar³2_idxs::Vector{Int}         # Shock × var³ indices (2nd variant)
     shockvar³_idxs::Vector{Int}          # Shock × var³ indices
-    I_exo2::SparseMatrixCSC{Float64, Int} # I(nExo^2) reused by inversion warmup helpers
     shock_state_state_idxs::Vector{Int}   # Sorted shock × state² compressed indices
     shock_state_state_rows::Vector{Int}   # Loop-order rows into shock_state_state_idxs
     shock_shock_state_idxs::Vector{Int}   # Sorted shock² × state compressed indices

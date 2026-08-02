@@ -288,6 +288,33 @@ end
         n_exo, shock_state_state_indices; index_rows = shock_state_state_rows)
 end
 
+# The model's `third_order_indices` caches these sets, and a handful of pullback
+# entry points rebuild them when they are called without the model in scope. Both
+# go through the same two builders, so what has to hold is that those builders
+# agree with the sorted set plus the binary-search row map the callers index with.
+@testset "compressed cubic index-map builders" begin
+    for (n_state, n_exo) in ((1, 1), (3, 2), (5, 4), (12, 7))
+        shock_offset = n_state
+
+        indices, rows = MacroModelling.compressed_shock_state_state_index_map(n_state, n_exo)
+        @test issorted(indices)
+        @test allunique(indices)
+        @test indices == sort!([MacroModelling.compressed_triple_index(shock_offset + q, i, j)
+                                for q in 1:n_exo for i in 1:n_state for j in 1:i])
+        @test rows == MacroModelling.compressed_shock_state_state_rows(indices, shock_offset,
+                                                                      n_state, n_exo)
+
+        indices, rows = MacroModelling.compressed_shock_shock_state_index_map(n_state, n_exo)
+        @test issorted(indices)
+        @test allunique(indices)
+        @test indices == sort!([MacroModelling.compressed_triple_index(shock_offset + i,
+                                                                       shock_offset + j, k)
+                                for i in 1:n_exo for j in 1:i for k in 1:n_state])
+        @test rows == MacroModelling.compressed_shock_shock_state_rows(indices, shock_offset,
+                                                                      n_state, n_exo)
+    end
+end
+
 @testset "compressed transition static audit" begin
     transition_files = [
         "src/MacroModelling.jl",
