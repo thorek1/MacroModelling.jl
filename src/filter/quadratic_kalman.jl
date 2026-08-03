@@ -342,7 +342,8 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
               PP = pair_transition, KVV = pair_reorder * raw_pair_power_matrix(V), Hq,
               pair_reorder,
               pair_lift, raw_lift, pair_transition, pair_noise, compressed_shock_noise,
-              shock_pair_solution, shock_pair_covariance)
+              shock_pair_solution, shock_pair_covariance,
+              past_positions = [findfirst(!iszero, view(P, i, :)) for i in 1:nPast])
 end
 
 # State-dependent loading of the linear-in-ε part of the innovation, at state z.
@@ -385,9 +386,22 @@ end
 # in addition to the plug-in term ḠḠ'.  Pz selects the past first-order state
 # from z, so only that small covariance is needed here; the full augmented
 # covariance is still required by the Kalman prediction/update itself.
-function quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
-    ℒ.mul!(PzPc, Pz, Pc)
-    ℒ.mul!(Pa, PzPc, Pz')
+function quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa;
+                                            past_positions = nothing)
+    if past_positions === nothing
+        ℒ.mul!(PzPc, Pz, Pc)
+        ℒ.mul!(Pa, PzPc, Pz')
+    else
+        # Pz is a row selector. Copying its selected rows/entries avoids two
+        # selector GEMMs on every period; the dense covariance products below
+        # remain BLAS-3 operations.
+        @inbounds for j in axes(Pc, 2), i in eachindex(past_positions)
+            PzPc[i, j] = Pc[past_positions[i], j]
+        end
+        @inbounds for j in eachindex(past_positions), i in eachindex(past_positions)
+            Pa[i, j] = Pc[past_positions[i], past_positions[j]]
+        end
+    end
     copyto!(Q, QH)
     ℒ.mul!(Q, G, G', one(eltype(Q)), one(eltype(Q)))
     nz, nExo = size(G)
@@ -422,7 +436,8 @@ function quadratic_kalman_initial_covariance(sys, z0, g0, Λ, Pz;
     Pa = Matrix{Tv}(undef, sys.nPast, sys.nPast)
     LPa = Matrix{Tv}(undef, sys.nz, sys.nPast)
     quadratic_kalman_noise_covariance!(Q0, G0, sys.QH, Λ, sys.P, Σ1,
-                                       PzPc, Pa, LPa)
+                                       PzPc, Pa, LPa;
+                                       past_positions = sys.past_positions)
     Σ0 = qkf_lyapunov(sys.𝒜, Q0; workspaces = workspaces,
                       lyapunov_algorithm = lyapunov_algorithm,
                       initial_guess = initial_guess)
@@ -464,6 +479,7 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
     PzPc = Matrix{Tv}(undef, size(Pz, 1), nz)
     Pa = Matrix{Tv}(undef, size(Pz, 1), size(Pz, 1))
     LPa = Matrix{Tv}(undef, nz, size(Pz, 1))
+    past_positions = [findfirst(!iszero, view(Pz, i, :)) for i in axes(Pz, 1)]
     CP = Matrix{Tv}(undef, n_obs, nz)
     F  = Matrix{Tv}(undef, n_obs, n_obs)
     Kg = Matrix{Tv}(undef, nz, n_obs)
@@ -481,7 +497,8 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
         # Pp = 𝒜 Pc 𝒜' + E[Var(w | z)]
         ℒ.mul!(Tm, 𝒜, Pc)
         ℒ.mul!(Pp, Tm, 𝒜')
-        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
+        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa;
+                                           past_positions = past_positions)
         Pp .+= Q
         for j in 1:nz, i in 1:j
             m = (Pp[i, j] + Pp[j, i]) / 2; Pp[i, j] = m; Pp[j, i] = m
@@ -545,6 +562,7 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
     Q = zeros(nz, nz); zp = zeros(nz); gv = zeros(nz * nExo)
     x1p = zeros(size(Pz, 1)); PzPc = zeros(size(Pz, 1), nz)
     Pa = zeros(size(Pz, 1), size(Pz, 1)); LPa = zeros(nz, size(Pz, 1))
+    past_positions = [findfirst(!iszero, view(Pz, i, :)) for i in axes(Pz, 1)]
     CP = zeros(n_obs, nz); F = zeros(n_obs, n_obs); Fv = zeros(n_obs)
     identity_obs = Matrix{Float64}(ℒ.I(n_obs))
     ll = 0.0; log2pi = log(2π); failed = false
@@ -553,7 +571,8 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
         ℒ.mul!(x1p, Pz, z)
         copyto!(gv, g0); ℒ.mul!(gv, Λ, x1p, 1.0, 1.0)
         G = reshape(gv, nz, nExo)
-        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
+        quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa;
+                                           past_positions = past_positions)
         copyto!(Gs[t], G); copyto!(Pas[t], Pa)
         ℒ.mul!(zp, 𝒜, z); zp .+= c
         ℒ.mul!(Tm, 𝒜, Pc); ℒ.mul!(Pp, Tm, 𝒜')
@@ -611,6 +630,11 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
         tmp_pastpast = zeros(size(Pz, 1), size(Pz, 1))
 
         function rank_one_add!(matrix, left, right, scale)
+            if eltype(matrix) === Float64 && eltype(left) === Float64 && eltype(right) === Float64
+                # BLAS GER performs `matrix += scale * left * right'` without a temporary.
+                ℒ.BLAS.ger!(Float64(scale), left, right, matrix)
+                return matrix
+            end
             @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
                 matrix[i, j] += scale * left[i] * right[j]
             end

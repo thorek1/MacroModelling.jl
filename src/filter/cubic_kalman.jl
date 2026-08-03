@@ -534,7 +534,16 @@ function cubic_kalman_workspace(sys, Tv = eltype(sys.S1))
             q2_aug = zeros(length(sys.pair_indices)),
             q2_cross = zeros(length(sys.pair_indices)),
             q3_aug = zeros(length(sys.triple_indices)), q3_uuv = zeros(nq111), q3_uvv = zeros(nq111),
-            scratch_out = zeros(sys.nz))
+            scratch_out = zeros(sys.nz),
+            pull_u = zeros(nPast), pull_v = zeros(nPast), pull_t2 = zeros(nq11),
+            pull_wc = zeros(nPast), pull_bn = zeros(nPast), pull_R2 = zeros(nPast, nPast),
+            pull_R3 = zeros(nq111), pull_R2t = zeros(nPast, nPast),
+            pull_MQ11 = zeros(nPast, nPast), pull_MQ12 = zeros(nPast, nPast),
+            pull_MQ111 = zeros(nPast, nq11), pull_M = zeros(nPast, nPast),
+            pull_Wq = zeros(nPast, nq11), pull_Wl = zeros(nPast, nPast),
+            pull_grad_MQ11 = zeros(nPast, nPast), pull_grad_MQ12 = zeros(nPast, nPast),
+            pull_grad_MQ111 = zeros(nPast, nq11),
+            pull_x2n = zeros(nr))
 end
 
 """
@@ -706,6 +715,13 @@ Adjoint of `cubic_kalman_step!` with respect to the solution matrices, at a fixe
 Accumulates into `∂` in place; call `cubic_derived_pullback!` afterwards to fold
 the derived-block cotangents onto `S1` and `S2`.
 """
+function cubic_rank_one_add!(matrix, left, right)
+    @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
+        matrix[i, j] += left[i] * right[j]
+    end
+    return matrix
+end
+
 function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVector,
                                      ∂out::AbstractVector, ws)
     (; nr, nPast, nExo, na, S1, S2, Pm, r1, r2, r3, i11, i12, i111,
@@ -718,19 +734,22 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     cubic_kalman_step!(ws.scratch_out, sys, z, ε, ws)
     (; a, b, p, q11, q12, q111, tail, tt, aug1, aug2, aug3, K2, K12, K3,
        x2n, u, v, bn, wc, Q11, Q12, Q111, Wl, t2, vv) = ws
-    MQ11 = M * Q11
-    MQ12 = M * Q12
-    MQ111 = M * Q111
+    MQ11, MQ12, MQ111 = ws.pull_MQ11, ws.pull_MQ12, ws.pull_MQ111
+    ℒ.mul!(MQ11, M, Q11)
+    ℒ.mul!(MQ12, M, Q12)
+    ℒ.mul!(MQ111, M, Q111)
 
     o11 = first(i11) - 1
     o12 = first(i12) - 1
     o111 = first(i111) - 1
 
-    ∂u = zeros(eltype(∂out), nP); ∂v = zeros(eltype(∂out), nP)
-    ∂t2 = zeros(eltype(∂out), sys.nq11)
-    ∂wc = zeros(eltype(∂out), nP); ∂bn = zeros(eltype(∂out), nP)
-    ∂R2 = zeros(eltype(∂out), nP, nP)
-    ∂R3 = zeros(eltype(∂out), sys.nq111)
+    ∂u, ∂v, ∂t2 = ws.pull_u, ws.pull_v, ws.pull_t2
+    ∂wc, ∂bn = ws.pull_wc, ws.pull_bn
+    ∂R2, ∂R3 = ws.pull_R2, ws.pull_R3
+    fill!(∂u, zero(eltype(∂u))); fill!(∂v, zero(eltype(∂v)))
+    fill!(∂t2, zero(eltype(∂t2))); fill!(∂wc, zero(eltype(∂wc)))
+    fill!(∂bn, zero(eltype(∂bn))); fill!(∂R2, zero(eltype(∂R2)))
+    fill!(∂R3, zero(eltype(∂R3)))
 
     # ── seed from the output blocks ──────────────────────────────────────────
     @inbounds for (s, (i, j)) in enumerate(can2_ij)
@@ -766,51 +785,61 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     end
 
     # R3 = M₃ q₁₁₁ in the compressed raw-product basis.
-    ∂.M3 .+= ∂R3 * q111'
+    ℒ.mul!(∂.M3, ∂R3, q111', one(eltype(∂.M3)), one(eltype(∂.M3)))
 
     # R2 = MQ11 Wl' + MQ111 Wq' + MQ12 M'
-    ∂MQ11 = ∂R2 * Wl
-    ∂Wl = ∂R2' * MQ11
-    ∂MQ111 = ∂R2 * Wq
-    ∂.Wq .+= ∂R2' * MQ111
-    ∂MQ12 = ∂R2 * M
-    ∂M = ∂R2' * MQ12
+    ∂MQ11, ∂MQ111, ∂MQ12 = ws.pull_grad_MQ11, ws.pull_grad_MQ111, ws.pull_grad_MQ12
+    ∂Wq, ∂Wl, ∂M = ws.pull_Wq, ws.pull_Wl, ws.pull_M
+    ℒ.mul!(∂MQ11, ∂R2, Wl)
+    ℒ.mul!(∂Wl, ∂R2', MQ11)
+    ℒ.mul!(∂MQ111, ∂R2, Wq)
+    ℒ.mul!(∂Wq, ∂R2', MQ111)
+    ∂.Wq .+= ∂Wq
+    ℒ.mul!(∂MQ12, ∂R2, M)
+    ℒ.mul!(∂M, ∂R2', MQ12)
 
     # t2 contains the upper-triangular raw entries of MQ11M'.
-    ∂R2t = zeros(eltype(∂out), nP, nP)
+    ∂R2t = ws.pull_R2t
+    fill!(∂R2t, zero(eltype(∂R2t)))
     @inbounds for (i, j) in can2_ij
         ∂R2t[i, j] += ∂t2[cubic_pair_index(i, j, nP)]
     end
-    ∂MQ11 .+= ∂R2t * M
-    ∂M .+= ∂R2t' * MQ11
+    ℒ.mul!(∂MQ11, ∂R2t, M, one(eltype(∂MQ11)), one(eltype(∂MQ11)))
+    ℒ.mul!(∂M, ∂R2t', MQ11, one(eltype(∂M)), one(eltype(∂M)))
 
     # MQ11 = M Q11, MQ12 = M Q12, MQ111 = M Q111.
-    ∂M .+= ∂MQ11 * Q11' .+ ∂MQ12 * Q12' .+ ∂MQ111 * Q111'
+    ℒ.mul!(∂M, ∂MQ11, Q11', one(eltype(∂M)), one(eltype(∂M)))
+    ℒ.mul!(∂M, ∂MQ12, Q12', one(eltype(∂M)), one(eltype(∂M)))
+    ℒ.mul!(∂M, ∂MQ111, Q111', one(eltype(∂M)), one(eltype(∂M)))
 
     # wc = Bc tt ; Wl = Σ_t tail[t] Wl_t[t]
-    ∂.Bc .+= ∂wc * tt'
+    ℒ.mul!(∂.Bc, ∂wc, tt', one(eltype(∂.Bc)), one(eltype(∂.Bc)))
     @inbounds for t in 1:ntail
         ∂.Wl_t[t] .+= tail[t] .* ∂Wl
     end
 
     # u = M a ; v = mc + V ε
-    ∂M .+= ∂u * a'
+    cubic_rank_one_add!(∂M, ∂u, a)
     ∂.mc .+= ∂v
-    ∂.V .+= ∂v * ε'
+    ℒ.mul!(∂.V, ∂v, ε', one(eltype(∂.V)), one(eltype(∂.V)))
     ∂.M .+= ∂M
 
     # bn = Pm x2n, and x2n is itself an output block
-    ∂x1n = ∂out[1:nr]
-    ∂x2n = ∂out[nr+1:2nr] .+ Pm' * ∂bn
-    ∂x3n = ∂out[2nr+1:3nr]
+    ∂x1n = view(∂out, 1:nr)
+    ∂x2n = ws.pull_x2n
+    copyto!(∂x2n, view(∂out, nr+1:2nr))
+    ℒ.mul!(∂x2n, Pm', ∂bn, one(eltype(∂x2n)), one(eltype(∂x2n)))
+    ∂x3n = view(∂out, 2nr+1:3nr)
 
     # x1n = S1 aug1 ; x2n = S1 aug2 + ½ S2 K2 ; x3n = S1 aug3 + S2 K12 + ⅙ S3 K3.
     # The 𝐒₂/𝐒₃ cotangents accumulate on the live columns and are scattered back
     # once, in `cubic_derived_pullback!`.
-    ∂.S1 .+= ∂x1n * aug1' .+ ∂x2n * aug2' .+ ∂x3n * aug3'
-    ∂.S2k2 .+= (∂x2n * K2') ./ 2
-    ∂.S2k12 .+= ∂x3n * K12'
-    ∂.S3k3 .+= (∂x3n * K3') ./ 6
+    cubic_rank_one_add!(∂.S1, ∂x1n, aug1)
+    cubic_rank_one_add!(∂.S1, ∂x2n, aug2)
+    cubic_rank_one_add!(∂.S1, ∂x3n, aug3)
+    ℒ.mul!(∂.S2k2, ∂x2n, K2', 0.5, one(eltype(∂.S2k2)))
+    ℒ.mul!(∂.S2k12, ∂x3n, K12', one(eltype(∂.S2k12)), one(eltype(∂.S2k12)))
+    ℒ.mul!(∂.S3k3, ∂x3n, K3', 1 / 6, one(eltype(∂.S3k3)))
 
     return ∂
 end
@@ -1020,7 +1049,7 @@ function cubic_kalman_stationary_adjoint(𝒜, Λnoise, Ψ, noise_state_indices,
     P̄noise = zeros(eltype(X), nI, nI)
     E = zeros(eltype(X), nz, coefficient_count)
     EΨ = zeros(eltype(X), nz, coefficient_count)
-    Xnew = similar(X)
+    Xold = similar(X)
     rhs = copy(Σ̄)
     X = qkf_lyapunov(Matrix(𝒜'), rhs; workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
@@ -1032,20 +1061,29 @@ function cubic_kalman_stationary_adjoint(𝒜, Λnoise, Ψ, noise_state_indices,
             ℒ.mul!(EΨ, E, Ψ)
             for j in 1:nI
                 Dj = reshape(view(Λnoise, :, j), nz, coefficient_count)
-                P̄noise[i, j] = sum(EΨ .* Dj)
+                P̄noise[i, j] = ℒ.dot(EΨ, Dj)
             end
         end
         copyto!(rhs, Σ̄)
         @inbounds for j in 1:nI, i in 1:nI
             rhs[noise_state_indices[i], noise_state_indices[j]] += P̄noise[i, j]
         end
+        copyto!(Xold, X)
         Xnew = qkf_lyapunov(Matrix(𝒜'), rhs; workspaces = workspaces,
                             lyapunov_algorithm = lyapunov_algorithm)
-        Xnew = (Xnew + Xnew') / 2
-        difference = maximum(abs, Xnew - X)
-        scale = max(1.0, maximum(abs, Xnew))
-        X = copy(Xnew)
-        difference <= tolerance * scale && return X
+        @inbounds for j in 1:nz, i in 1:j-1
+            value = (Xnew[i, j] + Xnew[j, i]) / 2
+            Xnew[i, j] = value
+            Xnew[j, i] = value
+        end
+        difference = zero(eltype(Xnew))
+        scale = zero(eltype(Xnew))
+        @inbounds for j in 1:nz, i in 1:nz
+            difference = max(difference, abs(Xnew[i, j] - Xold[i, j]))
+            scale = max(scale, abs(Xnew[i, j]))
+        end
+        X = Xnew
+        difference <= tolerance * max(one(eltype(Xnew)), scale) && return X
     end
     error("The cubic Kalman stationary covariance adjoint did not converge " *
           "within $max_iterations iterations.")
@@ -1282,6 +1320,14 @@ function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, 
     𝒜̄ = zeros(nz, nz); c̄ = zeros(nz); c̄₀ = zeros(length(c₀)); Λ̄ = zeros(size(Λ))
     H̄m = zeros(n_obs, n_obs); Ȳ = zeros(n_obs, nT)
     z̄ = zeros(nz); P̄ = zeros(nz, nz)
+    nI = length(noise_state_indices)
+    Λnoise = view(Λ, :, noise_state_indices)
+    P̄noise = zeros(nI, nI)
+    E = zeros(nz, N)
+    EΨ = zeros(nz, N)
+    mixvec = zeros(nz * N)
+    Dmix = reshape(mixvec, nz, N)
+    D̄ = zeros(nz, N)
 
     for t in nT:-1:1
         z_, P_, C, v, CP, Fi, K = zs[t], Ps[t], Cs[t], vs[t], CPs[t], Fis[t], Ks[t]
@@ -1311,20 +1357,24 @@ function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, 
         vC̄ = vec(C̄)
         c̄₀ .+= vC̄
         Λ̄ .+= vC̄ * z_'
-        P̄noise = zeros(length(noise_state_indices), length(noise_state_indices))
-        Λnoise = view(Λ, :, noise_state_indices)
-        @inbounds for i in 1:length(noise_state_indices)
+        fill!(P̄noise, zero(eltype(P̄noise)))
+        @inbounds for i in 1:nI
             Di = reshape(view(Λnoise, :, i), nz, N)
-            E = Q̄ * Di * Ψ
-            for j in 1:length(noise_state_indices)
+            ℒ.mul!(E, Q̄, Di)
+            ℒ.mul!(EΨ, E, Ψ)
+            for j in 1:nI
                 Dj = reshape(view(Λnoise, :, j), nz, N)
-                P̄noise[i, j] = sum(E .* Dj)
+                P̄noise[i, j] = ℒ.dot(EΨ, Dj)
             end
-            Dmix = reshape(Λnoise * view(Pas[t], :, i), nz, N)
-            D̄ = 2 .* (Q̄ * Dmix * Ψ)
-            Λ̄[:, noise_state_indices[i]] .+= vec(D̄)
+            ℒ.mul!(mixvec, Λnoise, view(Pas[t], :, i))
+            ℒ.mul!(D̄, Q̄, Dmix)
+            ℒ.mul!(E, D̄, Ψ)
+            column = noise_state_indices[i]
+            @inbounds for k in eachindex(E)
+                Λ̄[k, column] += 2 * E[k]
+            end
         end
-        @inbounds for j in 1:length(noise_state_indices), i in 1:length(noise_state_indices)
+        @inbounds for j in 1:nI, i in 1:nI
             P̄[noise_state_indices[i], noise_state_indices[j]] += P̄noise[i, j]
         end
         𝒜̄ .+= z̄p * z_'

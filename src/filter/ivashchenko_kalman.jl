@@ -194,11 +194,14 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type)
             quadratic_right = third ? nothing : zeros(scalar_type, d * d, nout),
             pair_mean = zeros(scalar_type, n_pair),
             pair_covariance = third ? zeros(scalar_type, n_pair, n_pair) : nothing,
+            pair_product = third ? zeros(scalar_type, nout, n_pair) : nothing,
             covariance = zeros(scalar_type, nout, nout),
             third_derivative = third ? zeros(scalar_type, nout, n_triple) : nothing,
             third_covariance = third ? zeros(scalar_type, n_triple, n_triple) : nothing,
             third_cross = third ? zeros(scalar_type, d, n_triple) : nothing,
             third_linear = third ? zeros(scalar_type, n_triple, d) : nothing,
+            third_work = third ? zeros(scalar_type, nout, n_triple) : nothing,
+            third_output = third ? zeros(scalar_type, nout, nout) : nothing,
             pair_scratch = zeros(scalar_type, n_pair),
             triple_scratch = third ? zeros(scalar_type, n_triple) : nothing,
             basis = zeros(scalar_type, sys.dv),
@@ -272,8 +275,8 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
             ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
                 sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
         end
-        hessian_pair = ws.hessian * ws.pair_covariance
-        ws.covariance .+= hessian_pair * transpose(ws.hessian) / 4
+        ℒ.mul!(ws.pair_product, ws.hessian, ws.pair_covariance)
+        ℒ.mul!(ws.covariance, ws.pair_product, transpose(ws.hessian), 0.25, 1.0)
         fill!(ws.third_derivative, zero(eltype(ws.third_derivative)))
         @inbounds for p in eachindex(sys.random_triple_columns)
             ws.third_derivative[:, p] .= sys.S3[:, sys.random_triple_columns[p]]
@@ -290,7 +293,7 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
                     (r == j) * Σ[i, k] + (r == k) * Σ[i, j])
             end
         end
-        ws.effective_linear .+= ws.third_derivative * ws.third_linear / 6
+        ℒ.mul!(ws.effective_linear, ws.third_derivative, ws.third_linear, 1 / 6, 1.0)
         fill!(ws.third_covariance, zero(eltype(ws.third_covariance)))
         @inbounds for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
             i, j, k = sys.random_triple_indices[p]
@@ -299,10 +302,15 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
             ws.third_covariance[p, q] = sys.random_triple_multiplicities[p] *
                 sys.random_triple_multiplicities[q] * ivashchenko_gaussian_sixth(indices, Σ)
         end
-        ws.covariance .+= (ws.linear * ws.third_cross * ws.third_derivative' +
-                           ws.third_derivative * ws.third_cross' * ws.linear') / 6
-        ws.covariance .+= ws.third_derivative * ws.third_covariance *
-                          ws.third_derivative' / 36
+        ℒ.mul!(ws.third_work, ws.linear, ws.third_cross)
+        ℒ.mul!(ws.third_output, ws.third_work, transpose(ws.third_derivative), 1 / 6, 0.0)
+        @inbounds for j in 1:nout, i in 1:nout
+            ws.covariance[i, j] += ws.third_output[i, j]
+            ws.covariance[i, j] += ws.third_output[j, i]
+        end
+        ℒ.mul!(ws.third_work, ws.third_derivative, ws.third_covariance)
+        ℒ.mul!(ws.third_output, ws.third_work, transpose(ws.third_derivative), 1 / 36, 0.0)
+        ws.covariance .+= ws.third_output
     else
         @inbounds for output in 1:nout
             hessian = reshape(view(ws.quadratic_hessian, :, output), d, d)
@@ -473,6 +481,7 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
 
     state_position, observation_position = sys.state_position, sys.observation_position
     n_state = length(state_position)
+    nout = sys.nout
     post_means = record ? Vector{Vector{scalar_type}}(undef, nT) : nothing
     post_covariances = record ? Vector{Matrix{scalar_type}}(undef, nT) : nothing
     input_means = record ? Vector{Vector{scalar_type}}(undef, nT) : nothing
@@ -489,6 +498,25 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
     gains = record ? Vector{Any}(undef, nT) : nothing
     cross_covariances = record ? Vector{Any}(undef, nT) : nothing
     observed_indices = record ? obs_idx_per_t : nothing
+
+    # Reuse the filtering algebra across periods. The tape still receives a
+    # copy of every value it needs, but the non-recording likelihood path no
+    # longer allocates observation-sized matrices and state updates per period.
+    predicted_mean = zeros(scalar_type, n_state)
+    predicted_covariance = zeros(scalar_type, n_state, n_state)
+    next_mean = zeros(scalar_type, n_state)
+    next_covariance = zeros(scalar_type, n_state, n_state)
+    output_mean = zeros(scalar_type, nout)
+    output_covariance = zeros(scalar_type, nout, nout)
+    observation_mean = zeros(scalar_type, n_obs)
+    observation_covariance = zeros(scalar_type, n_obs, n_obs)
+    cross_covariance = zeros(scalar_type, n_state, n_obs)
+    observations = zeros(scalar_type, n_obs)
+    innovation = zeros(scalar_type, n_obs)
+    innovation_solve = zeros(scalar_type, n_obs)
+    innovation_covariance = zeros(scalar_type, n_obs, n_obs)
+    inverse_innovation_covariance = zeros(scalar_type, n_obs, n_obs)
+    gain = zeros(scalar_type, n_state, n_obs)
     ll = zero(scalar_type)
     log2pi = log(2π)
     @inbounds for t in 1:nT
@@ -500,20 +528,32 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
             input_covariances[t] = input_covariance
             moment_tapes[t] = ivashchenko_copy_moment_tape(ws)
         end
-        predicted_mean = collect(view(ws.mean, state_position))
-        output_mean = copy(ws.mean)
-        predicted_covariance = Matrix(view(ws.covariance, state_position, state_position))
-        output_covariance = copy(ws.covariance)
+        @inbounds for i in 1:n_state
+            predicted_mean[i] = ws.mean[state_position[i]]
+        end
+        @inbounds for j in 1:n_state, i in 1:n_state
+            predicted_covariance[i, j] = ws.covariance[state_position[i], state_position[j]]
+        end
+        copyto!(output_mean, ws.mean)
+        copyto!(output_covariance, ws.covariance)
         idx = obs_idx_per_t[t]
         m = length(idx)
 
         if record
-            predicted_means[t] = predicted_mean
-            predicted_covariances[t] = predicted_covariance
-            output_means[t] = output_mean
-            output_covariances[t] = output_covariance
-            transitions[t] = Matrix(view(ws.effective_linear, state_position, 1:sys.nPast))
-            shock_loadings[t] = Matrix(view(ws.effective_linear, state_position, sys.nPast + 1:sys.d))
+            predicted_means[t] = copy(predicted_mean)
+            predicted_covariances[t] = copy(predicted_covariance)
+            output_means[t] = copy(output_mean)
+            output_covariances[t] = copy(output_covariance)
+            transition = Matrix{scalar_type}(undef, n_state, sys.nPast)
+            shock_loading = Matrix{scalar_type}(undef, n_state, sys.d - sys.nPast)
+            @inbounds for j in 1:sys.nPast, i in 1:n_state
+                transition[i, j] = ws.effective_linear[state_position[i], j]
+            end
+            @inbounds for j in 1:(sys.d - sys.nPast), i in 1:n_state
+                shock_loading[i, j] = ws.effective_linear[state_position[i], sys.nPast + j]
+            end
+            transitions[t] = transition
+            shock_loadings[t] = shock_loading
         end
 
         if m == 0
@@ -523,8 +563,15 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
                 gains[t] = nothing
                 cross_covariances[t] = nothing
             end
-            mean_state = predicted_mean
-            covariance_state = (predicted_covariance + predicted_covariance') / 2
+            copyto!(next_mean, predicted_mean)
+            copyto!(next_covariance, predicted_covariance)
+            @inbounds for j in 1:n_state, i in 1:j-1
+                value = (next_covariance[i, j] + next_covariance[j, i]) / 2
+                next_covariance[i, j] = value
+                next_covariance[j, i] = value
+            end
+            mean_state, next_mean = next_mean, mean_state
+            covariance_state, next_covariance = next_covariance, covariance_state
             if record
                 post_means[t] = copy(mean_state)
                 post_covariances[t] = copy(covariance_state)
@@ -532,39 +579,73 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
             continue
         end
 
-        observation_mean = collect(view(ws.mean, observation_position[idx]))
-        observation_covariance = Matrix(view(ws.covariance, observation_position[idx], observation_position[idx]))
-        cross_covariance = Matrix(view(ws.covariance, state_position, observation_position[idx]))
-        observations = collect(view(data_in_deviations, idx, t))
-        innovation = observations - observation_mean
-        F = observation_covariance + ivashchenko_subset_measurement_covariance(Hm, idx)
-        F = (F + F') / 2
-        factor = ℒ.lu(F, check = false)
+        @inbounds for i in 1:m
+            observation_mean[i] = ws.mean[observation_position[idx[i]]]
+            observations[i] = data_in_deviations[idx[i], t]
+            for k in 1:n_state
+                cross_covariance[k, i] = ws.covariance[state_position[k], observation_position[idx[i]]]
+            end
+        end
+        @inbounds for j in 1:m, i in 1:m
+            observation_covariance[i, j] = ws.covariance[observation_position[idx[i]], observation_position[idx[j]]]
+            observation_covariance[i, j] += Hm[idx[i], idx[j]]
+            innovation_covariance[i, j] = observation_covariance[i, j]
+        end
+        @inbounds for j in 1:m, i in 1:j-1
+            value = (innovation_covariance[i, j] + innovation_covariance[j, i]) / 2
+            innovation_covariance[i, j] = value
+            innovation_covariance[j, i] = value
+        end
+        @inbounds for i in 1:m
+            innovation[i] = observations[i] - observation_mean[i]
+        end
+
+        # A full observation period can use the concrete dense buffer directly;
+        # LU on a SubArray takes a considerably more allocating generic path.
+        factor = m == n_obs ? ℒ.lu(innovation_covariance, check = false) :
+                               ℒ.lu(view(innovation_covariance, 1:m, 1:m), check = false)
         ℒ.issuccess(factor) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                                               convert(scalar_type, on_failure_loglikelihood)
         logabsdetF, signF = ℒ.logabsdet(factor)
         (primal(signF) > 0 && isfinite(primal(logabsdetF))) ||
             return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                             convert(scalar_type, on_failure_loglikelihood)
-        invF = Matrix(factor \ ℒ.I(m))
+
+        inverse_view = m == n_obs ? inverse_innovation_covariance :
+                                   view(inverse_innovation_covariance, 1:m, 1:m)
+        fill!(inverse_view, zero(scalar_type))
+        @inbounds for i in 1:m
+            inverse_view[i, i] = one(scalar_type)
+        end
+        ℒ.ldiv!(factor, inverse_view)
 
         if t > presample_periods
-            solved_innovation = invF * innovation
-            ll -= (ℒ.dot(innovation, solved_innovation) + logabsdetF + m * log2pi) / 2
+            copyto!(view(innovation_solve, 1:m), view(innovation, 1:m))
+            ℒ.ldiv!(factor, view(innovation_solve, 1:m))
+            ll -= (ℒ.dot(view(innovation, 1:m), view(innovation_solve, 1:m)) + logabsdetF + m * log2pi) / 2
             isfinite(primal(ll)) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                                                    convert(scalar_type, on_failure_loglikelihood)
         end
 
-        gain = cross_covariance * invF
+        gain_view = view(gain, :, 1:m)
+        ℒ.mul!(gain_view, view(cross_covariance, :, 1:m), inverse_view)
         if record
-            innovations[t] = copy(innovation)
-            inverse_innovation_covariances[t] = copy(invF)
-            gains[t] = copy(gain)
-            cross_covariances[t] = copy(cross_covariance)
+            innovations[t] = copy(view(innovation, 1:m))
+            inverse_innovation_covariances[t] = copy(inverse_view)
+            gains[t] = copy(gain_view)
+            cross_covariances[t] = copy(view(cross_covariance, :, 1:m))
         end
-        mean_state = predicted_mean + gain * innovation
-        covariance_state = predicted_covariance - gain * cross_covariance'
-        covariance_state = (covariance_state + covariance_state') / 2
+        copyto!(next_mean, predicted_mean)
+        ℒ.mul!(next_mean, gain_view, view(innovation, 1:m), one(scalar_type), one(scalar_type))
+        copyto!(next_covariance, predicted_covariance)
+        ℒ.mul!(next_covariance, gain_view, view(cross_covariance, :, 1:m)', -one(scalar_type), one(scalar_type))
+        @inbounds for j in 1:n_state, i in 1:j-1
+            value = (next_covariance[i, j] + next_covariance[j, i]) / 2
+            next_covariance[i, j] = value
+            next_covariance[j, i] = value
+        end
+        mean_state, next_mean = next_mean, mean_state
+        covariance_state, next_covariance = next_covariance, covariance_state
         if record
             post_means[t] = copy(mean_state)
             post_covariances[t] = copy(covariance_state)

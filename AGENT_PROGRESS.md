@@ -91,3 +91,38 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   `~552 ms/2.636 s` with `61.44 MiB/632.69 MiB` allocation.
 - Direct root `Pkg.test()` remains intentionally unsatisfiable because incompatible optional
   targets are resolved together; focused tests use `tasks/isolated_test_env`.
+
+## Allocation/BLAS optimization pass (2026-08-03)
+
+- The four higher-order variants remain structurally distinct and compressed as requested:
+  pruned quadratic/cubic Kollmann recursions and non-pruned second-/third-order Ivashchenko
+  moment closures. No dense augmented state was introduced.
+- The pruned quadratic path now exploits its selector structure directly when forming the
+  lagged covariance terms, avoiding selector GEMMs. Its analytical pullback uses BLAS `ger!`
+  for large rank-one updates. A wider batched GEMM was benchmarked on SW07 and rejected because
+  it was slower than the existing seven block GEMMs.
+- The cubic pullback reuses forward products, adjoint products, and stationary-adjoint buffers.
+  On the RBC four-variant profile this reduced pruned-cubic reverse allocation from roughly
+  58 MiB to 21.6 MiB while preserving the analytical gradient.
+- Ivashchenko moment contractions now use reusable third-order workspaces and `mul!`; the
+  filtering pass reuses measurement/update buffers and has a full-observation factorization
+  path. On SW07 this reduced forward bytes to 24,017,472 (22.90 MiB) and reverse bytes to
+  271,724,768 (259.10 MiB). Allocation counts increased to 316,162 and 398,439 respectively,
+  so both bytes and counts are reported; the byte reduction did not produce a material runtime
+  improvement on this run.
+- A ping-pong stationary-initialization rewrite was measured and reverted because it increased
+  the Ivashchenko SW07 path to about 68 MiB and 3.4 million allocations. The retained changes
+  are only measured workspace/contraction improvements.
+- Focused verification after the pass: `test/test_quadratic_kalman.jl` 33/33,
+  `test/test_cubic_kalman.jl` 30/30, and `test/test_ivashchenko_kalman.jl` 35/35.
+- Current deterministic SW07 EA benchmark (138 quarters, seven observables, COVID period,
+  warmed isolated environment): inversion LLH `-1062.1014154382399` in `0.013596875 s`,
+  pruned quadratic Kalman LLH `-1119.47663867078` in `0.5736505 s`, and Ivashchenko
+  second-order LLH `-1098.4913541550648` in `0.322061875 s`.
+- Direct SW07 profile samples report pruned quadratic forward `64,428,496` bytes and reverse
+  `668,828,080` bytes; Ivashchenko forward `24,017,472` bytes and reverse `271,724,768` bytes.
+  The direct timed samples were variable, so the deterministic benchmark above is the runtime
+  comparison and the profile is used for allocation/cost attribution.
+- `git diff --check` passes. The full test suite was not run because the repository's optional
+  resolver targets are intentionally incompatible; the isolated focused suites are the required
+  verification for this pass.
