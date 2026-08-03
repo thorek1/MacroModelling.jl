@@ -94,6 +94,8 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
         S3 = Matrix{scalar_type}(S3)
     end
 
+    quadratic_hessian = order == :second_order ? zeros(scalar_type, d * d, nout) : nothing
+
     pair_indices = Tuple{Int, Int}[]
     pair_multiplicities = Int[]
     for i in 1:dv, j in 1:i
@@ -125,6 +127,12 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
         push!(random_pair_columns, compressed_pair_index(i, j, dv))
         push!(random_pair_multiplicities, r == s ? 1 : 2)
     end
+    # Keep the full compressed-pair column layout so it can multiply pair_mean
+    # directly; columns involving the deterministic constant remain zero.
+    random_hessian = zeros(scalar_type, nout, n_pair)
+    @inbounds for p in eachindex(random_pair_indices)
+        random_hessian[:, p] .= S2[:, random_pair_columns[p]]
+    end
     random_triple_indices = Tuple{Int, Int, Int}[]
     random_triple_columns = Int[]
     random_triple_multiplicities = Int[]
@@ -134,6 +142,18 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
             i, j, k = random_indices[r], random_indices[s], random_indices[q]
             push!(random_triple_columns, compressed_triple_index(i, j, k, dv))
             push!(random_triple_multiplicities, r == s == q ? 1 : (r == s || s == q ? 3 : 6))
+        end
+    end
+
+    if quadratic_hessian !== nothing
+        @inbounds for p in eachindex(random_pair_indices)
+            r, s = random_pair_indices[p]
+            column = random_pair_columns[p]
+            for output in 1:nout
+                value = S2[output, column]
+                quadratic_hessian[r + (s - 1) * d, output] = value
+                quadratic_hessian[s + (r - 1) * d, output] = value
+            end
         end
     end
 
@@ -148,9 +168,9 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
             n_pair, pair_indices, pair_multiplicities, triple_indices,
             triple_multiplicities, S1, S2, S3, state_position,
             observation_position, random_indices, random_pair_indices,
-            random_pair_columns, random_pair_multiplicities,
+            random_pair_columns, random_pair_multiplicities, random_hessian,
             random_triple_indices, random_triple_columns,
-            random_triple_multiplicities, A, B)
+            random_triple_multiplicities, quadratic_hessian, A, B)
 end
 
 build_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol) =
@@ -160,14 +180,20 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type)
     nout, d, n_pair = sys.nout, sys.d, sys.n_pair
     third = sys.order == :third_order
     n_triple = length(sys.triple_indices)
+    hessian = third ? copy(sys.random_hessian) : sys.random_hessian
+    quadratic_hessian = sys.quadratic_hessian
     return (; covariance_input = zeros(scalar_type, d, d),
             vbar = zeros(scalar_type, sys.dv),
             mean = zeros(scalar_type, nout),
             linear = zeros(scalar_type, nout, d),
+            linear_left = zeros(scalar_type, nout, d),
             effective_linear = zeros(scalar_type, nout, d),
-            hessian = zeros(scalar_type, nout, n_pair),
+            hessian,
+            quadratic_hessian,
+            quadratic_left = third ? nothing : zeros(scalar_type, d * d, nout),
+            quadratic_right = third ? nothing : zeros(scalar_type, d * d, nout),
             pair_mean = zeros(scalar_type, n_pair),
-            pair_covariance = zeros(scalar_type, n_pair, n_pair),
+            pair_covariance = third ? zeros(scalar_type, n_pair, n_pair) : nothing,
             covariance = zeros(scalar_type, nout, nout),
             third_derivative = third ? zeros(scalar_type, nout, n_triple) : nothing,
             third_covariance = third ? zeros(scalar_type, n_triple, n_triple) : nothing,
@@ -175,7 +201,8 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type)
             third_linear = third ? zeros(scalar_type, n_triple, d) : nothing,
             pair_scratch = zeros(scalar_type, n_pair),
             triple_scratch = third ? zeros(scalar_type, n_triple) : nothing,
-            basis = zeros(scalar_type, sys.dv))
+            basis = zeros(scalar_type, sys.dv),
+            second_basis = zeros(scalar_type, sys.dv))
 end
 
 function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
@@ -192,37 +219,37 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
     ws.vbar[nPast + 1] = one(eltype(ws.vbar))
 
     compressed_kron²_power!(ws.pair_scratch, ws.vbar)
-    ws.mean .= sys.S1 * ws.vbar + sys.S2 * ws.pair_scratch / 2
+    ℒ.mul!(ws.mean, sys.S1, ws.vbar)
+    ℒ.mul!(ws.mean, sys.S2, ws.pair_scratch, 0.5, 1.0)
     if sys.order == :third_order
         compressed_kron³_power!(ws.triple_scratch, ws.vbar)
-        ws.mean .+= sys.S3 * ws.triple_scratch / 6
+        ℒ.mul!(ws.mean, sys.S3, ws.triple_scratch, 1 / 6, 1.0)
     end
 
     fill!(ws.linear, zero(eltype(ws.linear)))
     @inbounds for r in 1:d
         i = sys.random_indices[r]
-        ws.linear[:, r] .= sys.S1[:, i]
         fill!(ws.basis, zero(eltype(ws.basis)))
         ws.basis[i] = one(eltype(ws.basis))
         compressed_kron²!(ws.pair_scratch, ws.vbar, ws.basis)
-        ws.linear[:, r] .+= sys.S2 * ws.pair_scratch / 2
+        ℒ.mul!(view(ws.linear, :, r), sys.S2, ws.pair_scratch, 0.5, 0.0)
+        @views ws.linear[:, r] .+= sys.S1[:, i]
         if sys.order == :third_order
             compressed_kron³!(ws.triple_scratch, ws.vbar, ws.vbar, ws.basis)
-            ws.linear[:, r] .+= sys.S3 * ws.triple_scratch / 2
+            ℒ.mul!(view(ws.linear, :, r), sys.S3, ws.triple_scratch, 0.5, 1.0)
         end
     end
 
-    @inbounds for p in eachindex(sys.random_pair_indices)
-        r, s = sys.random_pair_indices[p]
-        ws.hessian[:, p] .= sys.S2[:, sys.random_pair_columns[p]]
-        if sys.order == :third_order
+    if sys.order == :third_order
+        @inbounds for p in eachindex(sys.random_pair_indices)
+            r, s = sys.random_pair_indices[p]
+            ws.hessian[:, p] .= sys.S2[:, sys.random_pair_columns[p]]
             fill!(ws.basis, zero(eltype(ws.basis)))
             ws.basis[sys.random_indices[r]] = one(eltype(ws.basis))
-            fill!(ws.pair_scratch, zero(eltype(ws.pair_scratch)))
-            second_basis = copy(ws.basis)
+            copyto!(ws.second_basis, ws.basis)
             fill!(ws.basis, zero(eltype(ws.basis)))
             ws.basis[sys.random_indices[s]] = one(eltype(ws.basis))
-            compressed_kron³!(ws.triple_scratch, ws.vbar, second_basis, ws.basis)
+            compressed_kron³!(ws.triple_scratch, ws.vbar, ws.second_basis, ws.basis)
             ws.hessian[:, p] .+= sys.S3 * ws.triple_scratch
         end
     end
@@ -232,20 +259,21 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         r, s = sys.random_pair_indices[p]
         ws.pair_mean[p] = sys.random_pair_multiplicities[p] * Σ[r, s]
     end
-    fill!(ws.pair_covariance, zero(eltype(ws.pair_covariance)))
-    @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
-        i, j = sys.random_pair_indices[p]
-        k, l = sys.random_pair_indices[q]
-        ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
-            sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
-    end
-
-    ws.mean .+= ws.hessian * ws.pair_mean / 2
+    ℒ.mul!(ws.mean, ws.hessian, ws.pair_mean, 0.5, 1.0)
     ws.effective_linear .= ws.linear
-    ws.covariance .= ws.linear * Σ * ws.linear'
-    ws.covariance .+= ws.hessian * ws.pair_covariance * ws.hessian' / 4
+    ℒ.mul!(ws.linear_left, ws.linear, Σ)
+    ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.linear), 1.0, 0.0)
 
     if sys.order == :third_order
+        fill!(ws.pair_covariance, zero(eltype(ws.pair_covariance)))
+        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+            i, j = sys.random_pair_indices[p]
+            k, l = sys.random_pair_indices[q]
+            ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
+                sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
+        end
+        hessian_pair = ws.hessian * ws.pair_covariance
+        ws.covariance .+= hessian_pair * transpose(ws.hessian) / 4
         fill!(ws.third_derivative, zero(eltype(ws.third_derivative)))
         @inbounds for p in eachindex(sys.random_triple_columns)
             ws.third_derivative[:, p] .= sys.S3[:, sys.random_triple_columns[p]]
@@ -275,6 +303,17 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
                            ws.third_derivative * ws.third_cross' * ws.linear') / 6
         ws.covariance .+= ws.third_derivative * ws.third_covariance *
                           ws.third_derivative' / 36
+    else
+        @inbounds for output in 1:nout
+            hessian = reshape(view(ws.quadratic_hessian, :, output), d, d)
+            left = reshape(view(ws.quadratic_left, :, output), d, d)
+            right = reshape(view(ws.quadratic_right, :, output), d, d)
+            ℒ.mul!(left, hessian, Σ)
+            copyto!(right, transpose(left))
+        end
+        # For symmetric T_r and Σ, the quadratic covariance is
+        # 1/2 tr(T_r Σ T_s Σ). This avoids materialising the full pair covariance.
+        ℒ.mul!(ws.covariance, transpose(ws.quadratic_left), ws.quadratic_right, 0.5, 1.0)
     end
 
     @inbounds for j in 1:nout, i in 1:j
@@ -349,8 +388,10 @@ end
 function ivashchenko_copy_moment_tape(ws)
     return (; covariance_input = copy(ws.covariance_input),
             vbar = copy(ws.vbar), mean = copy(ws.mean), linear = copy(ws.linear),
-            effective_linear = copy(ws.effective_linear), hessian = copy(ws.hessian),
-            pair_mean = copy(ws.pair_mean), pair_covariance = copy(ws.pair_covariance),
+            effective_linear = copy(ws.effective_linear),
+            hessian = ws.third_derivative === nothing ? nothing : copy(ws.hessian),
+            pair_mean = copy(ws.pair_mean),
+            pair_covariance = ws.third_derivative === nothing ? nothing : copy(ws.pair_covariance),
             covariance = copy(ws.covariance),
             third_derivative = ws.third_derivative === nothing ? nothing : copy(ws.third_derivative),
             third_covariance = ws.third_covariance === nothing ? nothing : copy(ws.third_covariance),
@@ -559,15 +600,135 @@ function run_ivashchenko_kalman(sys, data_in_deviations::AbstractMatrix{<:Real},
                                    lyapunov_algorithm = lyapunov_algorithm)
 end
 
-function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, covariance_bar)
+function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_bar, Σ, buffers)
+    d, nout = sys.d, sys.nout
+    T = sys.quadratic_hessian
+    mixed = buffers.mixed
+    gT = buffers.gT
+    left = buffers.left
+    right = buffers.right
+
+    # If V_rs = 1/2 tr(T_r Σ T_s Σ), the symmetric covariance cotangent gives
+    # dV/dT_r = Σ (Σ_s V̄_rs T_s) Σ and dV/dΣ = Σ_r T_r Σ (Σ_s V̄_rs T_s).
+    ℒ.mul!(mixed, T, transpose(covariance_bar))
+    @inbounds for output in 1:nout
+        Tmix = reshape(view(mixed, :, output), d, d)
+        gT_output = reshape(view(gT, :, output), d, d)
+        ℒ.mul!(right, Σ, Tmix)
+        ℒ.mul!(gT_output, right, Σ)
+        T_output = reshape(view(T, :, output), d, d)
+        ℒ.mul!(right, T_output, Σ)
+        ℒ.mul!(left, right, Tmix)
+        gΣ .+= left
+    end
+
+    @inbounds for p in eachindex(sys.random_pair_indices)
+        r, s = sys.random_pair_indices[p]
+        column = sys.random_pair_columns[p]
+        if r == s
+            for output in 1:nout
+                gS2[output, column] += gT[r + (s - 1) * d, output]
+            end
+        else
+            for output in 1:nout
+                gS2[output, column] += gT[r + (s - 1) * d, output] +
+                                        gT[s + (r - 1) * d, output]
+            end
+        end
+    end
+    return gΣ, gS2
+end
+
+function ivashchenko_rank_one_add!(matrix, left, right, scale)
+    @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
+        matrix[i, j] += scale * left[i] * right[j]
+    end
+    return matrix
+end
+
+function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
+                                                   covariance_bar, buffers)
+    nout, d = sys.nout, sys.d
+    Σ = moment_tape.covariance_input
+    v = moment_tape.vbar
+    L = moment_tape.linear
+    pair_mean = moment_tape.pair_mean
+    covariance_bar_symmetric = buffers.covariance_bar_symmetric
+    gΣ, gv, gS1, gS2 = buffers.gΣ, buffers.gv, buffers.gS1, buffers.gS2
+    gL = buffers.gL
+
+    fill!(gΣ, zero(eltype(gΣ)))
+    fill!(gv, zero(eltype(gv)))
+    fill!(gS1, zero(eltype(gS1)))
+    fill!(gS2, zero(eltype(gS2)))
+    @inbounds for j in 1:nout, i in 1:j
+        value = (covariance_bar[i, j] + covariance_bar[j, i]) / 2
+        covariance_bar_symmetric[i, j] = value
+        covariance_bar_symmetric[j, i] = value
+    end
+
+    ℒ.mul!(buffers.tmp_noutd, covariance_bar_symmetric, L)
+    ℒ.mul!(gL, buffers.tmp_noutd, Σ, 2.0, 0.0)
+    ℒ.mul!(buffers.tmp_dnout, transpose(L), covariance_bar_symmetric)
+    ℒ.mul!(gΣ, buffers.tmp_dnout, L, 1.0, 0.0)
+    ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
+                                               covariance_bar_symmetric, Σ,
+                                               buffers)
+
+    compressed_kron²_power!(buffers.pair_value, v)
+    ivashchenko_rank_one_add!(gS1, mean_bar, v, 1.0)
+    ivashchenko_rank_one_add!(gS2, mean_bar, buffers.pair_value, 0.5)
+    ℒ.mul!(gv, transpose(sys.S1), mean_bar)
+    ℒ.mul!(buffers.pair_cotangent, transpose(sys.S2), mean_bar, 0.5, 0.0)
+    compressed_kron²_power_vjp!(buffers.first_bar, buffers.pair_cotangent, v)
+    gv .+= buffers.first_bar
+
+    @inbounds for p in eachindex(sys.random_pair_indices)
+        r, s = sys.random_pair_indices[p]
+        pair_bar = sys.random_pair_multiplicities[p] * buffers.pair_cotangent[p]
+        gΣ[r, s] += pair_bar
+        column = sys.random_pair_columns[p]
+        for output in 1:nout
+            gS2[output, column] += mean_bar[output] * pair_mean[p] / 2
+        end
+    end
+
+    @inbounds for r in 1:d
+        i = sys.random_indices[r]
+        fill!(buffers.basis, zero(eltype(buffers.basis)))
+        buffers.basis[i] = one(eltype(buffers.basis))
+        compressed_kron²!(buffers.pair_value, v, buffers.basis)
+        gS1[:, i] .+= view(gL, :, r)
+        ivashchenko_rank_one_add!(gS2, view(gL, :, r), buffers.pair_value, 0.5)
+        ℒ.mul!(buffers.pair_cotangent, transpose(sys.S2), view(gL, :, r), 0.5, 0.0)
+        compressed_kron²_vjp!(buffers.first_bar, buffers.second_bar,
+                              buffers.pair_cotangent, v, buffers.basis)
+        gv .+= buffers.first_bar
+    end
+
+    @inbounds for j in 1:d, i in 1:j-1
+        value = (gΣ[i, j] + gΣ[j, i]) / 2
+        gΣ[i, j] = value
+        gΣ[j, i] = value
+    end
+    copyto!(buffers.mean_result, view(gv, 1:sys.nPast))
+    copyto!(buffers.covariance_result, view(gΣ, 1:sys.nPast, 1:sys.nPast))
+    return buffers.mean_result, buffers.covariance_result, gS1, gS2, nothing
+end
+
+function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, covariance_bar;
+                                                 quadratic_buffers = nothing)
+    moment_tape.third_derivative === nothing &&
+        return ivashchenko_second_order_moment_pullback!(sys, moment_tape,
+                                                         mean_bar, covariance_bar,
+                                                         quadratic_buffers)
     nout, d, dv = sys.nout, sys.d, sys.dv
     Σ = moment_tape.covariance_input
     v = moment_tape.vbar
     L = moment_tape.linear
-    K = moment_tape.hessian
+    K = moment_tape.hessian === nothing ? sys.random_hessian : moment_tape.hessian
     third = moment_tape.third_derivative
     pair_mean = moment_tape.pair_mean
-    pair_covariance = moment_tape.pair_covariance
     gΣ = zeros(eltype(Σ), d, d)
     gv = zeros(eltype(v), dv)
     gS1 = zeros(eltype(sys.S1), nout, dv)
@@ -577,12 +738,13 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
     covariance_bar_symmetric = (covariance_bar + covariance_bar') / 2
     gL = 2 * covariance_bar_symmetric * L * Σ
     gΣ .+= L' * covariance_bar_symmetric * L
-    gK = covariance_bar_symmetric * K * pair_covariance / 2
-    gG2 = K' * covariance_bar_symmetric * K / 4
-    gK .+= mean_bar * pair_mean' / 2
     gpair_mean = K' * mean_bar / 2
 
     if third !== nothing
+        pair_covariance = moment_tape.pair_covariance
+        gK = covariance_bar_symmetric * K * pair_covariance / 2
+        gG2 = K' * covariance_bar_symmetric * K / 4
+        gK .+= mean_bar * pair_mean' / 2
         third_covariance = moment_tape.third_covariance
         third_cross = moment_tape.third_cross
         gL .+= covariance_bar_symmetric * third * third_cross' / 3
@@ -626,17 +788,15 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
         @inbounds for p in eachindex(sys.random_pair_indices)
             i, j = sys.random_pair_indices[p]
             gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
+            gS2[:, sys.random_pair_columns[p]] .+= mean_bar * pair_mean[p] / 2
         end
-        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
-            i, j = sys.random_pair_indices[p]
-            k, l = sys.random_pair_indices[q]
-            weight = gG2[p, q] * sys.random_pair_multiplicities[p] *
-                     sys.random_pair_multiplicities[q]
-            gΣ[i, k] += weight * Σ[j, l]
-            gΣ[j, l] += weight * Σ[i, k]
-            gΣ[i, l] += weight * Σ[j, k]
-            gΣ[j, k] += weight * Σ[i, l]
-        end
+        quadratic_buffers === nothing && (quadratic_buffers = (; mixed = zeros(eltype(Σ), d * d, nout),
+                                             gT = zeros(eltype(Σ), d * d, nout),
+                                             left = zeros(eltype(Σ), d, d),
+                                             right = zeros(eltype(Σ), d, d)))
+        ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
+                                                   covariance_bar_symmetric, Σ,
+                                                   quadratic_buffers)
     end
 
     pair_cotangent = zeros(eltype(v), sys.n_pair)
@@ -684,11 +844,11 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
         end
     end
 
-    @inbounds for p in eachindex(sys.random_pair_indices)
-        r, s = sys.random_pair_indices[p]
-        global_column = sys.random_pair_columns[p]
-        gS2[:, global_column] .+= gK[:, p]
-        if third !== nothing
+    if third !== nothing
+        @inbounds for p in eachindex(sys.random_pair_indices)
+            r, s = sys.random_pair_indices[p]
+            global_column = sys.random_pair_columns[p]
+            gS2[:, global_column] .+= gK[:, p]
             fill!(basis, zero(eltype(basis)))
             fill!(second_basis, zero(eltype(second_basis)))
             basis[sys.random_indices[r]] = one(eltype(basis))
@@ -746,6 +906,26 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
     gS1 = zeros(scalar_type, size(sys.S1))
     gS2 = zeros(scalar_type, size(sys.S2))
     gS3 = sys.S3 === nothing ? nothing : zeros(scalar_type, size(sys.S3))
+    quadratic_buffers = sys.order == :second_order ?
+        (; covariance_bar_symmetric = zeros(scalar_type, sys.nout, sys.nout),
+           gΣ = zeros(scalar_type, sys.d, sys.d),
+           gv = zeros(scalar_type, sys.dv),
+           gS1 = zeros(scalar_type, sys.nout, sys.dv),
+           gS2 = zeros(scalar_type, sys.nout, sys.n_pair),
+           gL = zeros(scalar_type, sys.nout, sys.d),
+           tmp_noutd = zeros(scalar_type, sys.nout, sys.d),
+           tmp_dnout = zeros(scalar_type, sys.d, sys.nout),
+           pair_cotangent = zeros(scalar_type, sys.n_pair),
+           first_bar = zeros(scalar_type, sys.dv),
+           second_bar = zeros(scalar_type, sys.dv),
+           basis = zeros(scalar_type, sys.dv),
+           pair_value = zeros(scalar_type, sys.n_pair),
+           mixed = zeros(scalar_type, sys.d * sys.d, sys.nout),
+           gT = zeros(scalar_type, sys.d * sys.d, sys.nout),
+           left = zeros(scalar_type, sys.d, sys.d),
+           right = zeros(scalar_type, sys.d, sys.d),
+           mean_result = zeros(scalar_type, sys.nPast),
+           covariance_result = zeros(scalar_type, sys.nPast, sys.nPast)) : nothing
 
     @inbounds for t in nT:-1:1
         idx = tape.observed_indices[t]
@@ -761,23 +941,19 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
             invF = tape.inverse_innovation_covariances[t]
             gain = tape.gains[t]
             cross = tape.cross_covariances[t]
-            mean_bar_post = mean_bar
             # The forward covariance update is explicitly symmetrised; only
             # the symmetric part of its cotangent can reach the pre-update
             # covariance and gain.
             covariance_bar_post = (covariance_bar + covariance_bar') / 2
-
-            gain_bar = mean_bar_post * innovation'
-            innovation_bar = gain' * mean_bar_post
+            gain_bar = mean_bar * innovation'
+            innovation_bar = gain' * mean_bar
             gain_bar .-= covariance_bar_post * cross
             cross_bar = -covariance_bar_post' * gain
-
             inverse_covariance_bar = cross' * gain_bar
             cross_bar .+= gain_bar * invF'
             if t > tape.presample_periods
                 innovation_bar .-= scale * (invF * innovation)
             end
-            inverse_covariance_bar .+= zero(scalar_type)
             covariance_bar_innovation = -invF' * inverse_covariance_bar * invF'
             if t > tape.presample_periods
                 covariance_bar_innovation .-= scale / 2 *
@@ -797,7 +973,8 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
 
         mean_bar, covariance_bar, local_S1, local_S2, local_S3 =
             ivashchenko_polynomial_moments_pullback(sys, tape.moment_tapes[t],
-                                                    mean_output_bar, covariance_output_bar)
+                                                    mean_output_bar, covariance_output_bar;
+                                                    quadratic_buffers = quadratic_buffers)
         gS1 .+= local_S1
         gS2 .+= local_S2
         if gS3 !== nothing
@@ -816,20 +993,21 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
                 (initialization_covariance_bar + initialization_covariance_bar') / 2
             initialization_mean_bar, initialization_covariance_bar, local_S1, local_S2, local_S3 =
                 ivashchenko_polynomial_moments_pullback(sys, iteration.moment_tape,
-                                                        output_mean_bar, output_covariance_bar)
+                                                        output_mean_bar, output_covariance_bar;
+                                                        quadratic_buffers = quadratic_buffers)
             gS1 .+= local_S1
             gS2 .+= local_S2
             if gS3 !== nothing
                 gS3 .+= local_S3
             end
         end
-        initial_covariance_bar = (initialization_covariance_bar + initialization_covariance_bar') / 2
+        mean_bar = initialization_mean_bar
+        covariance_bar = initialization_covariance_bar
         initial_A_bar, initial_B_bar = ivashchenko_lyapunov_pullback(
-            sys.A, sys.B, tape.initialization_tape.linear_covariance, initial_covariance_bar;
+            sys.A, sys.B, tape.initialization_tape.linear_covariance, covariance_bar;
             lyapunov_algorithm = lyapunov_algorithm)
         gS1[sys.state_position, 1:sys.nPast] .+= initial_A_bar
         gS1[sys.state_position, sys.nPast + 2:sys.dv] .+= initial_B_bar
-        mean_bar = initialization_mean_bar
     end
 
     local_S1, local_S2, local_S3 = ivashchenko_solution_matrix_pullback(

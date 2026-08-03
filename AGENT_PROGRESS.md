@@ -74,19 +74,20 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   pruned higher-order implementation therefore compresses only `q11` and `q111`; keeping
   the `nPast²` mixed block is required for correctness while remaining compressed everywhere
   permutation symmetry exists.
-- Ivashchenko SW07 profile: the likelihood is `-1098.49135415507`, allocates
-  `504,881,680` bytes (`481.49 MiB`), and has a warmed median runtime of `662.643 ms`.
-  The physical filtered covariance is only `27×27`, but the second-order moment closure
-  forms `d = nPast+nExo = 34` random inputs, `595 = 34·35/2` compressed random pairs, a
-  `595×595` pair covariance, and a `34×595` Hessian contraction each period. Flat profiling
-  points to `ivashchenko_polynomial_moments!` (pair-covariance construction and the
-  Hessian covariance contraction) and the coupled theoretical stationary initialization;
-  measurement updates are comparatively small.
-- Ivashchenko reverse mode allocates `13,676,536,800` bytes (`12.73 GiB`) and has a warmed
-  median runtime of `3.983 s`. Its profile is dominated by the analytical moment pullback,
-  repeated tape/matrix construction, and the stationary-initialization pullback. Thus the
-  lower filtered-state dimension is real, but it is currently offset by moment-closure work
-  and allocation overhead; the pruned Kalman forward/reverse profiles are `~552 ms/2.636 s`
-  with `61.44 MiB/632.69 MiB` allocation.
+- Ivashchenko SW07 profile after the compressed second-order workspace/shortcut pass:
+  likelihood `-1098.4913541550661`, warmed median `306.567 ms`, `33,260,032` bytes
+  (`31.72 MiB`), and `130,925` allocations. The physical filtered covariance is only
+  `27×27`, but the closure uses `d = nPast+nExo = 34` random inputs and
+  `595 = 34·35/2` compressed random pairs. The second-order covariance now uses the exact
+  identity `Cov(yᵣ,yₛ) = 1/2 tr(Tᵣ Σ Tₛ Σ)` for symmetric Hessians, avoiding the dense
+  `595×595` pair-covariance matrix and its tape copies.
+- Ivashchenko reverse mode now uses the matching analytical quadratic pullback and reusable
+  moment workspaces: warmed median `1.131 s`, `272,275,456` bytes (`260.68 MiB`), and
+  `211,822` allocations. This is down from `3.983 s` and `13,676,536,800` bytes
+  (`12.73 GiB`). The remaining profile is concentrated in the 67-output quadratic moment
+  products, coupled theoretical stationary initialization, and recorded model/supergradient
+  work; the physical 27×27 measurement update is not the bottleneck. The likelihood is
+  unchanged to floating-point roundoff. The pruned Kalman forward/reverse profiles remain
+  `~552 ms/2.636 s` with `61.44 MiB/632.69 MiB` allocation.
 - Direct root `Pkg.test()` remains intentionally unsatisfiable because incompatible optional
   targets are resolved together; focused tests use `tasks/isolated_test_env`.
