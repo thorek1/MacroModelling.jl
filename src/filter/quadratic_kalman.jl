@@ -535,25 +535,54 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
     vs = Vector{Vector{Float64}}(undef, nT)
     CPs = Vector{Matrix{Float64}}(undef, nT); Fis = Vector{Matrix{Float64}}(undef, nT)
     Ks = Vector{Matrix{Float64}}(undef, nT)
-    z = copy(z0); Pc = copy(Σ0); ll = 0.0; log2pi = log(2π); failed = false
-    PzPc = zeros(size(Pz, 1), nz); Pa = zeros(size(Pz, 1), size(Pz, 1))
-    LPa = zeros(nz, size(Pz, 1)); Q = zeros(nz, nz)
+    @inbounds for t in 1:nT
+        zs[t] = zeros(nz); Ps[t] = zeros(nz, nz)
+        Gs[t] = zeros(nz, nExo); Pas[t] = zeros(size(Pz, 1), size(Pz, 1))
+        vs[t] = zeros(n_obs); CPs[t] = zeros(n_obs, nz)
+        Fis[t] = zeros(n_obs, n_obs); Ks[t] = zeros(nz, n_obs)
+    end
+    z = copy(z0); Pc = copy(Σ0); Pp = zeros(nz, nz); Tm = zeros(nz, nz)
+    Q = zeros(nz, nz); zp = zeros(nz); gv = zeros(nz * nExo)
+    x1p = zeros(size(Pz, 1)); PzPc = zeros(size(Pz, 1), nz)
+    Pa = zeros(size(Pz, 1), size(Pz, 1)); LPa = zeros(nz, size(Pz, 1))
+    CP = zeros(n_obs, nz); F = zeros(n_obs, n_obs); Fv = zeros(n_obs)
+    identity_obs = Matrix{Float64}(ℒ.I(n_obs))
+    ll = 0.0; log2pi = log(2π); failed = false
     for t in 1:nT
-        zs[t] = copy(z); Ps[t] = copy(Pc)
-        G = reshape(g0 + Λ * (Pz * z), nz, nExo); Gs[t] = G
+        copyto!(zs[t], z); copyto!(Ps[t], Pc)
+        ℒ.mul!(x1p, Pz, z)
+        copyto!(gv, g0); ℒ.mul!(gv, Λ, x1p, 1.0, 1.0)
+        G = reshape(gv, nz, nExo)
         quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc, PzPc, Pa, LPa)
-        Pas[t] = copy(Pa)
-        zp = 𝒜 * z + c
-        Pp = 𝒜 * Pc * 𝒜' + Q; Pp = (Pp + Pp') / 2
-        v = Y[:, t] - 𝒞 * zp; vs[t] = v
-        CP = 𝒞 * Pp; CPs[t] = CP
-        F = CP * 𝒞' + Hm; F = (F + F') / 2
+        copyto!(Gs[t], G); copyto!(Pas[t], Pa)
+        ℒ.mul!(zp, 𝒜, z); zp .+= c
+        ℒ.mul!(Tm, 𝒜, Pc); ℒ.mul!(Pp, Tm, 𝒜')
+        Pp .+= Q
+        @inbounds for j in 1:nz, i in 1:j-1
+            value = (Pp[i, j] + Pp[j, i]) / 2
+            Pp[i, j] = value; Pp[j, i] = value
+        end
+        copyto!(vs[t], view(Y, :, t)); ℒ.mul!(vs[t], 𝒞, zp, -1.0, 1.0)
+        ℒ.mul!(CP, 𝒞, Pp); copyto!(CPs[t], CP)
+        ℒ.mul!(F, CP, 𝒞'); F .+= Hm
+        @inbounds for j in 1:n_obs, i in 1:j-1
+            value = (F[i, j] + F[j, i]) / 2
+            F[i, j] = value; F[j, i] = value
+        end
         Fc = ℒ.cholesky(F, check = false)
         if !ℒ.issuccess(Fc); failed = true; break; end
-        Fi = inv(Fc); Fis[t] = Fi
-        t > presample_periods && (ll -= 0.5 * (ℒ.dot(v, Fi * v) + ℒ.logdet(Fc) + n_obs * log2pi))
-        K = CP' * Fi; Ks[t] = K
-        z = zp + K * v; Pc = Pp - K * CP; Pc = (Pc + Pc') / 2
+        copyto!(Fis[t], identity_obs); ℒ.ldiv!(Fc, Fis[t])
+        if t > presample_periods
+            copyto!(Fv, vs[t]); ℒ.mul!(Fv, Fis[t], vs[t])
+            ll -= 0.5 * (ℒ.dot(vs[t], Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
+        end
+        copyto!(Ks[t], CP'); ℒ.rdiv!(Ks[t], Fc)
+        copyto!(z, zp); ℒ.mul!(z, Ks[t], vs[t], 1.0, 1.0)
+        copyto!(Pc, Pp); ℒ.mul!(Pc, Ks[t], CP, -1.0, 1.0)
+        @inbounds for j in 1:nz, i in 1:j-1
+            value = (Pc[i, j] + Pc[j, i]) / 2
+            Pc[i, j] = value; Pc[j, i] = value
+        end
     end
 
     if failed || !isfinite(ll)
@@ -566,48 +595,108 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
         𝒜̄ = zeros(nz, nz); c̄ = zeros(nz); Q̄H = zeros(nz, nz)
         ḡ0 = zeros(length(g0)); Λ̄ = zeros(size(Λ)); H̄m = zeros(n_obs, n_obs)
         Ȳ = zeros(size(Y)); z̄ = zeros(nz); P̄ = zeros(nz, nz)
+
+        # Reuse reverse-sweep buffers. The old implementation constructed several
+        # large temporaries inside every period; on SW07 that dominated the
+        # pullback's allocation profile even though the algebra itself is closed.
+        P̄p = zeros(nz, nz); K̄ = zeros(nz, n_obs); C̄P = zeros(n_obs, nz)
+        z̄p = zeros(nz); v̄ = zeros(n_obs); F̄ = zeros(n_obs, n_obs)
+        Fv = zeros(n_obs); Ḡ = zeros(nz, nExo)
+        P̄a = zeros(size(Pz, 1), size(Pz, 1)); L̄ = zeros(nz, size(Pz, 1))
+        Pz_z = zeros(size(Pz, 1)); tmp_nz = zeros(nz); tmp_past = zeros(size(Pz, 1))
+        tmp_nzn = zeros(nz, nz); tmp_nzn₂ = zeros(nz, nz)
+        tmp_nzobs = zeros(nz, n_obs); tmp_obsnz = zeros(n_obs, nz)
+        tmp_obsobs = zeros(n_obs, n_obs); tmp_obsobs₂ = zeros(n_obs, n_obs)
+        tmp_nzpast = zeros(nz, size(Pz, 1)); tmp_pastnz = zeros(size(Pz, 1), nz)
+        tmp_pastpast = zeros(size(Pz, 1), size(Pz, 1))
+
+        function rank_one_add!(matrix, left, right, scale)
+            @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
+                matrix[i, j] += scale * left[i] * right[j]
+            end
+            return matrix
+        end
+
+        function add_scaled!(matrix, source, scale)
+            @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
+                matrix[i, j] += scale * source[i, j]
+            end
+            return matrix
+        end
+
+        function symmetrize!(matrix)
+            @inbounds for j in axes(matrix, 2), i in 1:j-1
+                value = (matrix[i, j] + matrix[j, i]) / 2
+                matrix[i, j] = value
+                matrix[j, i] = value
+            end
+            return matrix
+        end
+
         for t in nT:-1:1
             z_, P_, G, v, CP, Fi, K = zs[t], Ps[t], Gs[t], vs[t], CPs[t], Fis[t], Ks[t]
-            P̄p = copy(P̄)
-            K̄  = -P̄ * CP'
-            C̄P = -K' * P̄
-            z̄p = copy(z̄)
-            K̄ .+= z̄ * v'
-            v̄  = K' * z̄
-            C̄P .+= Fi * K̄'
-            F̄  = -Fi * (CP * K̄) * Fi
+            copyto!(P̄p, P̄)
+            ℒ.mul!(K̄, P̄, CP')
+            K̄ .*= -1
+            ℒ.mul!(C̄P, K', P̄)
+            C̄P .*= -1
+            copyto!(z̄p, z̄)
+            rank_one_add!(K̄, z̄, v, 1)
+            ℒ.mul!(v̄, K', z̄)
+            ℒ.mul!(tmp_obsnz, Fi, K̄')
+            C̄P .+= tmp_obsnz
+            ℒ.mul!(tmp_obsobs, CP, K̄)
+            ℒ.mul!(F̄, Fi, tmp_obsobs)
+            ℒ.mul!(tmp_obsobs₂, F̄, Fi)
+            F̄ .= -tmp_obsobs₂
             if t > presample_periods
-                v̄ .+= -∂ll * (Fi * v)
-                F̄ .+= ∂ll * 0.5 * (Fi * v * v' * Fi - Fi)
+                ℒ.mul!(Fv, Fi, v)
+                v̄ .-= ∂ll .* Fv
+                rank_one_add!(F̄, Fv, Fv, ∂ll / 2)
+                add_scaled!(F̄, Fi, -∂ll / 2)
             end
-            F̄ = (F̄ + F̄') / 2
-            C̄P .+= F̄ * 𝒞
+            symmetrize!(F̄)
+            ℒ.mul!(tmp_obsnz, F̄, 𝒞)
+            C̄P .+= tmp_obsnz
             H̄m .+= F̄
-            P̄p .+= 𝒞' * C̄P
-            z̄p .+= -𝒞' * v̄
-            Ȳ[:, t] .+= v̄
-            P̄p = (P̄p + P̄p') / 2
-            𝒜̄ .+= 2 .* (P̄p * 𝒜 * P_)
-            P̄  = 𝒜' * P̄p * 𝒜
-            Q̄  = P̄p
-            Ḡ  = 2 .* (Q̄ * G)
-            Q̄H .+= Q̄
-            vḠ = vec(Ḡ)
+            ℒ.mul!(tmp_nzn, 𝒞', C̄P)
+            P̄p .+= tmp_nzn
+            ℒ.mul!(tmp_nz, 𝒞', v̄)
+            z̄p .-= tmp_nz
+            @views Ȳ[:, t] .+= v̄
+            symmetrize!(P̄p)
+            ℒ.mul!(tmp_nzn, P̄p, 𝒜)
+            ℒ.mul!(tmp_nzn₂, tmp_nzn, P_)
+            add_scaled!(𝒜̄, tmp_nzn₂, 2)
+            ℒ.mul!(tmp_nzn, 𝒜', P̄p)
+            ℒ.mul!(P̄, tmp_nzn, 𝒜)
+            ℒ.mul!(Ḡ, P̄p, G, 2, 0)
+            Q̄H .+= P̄p
+            vḠ = vec(Ḡ)
             ḡ0 .+= vḠ
-            Λ̄  .+= vḠ * (Pz * z_)'
-            P̄a = zeros(size(Pz, 1), size(Pz, 1))
+            ℒ.mul!(Pz_z, Pz, z_)
+            rank_one_add!(Λ̄, vḠ, Pz_z, 1)
+            fill!(P̄a, 0)
             @inbounds for j in 1:nExo
                 rows = (j - 1) * nz + 1:j * nz
                 L = view(Λ, rows, :)
-                L̄ = 2 .* (Q̄ * L * Pas[t])
+                ℒ.mul!(tmp_nzpast, P̄p, L)
+                ℒ.mul!(L̄, tmp_nzpast, Pas[t], 2, 0)
                 Λ̄[rows, :] .+= L̄
-                P̄a .+= L' * Q̄ * L
+                ℒ.mul!(tmp_pastnz, L', P̄p)
+                ℒ.mul!(tmp_pastpast, tmp_pastnz, L)
+                P̄a .+= tmp_pastpast
             end
-            P̄a = (P̄a + P̄a') / 2
-            P̄ .+= Pz' * P̄a * Pz
-            𝒜̄ .+= z̄p * z_'
+            symmetrize!(P̄a)
+            ℒ.mul!(tmp_pastnz, P̄a, Pz)
+            ℒ.mul!(tmp_nzn, Pz', tmp_pastnz)
+            P̄ .+= tmp_nzn
+            rank_one_add!(𝒜̄, z̄p, z_, 1)
             c̄  .+= z̄p
-            z̄   = 𝒜' * z̄p + Pz' * (Λ' * vḠ)
+            ℒ.mul!(tmp_past, Λ', vḠ)
+            ℒ.mul!(tmp_nz, Pz', tmp_past)
+            ℒ.mul!(z̄, 𝒜', z̄p)
+            z̄ .+= tmp_nz
         end
         return (NoTangent(), 𝒜̄, c̄, Q̄H, ḡ0, Λ̄, H̄m, Ȳ, NoTangent(), NoTangent(),
                 z̄, P̄, NoTangent(), NoTangent(), NoTangent(), NoTangent())

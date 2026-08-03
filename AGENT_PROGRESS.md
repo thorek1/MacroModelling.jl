@@ -44,10 +44,35 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
 - SW07 EA compressed-space benchmark includes 138 quarters and the COVID period. Inversion
   LLH is -1062.10141543824 and pruned quadratic-Kalman LLH is -1119.47663867078; their
   difference is -57.37522323254, as expected for distinct deterministic approximations.
-- At 2,000 tempered-particle draws, three LLHs were -302423.09, -475188.95, and
-  -298818.53, demonstrating severe particle degeneracy on this sample rather than
-  likelihood consistency.
+- On SW07 EA data (138 quarters, including COVID), the deterministic comparison is:
+  inversion `-1062.10141543824` in `0.0136 s`, pruned quadratic-Kalman
+  `-1119.47663867078` in `0.5691 s`, and Ivashchenko second-order
+  `-1098.49135415507` in `0.6615 s`. The levels differ because these are distinct
+  approximations; inversion is exact conditional on the shocks, while both Gaussian
+  filters integrate a different approximate filtering distribution.
+- With the guided particle filter, 2,000 particles, two MH steps, theoretical initial
+  covariance, and three independent seeds, the LLHs were `-1113.59805208216`,
+  `-1103.20716926924`, and `-1105.96203817403`; mean `-1107.58908650848`, SD `5.3831`,
+  and median runtime `1.6329 s`. The particle LLH is stochastic and uses the package's
+  `measurement_error = :auto`, so it is a benchmark rather than an exactly level-matched
+  likelihood comparison. The diagonal diffuse prior produced `-Inf` for both difficult
+  Gaussian filters/particle runs; theoretical initialization is used for the reported
+  comparison.
+- The higher-order Kalman likelihood profile on SW07 is `~550 ms` and `61.44 MiB`; the
+  two dense `n_z×n_z` covariance products account for about 91% of the forward loop.
+  `n_z = 446`, so sparse matrices would not help; the state transition is about 50% dense.
+- The quadratic-Kalman pullback now reuses forward tape and reverse-sweep workspaces and
+  uses Cholesky `ldiv!`/`rdiv!` plus in-place matrix products. It allocates `663,419,296`
+  bytes (`632.69 MiB`) and has a median reverse time of `2.636 s` on the profile run,
+  down from `5,629,214,896` bytes and about `3.02 s` before optimization. The remaining
+  cost is dominated by the recorded dense covariance tape and the model-solution/Sylvester
+  adjoint, not a generic linear solve that could be replaced cheaply.
 - Warmed gradient checks: inversion ForwardDiff/reverse times 2.4796/0.0585 seconds with
   maximum gap 1.83e-10; quadratic-Kalman 438.2315/3.8058 seconds with maximum gap 7.64e-10.
+- `q12 = a⊗b` is not symmetric: `q12[i,j] = a_i b_j`, while swapping indices gives
+  `a_j b_i`, which is generally different because `a = x₁` and `b = x₂` differ. The
+  pruned higher-order implementation therefore compresses only `q11` and `q111`; keeping
+  the `nPast²` mixed block is required for correctness while remaining compressed everywhere
+  permutation symmetry exists.
 - Direct root `Pkg.test()` remains intentionally unsatisfiable because incompatible optional
   targets are resolved together; focused tests use `tasks/isolated_test_env`.

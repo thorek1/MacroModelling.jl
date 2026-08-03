@@ -920,6 +920,11 @@ n_z = 3n_r + \tfrac{n_{past}(n_{past}+1)}{2} + n_{past}^2 + \tfrac{n_{past}(n_{p
 which is roughly a sixth of the ``n_{past}^3`` block and, since the recursion is
 ``O(n_z^3)``, worth two orders of magnitude in flops on a mid-sized model.
 
+The mixed block ``q_{12}=a\otimes b`` is intentionally not compressed: swapping its
+indices gives ``a_i b_j`` versus ``a_j b_i``, which are different because ``a=x_1`` and
+``b=x_2`` are different vectors. Only the equal-factor blocks have the permutation
+symmetry needed for ``\mathrm{vech}`` compression.
+
 !!! warning "It still only fits small models"
     Cost grows as ``n_{past}^9`` regardless of the constant factor.
 
