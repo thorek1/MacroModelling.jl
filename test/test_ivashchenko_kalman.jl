@@ -47,9 +47,9 @@ import AxisKeys: KeyedArray
         sys = MacroModelling.build_ivashchenko_kalman_system_from_constants(
             constants, solution, obs_idx, order)
         @test sys.order == order
-        @test size(solution[2], 2) == sys.dv^2
+        @test size(solution[2], 2) == sys.n_pair
         if order == :third_order
-            @test size(sys.third_derivative, 4) == sys.dv
+            @test size(sys.S3, 2) == sys.dv * (sys.dv + 1) * (sys.dv + 2) ÷ 6
         end
 
         # The closed moments of the raw polynomial map are checked against a
@@ -65,8 +65,8 @@ import AxisKeys: KeyedArray
         closed_covariance = copy(closed_covariance)
 
         selected_S1 = sys.S1
-        selected_S2 = Matrix(solution[2][sys.output_rows, :])
-        selected_S3 = order == :third_order ? Matrix(solution[3][sys.output_rows, :]) : nothing
+        selected_S2 = sys.S2
+        selected_S3 = order == :third_order ? sys.S3 : nothing
         nmc = 120_000
         sample_mean = zeros(length(sys.output_rows))
         sample_second = zeros(length(sys.output_rows), length(sys.output_rows))
@@ -74,9 +74,10 @@ import AxisKeys: KeyedArray
             x = mean_state + ℒ.cholesky(covariance_state).L * randn(sys.nPast)
             ε = randn(sys.nExo)
             v = vcat(x, 1.0, ε)
-            value = selected_S1 * v + selected_S2 * ℒ.kron(v, v) / 2
+            value = selected_S1 * v + selected_S2 *
+                    MacroModelling.compressed_kron²_power(v) / 2
             if selected_S3 !== nothing
-                value += selected_S3 * ℒ.kron(ℒ.kron(v, v), v) / 6
+                value += selected_S3 * MacroModelling.compressed_kron³_power(v) / 6
             end
             sample_mean .+= value
             sample_second .+= value * value'

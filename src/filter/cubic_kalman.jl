@@ -53,6 +53,16 @@
 # refuse with a message that names the cause instead of appearing to hang.
 const CUBIC_KALMAN_MAX_DIMENSION = 2500
 
+cubic_pair_index(i::Int, j::Int, n::Int) = begin
+    i, j = max(i, j), min(i, j)
+    (i - 1) * i ÷ 2 + j
+end
+
+cubic_triple_index(i::Int, j::Int, k::Int, n::Int) = begin
+    i, j, k = sort((i, j, k), rev = true)
+    (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + k
+end
+
 # Several intermediates below are computed as a matrix whose *row-major* flatten
 # is the Kronecker vector wanted — "the rowvec of R" in the comments, meaning the
 # vector v with v[(i-1)*size(R,2)+r] == R[i,r]. The step writes those entries out
@@ -100,6 +110,99 @@ function symmetric_triple_maps(n::Int)
         canonical[slot[(i, j, k)]] = ((i-1)*n + (j-1))*n + k
     end
     return expand, canonical
+end
+
+function compressed_pair_power_matrix(matrix)
+    n = size(matrix, 1)
+    pairs = [(i, j) for i in 1:n for j in 1:i]
+    out = zeros(eltype(matrix), length(pairs), length(pairs))
+    @inbounds for (row, (i, j)) in enumerate(pairs), (column, (p, q)) in enumerate(pairs)
+        if p == q
+            out[row, column] = matrix[i, p] * matrix[j, p]
+        else
+            out[row, column] = matrix[i, p] * matrix[j, q] + matrix[i, q] * matrix[j, p]
+        end
+    end
+    return out
+end
+
+function compressed_triple_power_matrix(matrix)
+    n = size(matrix, 1)
+    triples = [(i, j, k) for i in 1:n for j in 1:i for k in 1:j]
+    out = zeros(eltype(matrix), length(triples), length(triples))
+    @inbounds for (row, (i, j, k)) in enumerate(triples), (column, (p, q, r)) in enumerate(triples)
+        if p == q == r
+            out[row, column] = matrix[i, p] * matrix[j, p] * matrix[k, p]
+        elseif p == q
+            out[row, column] = matrix[i, p] * matrix[j, p] * matrix[k, r] +
+                               matrix[i, p] * matrix[j, r] * matrix[k, p] +
+                               matrix[i, r] * matrix[j, p] * matrix[k, p]
+        elseif q == r
+            out[row, column] = matrix[i, p] * matrix[j, q] * matrix[k, q] +
+                               matrix[i, q] * matrix[j, p] * matrix[k, q] +
+                               matrix[i, q] * matrix[j, q] * matrix[k, p]
+        else
+            out[row, column] = matrix[i, p] * matrix[j, q] * matrix[k, r] +
+                               matrix[i, p] * matrix[j, r] * matrix[k, q] +
+                               matrix[i, q] * matrix[j, p] * matrix[k, r] +
+                               matrix[i, q] * matrix[j, r] * matrix[k, p] +
+                               matrix[i, r] * matrix[j, p] * matrix[k, q] +
+                               matrix[i, r] * matrix[j, q] * matrix[k, p]
+        end
+    end
+    return out
+end
+
+function compressed_pair_power_matrix_pullback!(matrix_bar, matrix, cotangent)
+    n = size(matrix, 1)
+    pairs = [(i, j) for i in 1:n for j in 1:i]
+    @inbounds for (row, (i, j)) in enumerate(pairs), (column, (p, q)) in enumerate(pairs)
+        value = cotangent[row, column]
+        if p == q
+            matrix_bar[i, p] += value * matrix[j, p]
+            matrix_bar[j, p] += value * matrix[i, p]
+        else
+            matrix_bar[i, p] += value * matrix[j, q]
+            matrix_bar[j, q] += value * matrix[i, p]
+            matrix_bar[i, q] += value * matrix[j, p]
+            matrix_bar[j, p] += value * matrix[i, q]
+        end
+    end
+    return matrix_bar
+end
+
+@inline function accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, q, r)
+    matrix_bar[i, p] += value * matrix[j, q] * matrix[k, r]
+    matrix_bar[j, q] += value * matrix[i, p] * matrix[k, r]
+    matrix_bar[k, r] += value * matrix[i, p] * matrix[j, q]
+    return matrix_bar
+end
+
+function compressed_triple_power_matrix_pullback!(matrix_bar, matrix, cotangent)
+    n = size(matrix, 1)
+    triples = [(i, j, k) for i in 1:n for j in 1:i for k in 1:j]
+    @inbounds for (row, (i, j, k)) in enumerate(triples), (column, (p, q, r)) in enumerate(triples)
+        value = cotangent[row, column]
+        if p == q == r
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, p, p)
+        elseif p == q
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, p, r)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, r, p)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, r, p, p)
+        elseif q == r
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, q, q)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, q, p, q)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, q, q, p)
+        else
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, q, r)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, p, r, q)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, q, p, r)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, q, r, p)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, r, p, q)
+            accumulate_triple_term!(matrix_bar, matrix, value, i, j, k, r, q, p)
+        end
+    end
+    return matrix_bar
 end
 
 # ── analytic assembly ────────────────────────────────────────────────────────
@@ -211,30 +314,39 @@ function cubic_derived_matrices(S1, S2, Pm, nPast::Int, nExo::Int, na::Int)
 
     B2 = Pm * S2 / 2
     ntail = 1 + nExo
-    Wq = zeros(Tv, nPast, nPast * nPast)
-    for i in 1:nPast, j in 1:nPast
-        Wq[:, (i-1)*nPast+j] = B2[:, (i-1)*na+j]
+    n_pair = na * (na + 1) ÷ 2
+    pair_index(i, j) = max(i, j) * (max(i, j) - 1) ÷ 2 + min(i, j)
+    Wq = zeros(Tv, nPast, nPast * (nPast + 1) ÷ 2)
+    for i in 1:nPast, j in 1:i
+        Wq[:, pair_index(i, j)] = (i == j ? 1 : 2) .* B2[:, pair_index(i, j)]
     end
     Wl_t = [zeros(Tv, nPast, nPast) for _ in 1:ntail]
     for t in 1:ntail, k in 1:nPast
-        Wl_t[t][:, k] = B2[:, (k-1)*na+nPast+t] + B2[:, (nPast+t-1)*na+k]
+        Wl_t[t][:, k] = 2 .* B2[:, pair_index(k, nPast + t)]
     end
-    Bc = B2[:, [(i-1)*na + j for i in nPast+1:na for j in nPast+1:na]]
-    MM = ℒ.kron(M, M)
-    return M, mc, V, B2, Wq, Wl_t, Bc, MM
+    n_tail_pair = ntail * (ntail + 1) ÷ 2
+    Bc = zeros(Tv, nPast, n_tail_pair)
+    tail_pair = 0
+    for i in 1:ntail, j in 1:i
+        tail_pair += 1
+        Bc[:, tail_pair] .= B2[:, pair_index(nPast + i, nPast + j)]
+    end
+    M2 = compressed_pair_power_matrix(M)
+    M3 = compressed_triple_power_matrix(M)
+    return M, mc, V, B2, Wq, Wl_t, Bc, M2, M3
 end
 
 """
 Fold every intermediate cotangent back onto `S1`, `S2` and `S3`: the live-column
 accumulators the step adjoint writes, and the derived blocks of
-`cubic_derived_matrices`. `MM = kron(M, M)` is resolved onto `M` first, so it must
-be accumulated before this is called.
+`cubic_derived_matrices`. The compressed pair/triple power maps are resolved onto
+`M` first, so their cotangents must be accumulated before this is called.
 """
 function cubic_derived_pullback!(∂, sys)
     (; M, Pm, nPast, nExo, na) = sys
     ∂S1, ∂S2 = ∂.S1, ∂.S2
     ∂M, ∂mc, ∂V = ∂.M, ∂.mc, ∂.V
-    ∂Wq, ∂Wl_t, ∂Bc, ∂MM = ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.MM
+    ∂Wq, ∂Wl_t, ∂Bc, ∂M2, ∂M3 = ∂.Wq, ∂.Wl_t, ∂.Bc, ∂.M2, ∂.M3
 
     # live-column cotangents accumulated by the step adjoint
     @inbounds for (r, j) in enumerate(sys.k2cols)
@@ -247,25 +359,28 @@ function cubic_derived_pullback!(∂, sys)
         @views ∂.S3[:, j] .+= ∂.S3k3[:, r]
     end
 
-    # MM = kron(M, M)
-    ∂M = ∂M .+ kron_adjoint_A(∂MM, M, nPast, nPast, nPast, nPast) .+
-               kron_adjoint_B(∂MM, M, nPast, nPast, nPast, nPast)
+    compressed_pair_power_matrix_pullback!(∂M, M, ∂M2)
+    compressed_triple_power_matrix_pullback!(∂M, M, ∂M3)
 
     # A1 = Pm S1 ; M, mc, V are its column blocks
     ∂A1 = hcat(∂M, reshape(∂mc, nPast, 1), ∂V)
     ∂S1 .+= Pm' * ∂A1
 
-    # the K₂ splits, all linear scatters out of B2
-    ∂B2 = zeros(eltype(∂S2), nPast, na * na)
-    for i in 1:nPast, j in 1:nPast
-        @views ∂B2[:, (i-1)*na+j] .+= ∂Wq[:, (i-1)*nPast+j]
+    # the K₂ splits, all linear scatters out of compressed B2
+    n_pair = na * (na + 1) ÷ 2
+    ∂B2 = zeros(eltype(∂S2), nPast, n_pair)
+    pair_index(i, j) = max(i, j) * (max(i, j) - 1) ÷ 2 + min(i, j)
+    for i in 1:nPast, j in 1:i
+        factor = i == j ? 1 : 2
+        @views ∂B2[:, pair_index(i, j)] .+= factor .* ∂Wq[:, pair_index(i, j)]
     end
     for t in 1:(1+nExo), k in 1:nPast
-        @views ∂B2[:, (k-1)*na+nPast+t] .+= ∂Wl_t[t][:, k]
-        @views ∂B2[:, (nPast+t-1)*na+k] .+= ∂Wl_t[t][:, k]
+        @views ∂B2[:, pair_index(k, nPast+t)] .+= 2 .* ∂Wl_t[t][:, k]
     end
-    for (col, r) in enumerate([(i-1)*na + j for i in nPast+1:na for j in nPast+1:na])
-        @views ∂B2[:, r] .+= ∂Bc[:, col]
+    tail_pair = 0
+    for i in 1:(1+nExo), j in 1:i
+        tail_pair += 1
+        @views ∂B2[:, pair_index(nPast+i, nPast+j)] .+= ∂Bc[:, tail_pair]
     end
     ∂S2 .+= Pm' * ∂B2 ./ 2
     return ∂S1, ∂S2
@@ -291,6 +406,8 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     # q₁₁ and q₁₁₁ are carried compressed; q₁₂ = a⊗b has no symmetry to exploit.
     exp2, can2 = symmetric_pair_maps(nPast)
     exp3, can3 = symmetric_triple_maps(nPast)
+    pair_indices = [(i, j) for i in 1:na for j in 1:i]
+    triple_indices = [(i, j, k) for i in 1:na for j in 1:i for k in 1:j]
     nq11, nq12, nq111 = length(can2), nPast^2, length(can3)
     nz = 3nr + nq11 + nq12 + nq111
 
@@ -329,7 +446,7 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
     end
 
     ntail = 1 + nExo
-    M, mc, V, B2, Wq, Wl_t, Bc, MM = cubic_derived_matrices(S1, S2, Pm, nPast, nExo, na)
+    M, mc, V, B2, Wq, Wl_t, Bc, M2, M3 = cubic_derived_matrices(S1, S2, Pm, nPast, nExo, na)
 
     # The Kronecker inputs are contracted against 𝐒₂ and 𝐒₃, whose columns are
     # largely structurally zero — a third-order solution has no cross-derivative
@@ -348,18 +465,16 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
         [j for j in cols if A.colptr[j+1] > A.colptr[j]] :
         [j for j in cols if any(!iszero, view(A, :, j))]
 
-    k2cols = live(S2sp, 1:na*na)
-    k2_ij = [(fld(j - 1, na) + 1, mod(j - 1, na) + 1) for j in k2cols]
+    k2cols = live(S2sp, 1:length(pair_indices))
+    k2_ij = [pair_indices[j] for j in k2cols]
     S2k2 = S2[:, k2cols]
 
-    k12all = [(i-1)*na + j for i in 1:na for j in 1:nPast]
-    k12cols = live(S2sp, k12all)
-    k12_ij = [(fld(j - 1, na) + 1, mod(j - 1, na) + 1) for j in k12cols]
+    k12cols = live(S2sp, 1:length(pair_indices))
+    k12_ij = [pair_indices[j] for j in k12cols]
     S2k12 = S2[:, k12cols]
 
-    k3cols = live(S3sp, 1:na*na*na)
-    k3_ijk = [(fld(j - 1, na * na) + 1, mod(fld(j - 1, na), na) + 1, mod(j - 1, na) + 1)
-              for j in k3cols]
+    k3cols = live(S3sp, 1:length(triple_indices))
+    k3_ijk = [triple_indices[j] for j in k3cols]
     S3k3 = S3[:, k3cols]
 
     # Observation rows are a selection of the x₁, x₂ and x₃ blocks; carrying the
@@ -387,8 +502,8 @@ function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒�
 
     return (; nr, nPast, nExo, na, nz, oas, S1, S2, S3, Pm, C, op1, op2, op3,
             r1, r2, r3, i11, i12, i111, nq11, nq12, nq111,
-            exp2, can2, exp3, can3, can2_ij, can3_ijk,
-            M, mc, V, B2, Wq, Wl_t, Bc, MM, ntail, noise_state_indices,
+            exp2, can2, exp3, can3, can2_ij, can3_ijk, pair_indices, triple_indices,
+            M, mc, V, B2, Wq, Wl_t, Bc, M2, M3, ntail, noise_state_indices,
             k2cols, k2_ij, S2k2, k12cols, k12_ij, S2k12, k3cols, k3_ijk, S3k3)
 end
 
@@ -401,19 +516,24 @@ allocated ~13 kB per call before these buffers existed.
 function cubic_kalman_workspace(sys, Tv = eltype(sys.S1))
     (; nr, nPast, na, ntail) = sys
     nP2 = nPast * nPast
+    nq11, nq111 = sys.nq11, sys.nq111
+    ntail_pair = ntail * (ntail + 1) ÷ 2
     zeros(n...) = Base.zeros(Tv, n...)
     return (; a = zeros(nPast), b = zeros(nPast), p = zeros(nPast),
-            q11 = zeros(nP2), q12 = zeros(nP2), q111 = zeros(nPast^3),
-            tail = zeros(ntail), tt = zeros(ntail * ntail),
+            q11 = zeros(nq11), q12 = zeros(nP2), q111 = zeros(nq111),
+            tail = zeros(ntail), tt = zeros(ntail_pair),
             aug1 = zeros(na), aug1h = zeros(na), aug2 = zeros(na), aug3 = zeros(na),
             K2 = zeros(length(sys.k2cols)), K12 = zeros(length(sys.k12cols)),
             K3 = zeros(length(sys.k3cols)),
             x1n = zeros(nr), x2n = zeros(nr), x3n = zeros(nr),
             u = zeros(nPast), v = zeros(nPast), bn = zeros(nPast), wc = zeros(nPast),
-            Q11 = zeros(nPast, nPast), Q12 = zeros(nPast, nPast), Q111 = zeros(nPast, nP2),
+            Q11 = zeros(nPast, nPast), Q12 = zeros(nPast, nPast), Q111 = zeros(nPast, nq11),
             R2 = zeros(nPast, nPast), Tmp = zeros(nPast, nPast),
-            MQ111 = zeros(nPast, nP2), R3 = zeros(nPast, nP2),
-            Wl = zeros(nPast, nPast), t2 = zeros(nP2), vv = zeros(nP2),
+            MQ111 = zeros(nPast, nq11), R3 = zeros(nq111),
+            Wl = zeros(nPast, nPast), t2 = zeros(nq11), vv = zeros(nq11),
+            q2_aug = zeros(length(sys.pair_indices)),
+            q2_cross = zeros(length(sys.pair_indices)),
+            q3_aug = zeros(length(sys.triple_indices)), q3_uuv = zeros(nq111), q3_uvv = zeros(nq111),
             scratch_out = zeros(sys.nz))
 end
 
@@ -424,9 +544,11 @@ rather than recomputed.
 """
 function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::AbstractVector, ws)
     (; nr, nPast, nExo, na, S1, S2, S3, Pm, r1, r2, r3, i11, i12, i111,
-       exp2, can2_ij, can3_ijk, M, mc, V, Wq, Wl_t, Bc, MM, ntail) = sys
+       exp2, exp3, can2_ij, can3_ijk, pair_indices, triple_indices,
+       M, mc, V, Wq, Wl_t, Bc, M2, M3, ntail) = sys
     (; a, b, p, q11, q12, q111, tail, tt, aug1, aug1h, aug2, aug3, K2, K12, K3,
-       x1n, x2n, x3n, u, v, bn, wc, Q11, Q12, Q111, R2, Tmp, MQ111, R3, Wl, t2, vv) = ws
+       x1n, x2n, x3n, u, v, bn, wc, Q11, Q12, Q111, R2, Tmp, MQ111, R3, Wl, t2, vv,
+       q2_aug, q2_cross, q3_aug) = ws
     nP = nPast
     nP2 = nP * nP
 
@@ -434,15 +556,18 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
     ℒ.mul!(b, Pm, view(z, r2))
     ℒ.mul!(p, Pm, view(z, r3))
 
-    # The symmetric blocks arrive compressed; expand them so the algebra below is
-    # written on plain Kronecker products.
+    # The symmetric blocks are stored as unique raw products.
     o11 = first(i11) - 1
     o111 = first(i111) - 1
-    @inbounds for r in eachindex(q11)
-        q11[r] = z[o11+exp2[r]]
+    r = 0
+    @inbounds for i in 1:nP, j in 1:i
+        r += 1
+        q11[r] = z[o11 + exp2[(i-1)*nP+j]]
     end
-    @inbounds for r in eachindex(q111)
-        q111[r] = z[o111+sys.exp3[r]]
+    r = 0
+    @inbounds for i in 1:nP, j in 1:i, k in 1:j
+        r += 1
+        q111[r] = z[o111 + exp3[((i-1)*nP + (j-1))*nP+k]]
     end
     @inbounds for (r, k) in enumerate(i12)
         q12[r] = z[k]
@@ -460,30 +585,45 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
         aug1[nP+1+i] = ε[i]; aug1h[nP+1+i] = ε[i]; aug2[nP+1+i] = 0.0; aug3[nP+1+i] = 0.0
     end
 
-    # Kronecker inputs, with the all-past blocks read from the state, and only at
-    # the columns 𝐒₂ and 𝐒₃ actually reach.
-    @inbounds for (r, (i, j)) in enumerate(sys.k2_ij)
-        K2[r] = (i <= nP && j <= nP) ? q11[(i-1)*nP+j] : aug1[i] * aug1[j]
-    end
-    @inbounds for (r, (i, j)) in enumerate(sys.k12_ij)
-        K12[r] = (i <= nP) ? q12[(i-1)*nP+j] : aug1h[i] * aug2[j]
-    end
-    @inbounds for (r, (i, j, k)) in enumerate(sys.k3_ijk)
-        ci = i <= nP; cj = j <= nP; ck = k <= nP
-        n = ci + cj + ck
-        K3[r] = if n == 3
-            q111[((i-1)*nP + (j-1))*nP + k]
-        elseif n == 2
-            if ci && cj
-                q11[(i-1)*nP+j] * aug1[k]
-            elseif ci && ck
-                q11[(i-1)*nP+k] * aug1[j]
-            else
-                q11[(j-1)*nP+k] * aug1[i]
-            end
+    # Contract the solution tensors in the compressed augmented basis.  The
+    # state-state products must be read from q₁₁/q₁₁₁; recomputing them from
+    # `a` would make this map quadratic/cubic in z and destroy the linear
+    # state-space representation.
+    @inbounds for (r, (i, j)) in enumerate(pair_indices)
+        if i <= nP
+            q2_aug[r] = i == j ? q11[cubic_pair_index(i, j, nP)] :
+                2 * q11[cubic_pair_index(i, j, nP)]
+            q2_cross[r] = i == j ? q12[(i-1)*nP+j] :
+                q12[(i-1)*nP+j] + q12[(j-1)*nP+i]
+        elseif j <= nP
+            q2_aug[r] = 2 * aug1[i] * a[j]
+            q2_cross[r] = aug1h[i] * b[j]
         else
-            aug1[i] * aug1[j] * aug1[k]
+            q2_aug[r] = i == j ? aug1[i] * aug1[j] : 2 * aug1[i] * aug1[j]
+            q2_cross[r] = zero(eltype(q2_cross))
         end
+    end
+    @inbounds for (r, (i, j, k)) in enumerate(triple_indices)
+        if i <= nP
+            factor = i == j == k ? 1 : i == j ? 3 : j == k ? 3 : 6
+            q3_aug[r] = factor * q111[cubic_triple_index(i, j, k, nP)]
+        elseif j <= nP
+            factor = j == k ? 3 : 6
+            q3_aug[r] = factor * aug1[i] * q11[cubic_pair_index(j, k, nP)]
+        elseif k <= nP
+            factor = i == j ? 3 : 6
+            q3_aug[r] = factor * aug1[i] * aug1[j] * a[k]
+        else
+            q3_aug[r] = (i == j == k ? 1 : i == j ? 3 : j == k ? 3 : 6) *
+                aug1[i] * aug1[j] * aug1[k]
+        end
+    end
+    @inbounds for r in eachindex(K2)
+        K2[r] = q2_aug[sys.k2cols[r]]
+        K12[r] = q2_cross[sys.k12cols[r]]
+    end
+    @inbounds for r in eachindex(K3)
+        K3[r] = q3_aug[sys.k3cols[r]]
     end
 
     ℒ.mul!(x1n, S1, aug1)
@@ -497,27 +637,32 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
     ℒ.mul!(bn, Pm, x2n)                # affine in z
 
     @inbounds for j in 1:nP, s in 1:nP
-        Q11[j, s] = q11[(j-1)*nP+s]
+        Q11[j, s] = q11[cubic_pair_index(j, s, nP)]
         Q12[j, s] = q12[(j-1)*nP+s]
     end
-    @inbounds for j in 1:nP, s in 1:nP2
-        Q111[j, s] = q111[(j-1)*nP2+s]
+    @inbounds for i in 1:nP, r in 1:i
+        s = cubic_pair_index(i, r, nP)
+        for j in 1:nP
+            Q111[j, s] = q111[cubic_triple_index(j, i, r, nP)]
+        end
     end
 
     ℒ.mul!(Tmp, M, Q11); ℒ.mul!(R2, Tmp, M')     # M Q₁₁ M' — its rowvec is u⊗u
-    @inbounds for i in 1:nP, r in 1:nP
-        t2[(i-1)*nP+r] = R2[i, r]
+    @inbounds for (s, (i, r)) in enumerate(can2_ij)
+        t2[cubic_pair_index(i, r, nP)] = R2[i, r]
     end
-    @inbounds for i in 1:nP, j in 1:nP
-        vv[(i-1)*nP+j] = v[i] * v[j]
+    @inbounds for (s, (i, j)) in enumerate(can2_ij)
+        vv[s] = v[i] * v[j]
     end
 
     fill!(Wl, 0.0)
     @inbounds for t in 1:ntail
         ℒ.axpy!(tail[t], Wl_t[t], Wl)
     end
-    @inbounds for i in 1:ntail, j in 1:ntail
-        tt[(i-1)*ntail+j] = tail[i] * tail[j]
+    tail_pair = 0
+    @inbounds for i in 1:ntail, j in 1:i
+        tail_pair += 1
+        tt[tail_pair] = i == j ? tail[i] * tail[j] : 2 * tail[i] * tail[j]
     end
     ℒ.mul!(wc, Bc, tt)
 
@@ -529,27 +674,25 @@ function cubic_kalman_step!(out::AbstractVector, sys, z::AbstractVector, ε::Abs
     ℒ.mul!(Tmp, M, Q12)
     ℒ.mul!(R2, Tmp, M', 1.0, 1.0)
 
-    ℒ.mul!(R3, MQ111, MM')             # u⊗u⊗u = (M⊗M⊗M) q₁₁₁
+    ℒ.mul!(R3, M3, q111)               # compressed raw u⊗u⊗u
 
     @inbounds for i in 1:nr
         out[i] = x1n[i]; out[nr+i] = x2n[i]; out[2nr+i] = x3n[i]
     end
     # q₁₁' and q₁₁₁' are symmetric, so only the canonical entries are formed.
     @inbounds for (s, (i, j)) in enumerate(can2_ij)
-        out[o11+s] = t2[(i-1)*nP+j] + u[i]*v[j] + v[i]*u[j] + v[i]*v[j]
+        out[o11+s] = t2[cubic_pair_index(i, j, nP)] + u[i]*v[j] + v[i]*u[j] + v[i]*v[j]
     end
     @inbounds for i in 1:nP, j in 1:nP
         out[first(i12)-1 + (i-1)*nP+j] = R2[i, j] + u[i]*wc[j] + v[i]*bn[j]
     end
     @inbounds for (s, (i, j, k)) in enumerate(can3_ijk)
-        out[o111+s] = R3[i, (j-1)*nP+k] +          # u⊗u⊗u
-                      t2[(i-1)*nP+j] * v[k] +      # u⊗u⊗v
-                      v[i] * t2[(j-1)*nP+k] +      # v⊗u⊗u
-                      t2[(i-1)*nP+k] * v[j] +      # u⊗v⊗u
-                      u[i] * vv[(j-1)*nP+k] +      # u⊗v⊗v
-                      vv[(i-1)*nP+j] * u[k] +      # v⊗v⊗u
-                      v[i] * u[j] * v[k] +         # v⊗u⊗v
-                      vv[(i-1)*nP+j] * v[k]        # v⊗v⊗v
+        out[o111+s] = R3[cubic_triple_index(i, j, k, nP)] +
+                      t2[cubic_pair_index(i, j, nP)] * v[k] +
+                      t2[cubic_pair_index(i, k, nP)] * v[j] +
+                      t2[cubic_pair_index(j, k, nP)] * v[i] +
+                      u[i] * v[j] * v[k] + v[i] * u[j] * v[k] + v[i] * v[j] * u[k] +
+                      v[i] * v[j] * v[k]
     end
     return out
 end
@@ -566,7 +709,8 @@ the derived-block cotangents onto `S1` and `S2`.
 function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVector,
                                      ∂out::AbstractVector, ws)
     (; nr, nPast, nExo, na, S1, S2, Pm, r1, r2, r3, i11, i12, i111,
-       exp2, can2_ij, can3_ijk, M, mc, V, Wq, Wl_t, Bc, MM, ntail) = sys
+       exp2, exp3, can2_ij, can3_ijk, pair_indices, triple_indices,
+       M, mc, V, Wq, Wl_t, Bc, M2, M3, ntail) = sys
     nP = nPast
     nP2 = nP * nP
 
@@ -583,15 +727,15 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     o111 = first(i111) - 1
 
     ∂u = zeros(eltype(∂out), nP); ∂v = zeros(eltype(∂out), nP)
-    ∂t2 = zeros(eltype(∂out), nP2); ∂vv = zeros(eltype(∂out), nP2)
+    ∂t2 = zeros(eltype(∂out), sys.nq11)
     ∂wc = zeros(eltype(∂out), nP); ∂bn = zeros(eltype(∂out), nP)
     ∂R2 = zeros(eltype(∂out), nP, nP)
-    ∂R3 = zeros(eltype(∂out), nP, nP2)
+    ∂R3 = zeros(eltype(∂out), sys.nq111)
 
     # ── seed from the output blocks ──────────────────────────────────────────
     @inbounds for (s, (i, j)) in enumerate(can2_ij)
         g = ∂out[o11+s]
-        ∂t2[(i-1)*nP+j] += g
+        ∂t2[cubic_pair_index(i, j, nP)] += g
         ∂u[i] += g * v[j]; ∂v[j] += g * u[i]
         ∂v[i] += g * u[j]; ∂u[j] += g * v[i]
         ∂v[i] += g * v[j]; ∂v[j] += g * v[i]
@@ -604,40 +748,43 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     end
     @inbounds for (s, (i, j, k)) in enumerate(can3_ijk)
         g = ∂out[o111+s]
-        ∂R3[i, (j-1)*nP+k] += g
-        ∂t2[(i-1)*nP+j] += g * v[k];  ∂v[k] += g * t2[(i-1)*nP+j]
-        ∂v[i] += g * t2[(j-1)*nP+k];  ∂t2[(j-1)*nP+k] += g * v[i]
-        ∂t2[(i-1)*nP+k] += g * v[j];  ∂v[j] += g * t2[(i-1)*nP+k]
-        ∂u[i] += g * vv[(j-1)*nP+k];  ∂vv[(j-1)*nP+k] += g * u[i]
-        ∂vv[(i-1)*nP+j] += g * u[k];  ∂u[k] += g * vv[(i-1)*nP+j]
-        ∂v[i] += g * u[j] * v[k]; ∂u[j] += g * v[i] * v[k]; ∂v[k] += g * v[i] * u[j]
-        ∂vv[(i-1)*nP+j] += g * v[k];  ∂v[k] += g * vv[(i-1)*nP+j]
+        ∂R3[cubic_triple_index(i, j, k, nP)] += g
+        ∂t2[cubic_pair_index(i, j, nP)] += g * v[k]
+        ∂v[k] += g * t2[cubic_pair_index(i, j, nP)]
+        ∂t2[cubic_pair_index(i, k, nP)] += g * v[j]
+        ∂v[j] += g * t2[cubic_pair_index(i, k, nP)]
+        ∂t2[cubic_pair_index(j, k, nP)] += g * v[i]
+        ∂v[i] += g * t2[cubic_pair_index(j, k, nP)]
+        ∂u[i] += g * v[j] * v[k]; ∂v[j] += g * u[i] * v[k]
+        ∂v[k] += g * u[i] * v[j]
+        ∂v[i] += g * u[j] * v[k]; ∂u[j] += g * v[i] * v[k]
+        ∂v[k] += g * v[i] * u[j]
+        ∂v[i] += g * v[j] * u[k]; ∂v[j] += g * v[i] * u[k]
+        ∂u[k] += g * v[i] * v[j]
+        ∂v[i] += g * v[j] * v[k]; ∂v[j] += g * v[i] * v[k]
+        ∂v[k] += g * v[i] * v[j]
     end
 
-    # vv[i,j] = v_i v_j
-    @inbounds for i in 1:nP, j in 1:nP
-        gv = ∂vv[(i-1)*nP+j]
-        ∂v[i] += gv * v[j]; ∂v[j] += gv * v[i]
-    end
-
-    # R3 = MQ111 * MM'
-    ∂MQ111 = ∂R3 * MM
-    ∂.MM .+= ∂R3' * MQ111
+    # R3 = M₃ q₁₁₁ in the compressed raw-product basis.
+    ∂.M3 .+= ∂R3 * q111'
 
     # R2 = MQ11 Wl' + MQ111 Wq' + MQ12 M'
     ∂MQ11 = ∂R2 * Wl
     ∂Wl = ∂R2' * MQ11
-    ∂MQ111 .+= ∂R2 * Wq
+    ∂MQ111 = ∂R2 * Wq
     ∂.Wq .+= ∂R2' * MQ111
     ∂MQ12 = ∂R2 * M
     ∂M = ∂R2' * MQ12
 
-    # t2 = rowvec(MQ11 M')
-    ∂R2t = reshape(∂t2, nP, nP)'      # ∂R2t[i,r] = ∂t2[(i-1)nP+r]
+    # t2 contains the upper-triangular raw entries of MQ11M'.
+    ∂R2t = zeros(eltype(∂out), nP, nP)
+    @inbounds for (i, j) in can2_ij
+        ∂R2t[i, j] += ∂t2[cubic_pair_index(i, j, nP)]
+    end
     ∂MQ11 .+= ∂R2t * M
     ∂M .+= ∂R2t' * MQ11
 
-    # MQ11 = M Q11, MQ12 = M Q12, MQ111 = M Q111
+    # MQ11 = M Q11, MQ12 = M Q12, MQ111 = M Q111.
     ∂M .+= ∂MQ11 * Q11' .+ ∂MQ12 * Q12' .+ ∂MQ111 * Q111'
 
     # wc = Bc tt ; Wl = Σ_t tail[t] Wl_t[t]
@@ -664,6 +811,7 @@ function cubic_kalman_step_pullback!(∂, sys, z::AbstractVector, ε::AbstractVe
     ∂.S2k2 .+= (∂x2n * K2') ./ 2
     ∂.S2k12 .+= ∂x3n * K12'
     ∂.S3k3 .+= (∂x3n * K3') ./ 6
+
     return ∂
 end
 
@@ -673,7 +821,7 @@ function cubic_kalman_cotangents(sys)
     (; S1 = zeros(T, size(sys.S1)), S2 = zeros(T, size(sys.S2)), S3 = zeros(T, size(sys.S3)),
        M = zeros(T, size(sys.M)), mc = zeros(T, length(sys.mc)), V = zeros(T, size(sys.V)),
        Wq = zeros(T, size(sys.Wq)), Wl_t = [zeros(T, size(w)) for w in sys.Wl_t],
-       Bc = zeros(T, size(sys.Bc)), MM = zeros(T, size(sys.MM)),
+       Bc = zeros(T, size(sys.Bc)), M2 = zeros(T, size(sys.M2)), M3 = zeros(T, size(sys.M3)),
        S2k2 = zeros(T, size(sys.S2k2)), S2k12 = zeros(T, size(sys.S2k12)),
        S3k3 = zeros(T, size(sys.S3k3)))
 end

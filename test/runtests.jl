@@ -56,6 +56,7 @@ elseif test_set == "higher_order_2"
 elseif test_set == "higher_order_3"
     include("test_higher_order_3.jl")
 elseif test_set == "basic"
+    include("test_compressed_kron.jl")
     include("test_basic.jl")
 elseif test_set == "system_prior_estimation"
     include("test_system_prior_estimation.jl")

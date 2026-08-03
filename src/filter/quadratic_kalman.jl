@@ -12,11 +12,12 @@
 #
 # and stacking
 #
-#   z ₜ = [ x₁ₜ ; x₂ₜ ; x₁ₜ[past] ⊗ x₁ₜ[past] ]
+#   zₜ = [x₁ₜ; x₂ₜ; vech(x₁ₜ[past]x₁ₜ[past]')]
 #
-# every block above becomes affine in zₜ₋₁, because aug₁ ⊗ aug₁ expands into terms
-# that are quadratic in x₁ₜ₋₁[past] (carried by the third block), linear in it, or
-# constant. The observation is a plain selection, yₜ = (x₁ₜ + x₂ₜ)[observables],
+# every block above becomes affine in zₜ₋₁, because the symmetric products in
+# aug₁⊗aug₁ expand into terms that are quadratic in x₁ₜ₋₁[past] (carried by the
+# third block), linear in it, or constant. The observation is a plain selection,
+# yₜ = (x₁ₜ + x₂ₜ)[observables],
 # so the whole system is linear and a Kalman filter applies.
 #
 # What is exact and what is not. The transition is *exactly* linear in z — no
@@ -34,54 +35,219 @@
 # predictable part and S selects the shocks, every block of the innovation has the
 # form
 #
-#   w = G ε + H (ε⊗ε − vec(I)),
+#   w = G ε + H (vech(εε') − E[vech(εε')]),
 #
 # linear plus centred-quadratic in ε. Because the Gaussian third moment vanishes
 # the two parts are uncorrelated, so
 #
-#   Var(w) = G G' + H (I + K) H',      K the commutation matrix,
+#   Var(w) = G G' + H Var(vech(εε')) H',
 #
-# using E[(ε⊗ε)(ε⊗ε)'] = vec(I)vec(I)' + I + K. `H` is constant; `G` depends on the
-# state. The plug-in term uses the filtered mean, while the recursion also adds the
-# exact covariance of this affine loading under the filtered state covariance.
+# `H` is constant; `G` depends on the state. The plug-in term uses the filtered
+# mean, while the recursion also adds the exact covariance of this affine loading
+# under the filtered state covariance.
 #
-# Cost. The augmented state has dimension 2·nVars + nPast², which is 808 for
-# Smets-Wouters (2007). The covariance recursion is therefore O(nz³) per period and
-# dominates everything else; expect seconds rather than milliseconds per likelihood.
+# The symmetric pair block is stored directly in its unique lower-triangular
+# ordering; no duplication/elimination or dense Kronecker matrix is constructed.
+# The retained augmented dimension is 2·n_r + nPast(nPast+1)/2 (446 for SW07),
+# and its covariance recursion remains O(n_z³) per period.
 
+quadratic_pair_indices(n::Int) = [(i, j) for i in 1:n for j in 1:i]
 
-# Duplication/elimination for the Kronecker block. q = x₁ₚ ⊗ x₁ₚ = vec(x₁ₚx₁ₚ') is
-# symmetric, so only nPast(nPast+1)/2 of its nPast² entries are distinct. Carrying
-# vech(x₁ₚx₁ₚ') instead of vec cuts the augmented dimension — on Smets-Wouters from
-# 808 to 483 — and the covariance recursion is O(nz³), so that is roughly a 4.7×
-# saving. `D` maps vech ↦ vec and `L` vec ↦ vech, with L*D = I.
-function duplication_elimination(n::Int)
-    ns = n * (n + 1) ÷ 2
-    D = spzeros(n * n, ns)
-    L = spzeros(ns, n * n)
-    k = 0
-    @inbounds for j in 1:n, i in j:n          # column-major lower triangle
-        k += 1
-        D[(j - 1) * n + i, k] = 1.0
-        D[(i - 1) * n + j, k] = 1.0           # symmetric partner (same entry if i==j)
-        L[k, (j - 1) * n + i] = 1.0
-    end
-    return D, L
+function quadratic_vech_index(i::Int, j::Int, n::Int)
+    i, j = max(i, j), min(i, j)
+    return (j - 1) * (2n - j + 2) ÷ 2 + i - j + 1
 end
 
-# Commutation matrix K with K vec(A) = vec(A'), for A of size n×n.
-function commutation_matrix(n::Int)
-    K = spzeros(n * n, n * n)
-    @inbounds for i in 1:n, j in 1:n
-        K[(i - 1) * n + j, (j - 1) * n + i] = 1.0
+function quadratic_pair_reorder(n::Int)
+    nq0 = n * (n + 1) ÷ 2
+    out = zeros(Float64, nq0, nq0)
+    @inbounds for (column, (i, j)) in enumerate(quadratic_pair_indices(n))
+        out[quadratic_vech_index(i, j, n), column] = 1.0
     end
-    return K
+    return out
+end
+
+"""Map raw unique pair products through a rectangular linear map."""
+function raw_pair_power_matrix(A)
+    nout, nin = size(A)
+    out_pairs = quadratic_pair_indices(nout)
+    in_pairs = quadratic_pair_indices(nin)
+    out = zeros(eltype(A), length(out_pairs), length(in_pairs))
+    @inbounds for (row, (i, j)) in enumerate(out_pairs), (column, (p, q)) in enumerate(in_pairs)
+        if p == q
+            out[row, column] = A[i, p] * A[j, p]
+        else
+            out[row, column] = A[i, p] * A[j, q] + A[i, q] * A[j, p]
+        end
+    end
+    return out
+end
+
+function raw_pair_power_matrix_pullback!(Abar, A, cotangent)
+    nout, nin = size(A)
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(nout)),
+                      (column, (p, q)) in enumerate(quadratic_pair_indices(nin))
+        value = cotangent[row, column]
+        if p == q
+            Abar[i, p] += value * A[j, p]
+            Abar[j, p] += value * A[i, p]
+        else
+            Abar[i, p] += value * A[j, q]
+            Abar[j, q] += value * A[i, p]
+            Abar[i, q] += value * A[j, p]
+            Abar[j, p] += value * A[i, q]
+        end
+    end
+    return Abar
+end
+
+function compressed_pair_power_matrix_rect(A)
+    nout, nin = size(A)
+    out_pairs = quadratic_pair_indices(nout)
+    in_pairs = quadratic_pair_indices(nin)
+    out = zeros(eltype(A), length(out_pairs), length(in_pairs))
+    @inbounds for (row, (i, j)) in enumerate(out_pairs), (column, (p, q)) in enumerate(in_pairs)
+        factor = i == j ? 1 : 2
+        if p == q
+            out[row, column] = factor * A[i, p] * A[j, p]
+        else
+            out[row, column] = factor * (A[i, p] * A[j, q] + A[i, q] * A[j, p])
+        end
+    end
+    return out
+end
+
+"""Compressed pair products of a vector with every column of a matrix."""
+function compressed_pair_mixed_matrix(a, B)
+    n = length(a)
+    size(B, 1) == n || throw(DimensionMismatch("compressed pair inputs must have equal row count"))
+    out = zeros(promote_type(eltype(a), eltype(B)), n * (n + 1) ÷ 2, size(B, 2))
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(n))
+        if i == j
+            out[row, :] .= a[i] .* B[j, :]
+        else
+            out[row, :] .= a[i] .* B[j, :] .+ a[j] .* B[i, :]
+        end
+    end
+    return out
+end
+
+function raw_pair_mixed_matrix(a, B)
+    n = length(a)
+    size(B, 1) == n || throw(DimensionMismatch("raw pair inputs must have equal row count"))
+    out = zeros(promote_type(eltype(a), eltype(B)), n * (n + 1) ÷ 2, size(B, 2))
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(n))
+        if i == j
+            out[row, :] .= 2 .* a[i] .* B[j, :]
+        else
+            out[row, :] .= a[i] .* B[j, :] .+ a[j] .* B[i, :]
+        end
+    end
+    return out
+end
+
+function raw_pair_mixed_pullback!(abar, Bbar, a, B, cotangent)
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(length(a)))
+        value = view(cotangent, row, :)
+        if i == j
+            abar[i] += 2 * ℒ.dot(value, view(B, j, :))
+            Bbar[j, :] .+= 2 * a[i] .* value
+        else
+            abar[i] += ℒ.dot(value, view(B, j, :))
+            abar[j] += ℒ.dot(value, view(B, i, :))
+            Bbar[j, :] .+= a[i] .* value
+            Bbar[i, :] .+= a[j] .* value
+        end
+    end
+    return abar, Bbar
+end
+
+"""Raw pair products of independent standard-normal loadings."""
+function raw_pair_noise_mean(B)
+    n = size(B, 1)
+    out = zeros(eltype(B), n * (n + 1) ÷ 2)
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(n))
+        out[row] = ℒ.dot(view(B, i, :), view(B, j, :))
+    end
+    return out
+end
+
+function raw_pair_noise_pullback!(Bbar, B, cotangent)
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(size(B, 1)))
+        value = cotangent[row]
+        if i == j
+            Bbar[i, :] .+= 2 * value .* B[i, :]
+        else
+            Bbar[i, :] .+= value .* B[j, :]
+            Bbar[j, :] .+= value .* B[i, :]
+        end
+    end
+    return Bbar
+end
+
+function compressed_pair_noise_mean(B)
+    n = size(B, 1)
+    out = zeros(eltype(B), n * (n + 1) ÷ 2)
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(n))
+        out[row] = (i == j ? 1 : 2) * ℒ.dot(view(B, i, :), view(B, j, :))
+    end
+    return out
+end
+
+quadratic_noise_covariance(nExo::Int) = ℒ.Diagonal([i == j ? 2.0 : 1.0
+                                                  for (i, j) in quadratic_pair_indices(nExo)])
+
+"""Lift `[q_raw; x; 1]` to the compressed square of `[x; 1]`."""
+function quadratic_pair_lift(nPast::Int, nExo::Int = 0)
+    na0 = nPast + 1 + nExo
+    out = zeros(Float64, na0 * (na0 + 1) ÷ 2, nPast * (nPast + 1) ÷ 2 + nPast + 1)
+    nq0 = nPast * (nPast + 1) ÷ 2
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(na0))
+        if i <= nPast
+            if j <= nPast
+                out[row, quadratic_vech_index(i, j, nPast)] = i == j ? 1.0 : 2.0
+            else
+                out[row, nq0 + i] = 2.0
+            end
+        elseif i == nPast + 1
+            if j <= nPast
+                out[row, nq0 + j] = 2.0
+            else
+                out[row, nq0 + nPast + 1] = 1.0
+            end
+        end
+    end
+    return out
+end
+
+"""Lift `[q_raw; x; 1]` to the raw square of `[x; 1]`."""
+function quadratic_raw_pair_lift(nPast::Int, nExo::Int = 0)
+    na0 = nPast + 1 + nExo
+    out = zeros(Float64, na0 * (na0 + 1) ÷ 2, nPast * (nPast + 1) ÷ 2 + nPast + 1)
+    nq0 = nPast * (nPast + 1) ÷ 2
+    @inbounds for (row, (i, j)) in enumerate(quadratic_pair_indices(na0))
+        if i <= nPast
+            if j <= nPast
+                out[row, quadratic_vech_index(i, j, nPast)] = 1.0
+            else
+                out[row, nq0 + i] = 1.0
+            end
+        elseif i == nPast + 1
+            if j <= nPast
+                out[row, nq0 + j] = 1.0
+            else
+                out[row, nq0 + nPast + 1] = 1.0
+            end
+        end
+    end
+    return out
 end
 
 """
 Build the augmented linear state-space representation of the pruned second-order
 solution, together with the pieces needed for the state-dependent innovation
-covariance. `𝐒₁`/`𝐒₂` are the expanded solution matrices as returned by
+covariance. `𝐒₁`/`𝐒₂` are the solution matrices in the compressed symmetric
+quadratic basis as returned by
 `get_relevant_steady_state_and_state_update(Val(:pruned_second_order), …)`.
 """
 build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, oi::Vector{Int}) =
@@ -95,8 +261,6 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
     na = nPast + 1 + nExo                  # length of aug₁
     nq = nPast * (nPast + 1) ÷ 2           # compressed Kronecker block (vech, not vec)
     nz = 0                                 # set below, once nr is known
-    Dp, Lp = duplication_elimination(nPast)
-
     # Keep the element type of the solution matrices so ForwardDiff duals flow
     # through: the selection matrices below stay Float64 and promote on contact.
     # Only the past states (needed by the transition) and the observables (needed
@@ -118,31 +282,27 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
     S = zeros(na, nExo); S[nPast+2:end, :] = ℒ.I(nExo)
     Ea = zeros(na, nPast + 1); Ea[1:nPast, 1:nPast] = ℒ.I(nPast); Ea[nPast+1, nPast+1] = 1.0
 
-    # ā ⊗ ā = Eaa · [q; x₁ₚ; 1] — the structural identity that closes the system
-    Eaa = spzeros(na * na, nPast^2 + nPast + 1)
-    @inbounds for i in 1:na, j in 1:na
-        r = (i - 1) * na + j
-        if i <= nPast && j <= nPast
-            Eaa[r, (i - 1) * nPast + j] = 1.0
-        elseif i <= nPast && j == nPast + 1
-            Eaa[r, nPast^2 + i] = 1.0
-        elseif i == nPast + 1 && j <= nPast
-            Eaa[r, nPast^2 + j] = 1.0
-        elseif i == nPast + 1 && j == nPast + 1
-            Eaa[r, nPast^2 + nPast + 1] = 1.0
-        end
-    end
-    Eq = Eaa[:, 1:nPast^2] * Dp                # consume vech instead of vec
-    Ep = Eaa[:, nPast^2+1:nPast^2+nPast]
-    E1 = Eaa[:, nPast^2+nPast+1]
-
     PS1  = P * S1
     V    = PS1 * S
-    SS   = ℒ.kron(S, S)
-    vecI = vec(Matrix{Float64}(ℒ.I(nExo)))
-    PP   = ℒ.kron(PS1, PS1)
     EaP  = Ea[:, 1:nPast] * P
     A1   = S1 * EaP
+
+    # The solution uses the unique compressed Hessian columns.  Keep the
+    # retained q block raw (one entry per distinct state product), and build
+    # the two pair lifts explicitly: `pair_lift` supplies the multiplicities
+    # required by the compressed S₂ basis, while `raw_lift` closes the q
+    # recursion without doubling off-diagonal state products.
+    pair_lift = quadratic_pair_lift(nPast, nExo)
+    raw_lift = quadratic_raw_pair_lift(nPast, nExo)
+    pair_reorder = quadratic_pair_reorder(nPast)
+    pair_transition = pair_reorder * raw_pair_power_matrix(PS1)
+    pair_noise = pair_reorder * raw_pair_noise_mean(V)
+    compressed_shock_noise = compressed_pair_noise_mean(S)
+    pair_solution = S2 * pair_lift
+    pair_state = pair_transition * raw_lift
+    shock_pair_solution = compressed_pair_power_matrix_rect(S)
+    n_pair_exo = nExo * (nExo + 1) ÷ 2
+    shock_pair_covariance = Matrix(quadratic_noise_covariance(nExo))
 
     r1, r2, rq = 1:nr, nr+1:2nr, 2nr+1:nz
 
@@ -150,10 +310,12 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
     c = zeros(Tv, nz)
     𝒜[r1, r1] = A1;                     c[r1] = S1 * Ea[:, nPast+1]
     𝒜[r2, r2] = A1
-    𝒜[r2, rq] = S2 * Eq / 2
-    𝒜[r2, r1] = S2 * Ep * P / 2;        c[r2] = S2 * (E1 + SS * vecI) / 2
-    𝒜[rq, rq] = Lp * (PP * Eq)
-    𝒜[rq, r1] = Lp * (PP * Ep * P);     c[rq] = Lp * (PP * E1 + ℒ.kron(V, V) * vecI)
+    𝒜[r2, rq] = pair_solution[:, 1:nq] / 2
+    𝒜[r2, r1] = pair_solution[:, nq+1:nq+nPast] * P / 2
+    c[r2] = S2 * (pair_lift[:, end] + compressed_shock_noise) / 2
+    𝒜[rq, rq] = pair_state[:, 1:nq]
+    𝒜[rq, r1] = pair_state[:, nq+1:nq+nPast] * P
+    c[rq] = pair_state[:, end] + pair_noise
 
     𝒞 = zeros(length(observables_index), nz)
     @inbounds for (i, j) in enumerate(observables_index)
@@ -162,26 +324,33 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
     end
 
     # constant (state-independent) part of the innovation covariance
-    Hq = [zeros(Tv, nr, nExo^2); S2 * SS / 2; Lp * ℒ.kron(V, V)]
-    IK = Matrix{Float64}(ℒ.I(nExo^2)) + Matrix(commutation_matrix(nExo))
+    Hq = [zeros(Tv, nr, n_pair_exo); S2 * shock_pair_solution / 2;
+          pair_reorder * raw_pair_power_matrix(V)]
+    IK = shock_pair_covariance
     QH = Hq * IK * Hq'
     QH = (QH + QH') / 2
 
     # The constant blocks are returned as well: the reverse-mode rule needs them
     # to push cotangents from (𝒜, c, QH, g₀, Λ) back onto 𝐒₁ and 𝐒₂.
-    return (; nVars, nr, oas, nPast, nExo, na, nq, nz, past, P, S, Ea, S1, S2, PS1, V, Dp, Lp,
+    return (; nVars, nr, oas, nPast, nExo, na, nq, nz, past, P, S, Ea, S1, S2, PS1, V,
               𝒜, c, 𝒞, QH, G1 = S1 * S, r1,
               r2 = nr+1:2nr, rq = 2nr+1:nz,
-              Eq, Ep, E1, SS, vecI, IK, EaP, Ea1 = Ea[:, nPast+1], EpP = Ep * P,
-              PP, KVV = ℒ.kron(V, V), Hq)
+              Eq = pair_lift, Ep = pair_lift[:, nq+1:nq+nPast],
+              E1 = pair_lift[:, end], SS = compressed_pair_power_matrix_rect(S),
+              vecI = raw_pair_noise_mean(Matrix{Float64}(ℒ.I(nExo))), IK,
+              EaP, Ea1 = Ea[:, nPast+1], EpP = pair_lift[:, nq+1:nq+nPast] * P,
+              PP = pair_transition, KVV = pair_reorder * raw_pair_power_matrix(V), Hq,
+              pair_reorder,
+              pair_lift, raw_lift, pair_transition, pair_noise, compressed_shock_noise,
+              shock_pair_solution, shock_pair_covariance)
 end
 
 # State-dependent loading of the linear-in-ε part of the innovation, at state z.
 function quadratic_kalman_G(sys, z::AbstractVector{<:Real})
     ā = sys.Ea * vcat(sys.P * view(z, sys.r1), one(eltype(z)))
     ū = sys.PS1 * ā
-    G2 = sys.S2 * (ℒ.kron(ā, sys.S) + ℒ.kron(sys.S, ā)) / 2
-    Gq = sys.Lp * (ℒ.kron(ū, sys.V) + ℒ.kron(sys.V, ū))
+    G2 = sys.S2 * compressed_pair_mixed_matrix(ā, sys.S) / 2
+    Gq = sys.pair_reorder * raw_pair_mixed_matrix(ū, sys.V)
     return vcat(sys.G1, G2, Gq)
 end
 
@@ -500,25 +669,6 @@ function run_quadratic_kalman(sys,
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
                                       presample_periods, on_failure_loglikelihood)
 end
-
-
-
-# Adjoints of kron(A,B) with respect to each factor.
-function kron_adjoint_A(M, B, m, n, p, q)
-    A = zeros(eltype(M), m, n)
-    @inbounds for i in 1:m, j in 1:n
-        A[i, j] = sum(view(M, (i-1)*p+1:i*p, (j-1)*q+1:j*q) .* B)
-    end
-    return A
-end
-function kron_adjoint_B(M, A, m, n, p, q)
-    B = zeros(eltype(M), p, q)
-    @inbounds for i in 1:m, j in 1:n
-        @views B .+= A[i, j] .* M[(i-1)*p+1:i*p, (j-1)*q+1:j*q]
-    end
-    return B
-end
-
 # Discrete Lyapunov X = A X A' + Q.
 #
 # Float64 problems go through the package's workspace-backed doubling solver, which
@@ -569,9 +719,8 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
                                    workspaces = nothing,
                                    lyapunov_algorithm::Symbol = :doubling,
                                    initial_covariance::AbstractMatrix{<:AbstractFloat} = zeros(0, 0))
-    nr, nP, nE, na, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nz
+    nr, nP, nE, na, nq, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nq, sys.nz
     r1, r2, rq = sys.r1, sys.r2, sys.rq
-    Lp = Matrix(sys.Lp); Eq = Matrix(sys.Eq); Ep = Matrix(sys.Ep); E1 = Vector(sys.E1)
     g0, Λ = quadratic_kalman_affine_G(sys)
     Pz = qkf_Pz(sys)
 
@@ -622,34 +771,47 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
 
     S̄1 = zeros(size(sys.S1)); S̄2 = zeros(size(sys.S2))
     P̄S1 = zeros(size(sys.PS1)); V̄ = zeros(size(sys.V))
-    P̄P = zeros(size(sys.PP)); K̄VV = zeros(size(sys.KVV))
 
     Ā1 = 𝒜̄[r1, r1] + 𝒜̄[r2, r2]
     S̄1 .+= (Ā1 + Ā1_initial) * sys.EaP'
     S̄1 .+= Ḡ1_initial * sys.S'
-    S̄2 .+= 𝒜̄[r2, rq] * Eq' / 2 + 𝒜̄[r2, r1] * sys.EpP' / 2
-    P̄P .+= Lp' * 𝒜̄[rq, rq] * Eq' + Lp' * 𝒜̄[rq, r1] * sys.EpP'
     S̄1 .+= c̄[r1] * sys.Ea1'
-    S̄2 .+= c̄[r2] * (E1 + sys.SS * sys.vecI)' / 2
-    lc = Lp' * c̄[rq]
-    P̄P .+= lc * E1'; K̄VV .+= lc * sys.vecI'
 
+    # x₂ transition and its constant shock-pair loading use the compressed S₂
+    # basis directly.
+    S̄2 .+= 𝒜̄[r2, rq] * sys.pair_lift[:, 1:nq]' / 2
+    S̄2 .+= 𝒜̄[r2, r1] * (sys.pair_lift[:, nq+1:nq+nP] * sys.P)' / 2
+    S̄2 .+= c̄[r2] * (sys.pair_lift[:, end] + sys.compressed_shock_noise)' / 2
+
+    # q' = pair_transition * raw_lift * [q; x; 1] + pair_noise.  The
+    # transition is carried in raw unique pair coordinates and reordered only
+    # at the q-state boundary.
+    pair_statē = zeros(size(sys.pair_transition, 1), size(sys.raw_lift, 2))
+    pair_statē[:, 1:nq] .+= 𝒜̄[rq, rq]
+    pair_statē[:, nq+1:nq+nP] .+= 𝒜̄[rq, r1] * sys.P'
+    pair_statē[:, end] .+= c̄[rq]
+    pair_transition̄ = pair_statē * sys.raw_lift'
+    raw_transition̄ = sys.pair_reorder' * pair_transition̄
+    raw_pair_power_matrix_pullback!(P̄S1, sys.PS1, raw_transition̄)
+    raw_noisē = sys.pair_reorder' * c̄[rq]
+    raw_pair_noise_pullback!(V̄, sys.V, raw_noisē)
+
+    # QH = Hq * IK * Hq'.
     Rq = (Q̄H + Q̄H') / 2
     H̄q = 2 .* (Rq * sys.Hq * sys.IK)
-    S̄2 .+= H̄q[nr+1:2nr, :] * (sys.SS / 2)'
-    K̄VV .+= Lp' * H̄q[2nr+1:end, :]
+    S̄2 .+= H̄q[r2, :] * sys.shock_pair_solution' / 2
+    raw_pair_power_matrix_pullback!(V̄, sys.V,
+                                    sys.pair_reorder' * H̄q[rq, :])
 
     function absorb_G!(Ḡ, z)
         ā = sys.Ea * vcat(sys.P * view(z, r1), 1.0)
         ū = sys.PS1 * ā
-        Ma = ℒ.kron(ā, sys.S) + ℒ.kron(sys.S, ā)
         S̄1 .+= Ḡ[r1, :] * sys.S'
-        S̄2 .+= Ḡ[r2, :] * Ma' / 2
-        Gq = Lp' * Ḡ[rq, :]
-        ū̄ = vec(kron_adjoint_A(Gq, sys.V, nP, 1, nP, nE)) .+
-             vec(kron_adjoint_B(Gq, sys.V, nP, nE, nP, 1))
-        V̄ .+= kron_adjoint_B(Gq, reshape(ū, nP, 1), nP, 1, nP, nE) .+
-               kron_adjoint_A(Gq, reshape(ū, nP, 1), nP, nE, nP, 1)
+        S̄2 .+= Ḡ[r2, :] * compressed_pair_mixed_matrix(ā, sys.S)' / 2
+        ū̄ = zeros(nP); V̄local = zeros(size(sys.V))
+        raw_pair_mixed_pullback!(ū̄, V̄local, ū, sys.V,
+                                 sys.pair_reorder' * Ḡ[rq, :])
+        V̄ .+= V̄local
         P̄S1 .+= ū̄ * ā'
     end
     absorb_G!(reshape(ḡ0 .- vec(sum(Λ̄, dims = 2)), nz, nE), zeros(nz))
@@ -658,10 +820,6 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
         absorb_G!(reshape(Λ̄[:, i], nz, nE), e)
     end
 
-    P̄S1 .+= kron_adjoint_A(P̄P, sys.PS1, nP, na, nP, na) .+
-             kron_adjoint_B(P̄P, sys.PS1, nP, na, nP, na)
-    V̄  .+= kron_adjoint_A(K̄VV, sys.V, nP, nE, nP, nE) .+
-             kron_adjoint_B(K̄VV, sys.V, nP, nE, nP, nE)
     P̄S1 .+= V̄ * sys.S'
     S̄1  .+= sys.P' * P̄S1
 

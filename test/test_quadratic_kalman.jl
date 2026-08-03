@@ -24,6 +24,7 @@ import Zygote
 # -----------------------------------------------------------------------------
 
 @testset "Quadratic Kalman filter" begin
+    compressed_pair(x) = [x[i] * x[j] for j in 1:length(x) for i in j:length(x)]
 
     @model RBC_qkf begin
         1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -89,19 +90,20 @@ import Zygote
         Random.seed!(3)
         x1 = randn(sys.nr) * 0.02
         x2 = randn(sys.nr) * 0.002
-        z  = vcat(x1, x2, sys.Lp * ℒ.kron(sys.P * x1, sys.P * x1))
+        z  = vcat(x1, x2, compressed_pair(sys.P * x1))
 
         nmc = 200_000
-        a1 = zeros(sys.nr); a2 = zeros(sys.nr); aq = zeros(sys.nPast^2)
+        a1 = zeros(sys.nr); a2 = zeros(sys.nr); aq = zeros(sys.nq)
         for _ in 1:nmc
             ε = randn(sys.nExo)
             # the retained-row system: aug₁ built from the same past states
             ā = sys.Ea * vcat(sys.P * x1, 1.0)
             aug1 = ā + sys.S * ε
             n1 = sys.S1 * aug1
-            n2 = sys.S1 * (sys.Ea * vcat(sys.P * x2, 0.0)) + sys.S2 * ℒ.kron(aug1, aug1) / 2
+            n2 = sys.S1 * (sys.Ea * vcat(sys.P * x2, 0.0)) +
+                 sys.S2 * MacroModelling.compressed_kron²_power(aug1) / 2
             a1 .+= n1; a2 .+= n2
-            aq .+= ℒ.kron(sys.P * n1, sys.P * n1)
+            aq .+= compressed_pair(sys.P * n1)
         end
         a1 ./= nmc; a2 ./= nmc; aq ./= nmc
 
@@ -110,7 +112,7 @@ import Zygote
         tol = 20 / sqrt(nmc)          # generous multiple of the Monte-Carlo error
         @test rel(pred[1:sys.nr], a1) < tol
         @test rel(pred[sys.nr+1:2sys.nr], a2) < tol
-        @test rel(pred[2sys.nr+1:end], sys.Lp * aq) < tol
+        @test rel(pred[2sys.nr+1:end], aq) < tol
     end
 
     @testset "matches the particle filter on a nonlinear model" begin

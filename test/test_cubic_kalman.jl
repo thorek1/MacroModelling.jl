@@ -79,8 +79,9 @@ import AxisKeys: KeyedArray
     aug1 = vcat(a, 1.0, ε); aug1h = vcat(a, 0.0, ε)
     aug2 = vcat(b, 0.0, zeros(sys.nExo)); aug3 = vcat(p, 0.0, zeros(sys.nExo))
     reference = consistent(sys.S1 * aug1,
-                           sys.S1 * aug2 + sys.S2 * ℒ.kron(aug1, aug1) / 2,
-                           sys.S1 * aug3 + sys.S2 * ℒ.kron(aug1h, aug2) + sys.S3 * ℒ.kron(ℒ.kron(aug1, aug1), aug1) / 6)
+                           sys.S1 * aug2 + sys.S2 * MacroModelling.compressed_kron²_power(aug1) / 2,
+                           sys.S1 * aug3 + sys.S2 * MacroModelling.compressed_kron²(aug1h, aug2) +
+                           sys.S3 * MacroModelling.compressed_kron³_power(aug1) / 6)
     stepped = MacroModelling.cubic_kalman_step(sys, consistent(x1, x2, x3), ε)
     @test maximum(abs, stepped - reference) < 1e-12
     @test maximum(abs, stepped[sys.i11] - reference[sys.i11]) < 1e-12
@@ -202,9 +203,9 @@ import AxisKeys: KeyedArray
             S1 = reshape(θ[1:n1], size(sys.S1))
             S2 = reshape(θ[n1+1:n1+n2], size(sys.S2))
             S3 = reshape(θ[n1+n2+1:end], size(sys.S3))
-            M, mc, V, B2, Wq, Wl_t, Bc, MM = MacroModelling.cubic_derived_matrices(S1, S2, Pm, nP, nE, na)
+            M, mc, V, B2, Wq, Wl_t, Bc, M2, M3 = MacroModelling.cubic_derived_matrices(S1, S2, Pm, nP, nE, na)
             # the live-column slices are views of S2/S3 and must follow them
-            merge(sys, (; S1, S2, S3, M, mc, V, B2, Wq, Wl_t, Bc, MM,
+            merge(sys, (; S1, S2, S3, M, mc, V, B2, Wq, Wl_t, Bc, M2, M3,
                         S2k2 = S2[:, sys.k2cols], S2k12 = S2[:, sys.k12cols],
                         S3k3 = S3[:, sys.k3cols]))
         end

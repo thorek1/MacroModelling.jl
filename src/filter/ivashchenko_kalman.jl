@@ -4,16 +4,60 @@
 #
 # The second- and third-order perturbation solutions are treated as the actual
 # polynomial transition/measurement map, rather than as a linear map on the
-# pruned augmented state.  If u = [xₜ₋₁; εₜ] is Gaussian, the map is expanded
-# around E[u] and its moments are closed analytically.  At second order this
+# pruned augmented state. If u = [xₜ₋₁; 1; εₜ], its random component is Gaussian;
+# the map is expanded around E[u] and its moments are closed analytically. At second order this
 # requires fourth Gaussian moments; the cubic extension additionally uses the
 # sixth moments through the third Hermite component.
 
 const IVASHCHENKO_STATIONARY_MAXITER = 500
 const IVASHCHENKO_STATIONARY_TOLERANCE = 1e-10
 
-polynomial_pair_index(i::Int, j::Int, n::Int) = (i - 1) * n + j
-polynomial_triple_index(i::Int, j::Int, k::Int, n::Int) = ((i - 1) * n + j - 1) * n + k
+compressed_pair_index(i::Int, j::Int, n::Int) = begin
+    i, j = max(i, j), min(i, j)
+    (i - 1) * i ÷ 2 + j
+end
+
+compressed_triple_index(i::Int, j::Int, k::Int, n::Int) = begin
+    i, j, k = sort((i, j, k), rev = true)
+    (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + k
+end
+
+const IVASHCHENKO_SIXTH_PAIRINGS = (
+    ((1, 2), (3, 4), (5, 6)), ((1, 2), (3, 5), (4, 6)),
+    ((1, 2), (3, 6), (4, 5)), ((1, 3), (2, 4), (5, 6)),
+    ((1, 3), (2, 5), (4, 6)), ((1, 3), (2, 6), (4, 5)),
+    ((1, 4), (2, 3), (5, 6)), ((1, 4), (2, 5), (3, 6)),
+    ((1, 4), (2, 6), (3, 5)), ((1, 5), (2, 3), (4, 6)),
+    ((1, 5), (2, 4), (3, 6)), ((1, 5), (2, 6), (3, 4)),
+    ((1, 6), (2, 3), (4, 5)), ((1, 6), (2, 4), (3, 5)),
+    ((1, 6), (2, 5), (3, 4)))
+
+function ivashchenko_gaussian_sixth(indices::NTuple{6, Int}, covariance)
+    value = zero(eltype(covariance))
+    @inbounds for pairing in IVASHCHENKO_SIXTH_PAIRINGS
+        value += covariance[indices[pairing[1][1]], indices[pairing[1][2]]] *
+                 covariance[indices[pairing[2][1]], indices[pairing[2][2]]] *
+                 covariance[indices[pairing[3][1]], indices[pairing[3][2]]]
+    end
+    return value
+end
+
+function ivashchenko_gaussian_sixth_pullback!(covariance_bar, weight,
+                                              indices::NTuple{6, Int}, covariance)
+    @inbounds for pairing in IVASHCHENKO_SIXTH_PAIRINGS
+        first_pair, second_pair, third_pair = pairing
+        first_value = covariance[indices[first_pair[1]], indices[first_pair[2]]]
+        second_value = covariance[indices[second_pair[1]], indices[second_pair[2]]]
+        third_value = covariance[indices[third_pair[1]], indices[third_pair[2]]]
+        first_weight = weight * second_value * third_value
+        second_weight = weight * first_value * third_value
+        third_weight = weight * first_value * second_value
+        covariance_bar[indices[first_pair[1]], indices[first_pair[2]]] += first_weight
+        covariance_bar[indices[second_pair[1]], indices[second_pair[2]]] += second_weight
+        covariance_bar[indices[third_pair[1]], indices[third_pair[2]]] += third_weight
+    end
+    return covariance_bar
+end
 
 function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_index::Vector{Int}, order::Symbol)
     T = cons.post_model_macro
@@ -34,37 +78,34 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
 
     S1 = Matrix(𝐒[1][output_rows, :])
     S2 = Matrix(𝐒[2][output_rows, :])
+    n_pair = dv * (dv + 1) ÷ 2
     size(S1, 2) == dv || throw(DimensionMismatch("S₁ has $(size(S1, 2)) columns; expected $dv."))
-    size(S2, 2) == dv^2 || throw(DimensionMismatch("S₂ has $(size(S2, 2)) columns; expected $(dv^2)."))
+    size(S2, 2) == n_pair || throw(DimensionMismatch("S₂ has $(size(S2, 2)) columns; expected $n_pair compressed quadratic monomials."))
 
     scalar_type = order == :third_order ? promote_type(eltype(S1), eltype(S2), eltype(𝐒[3])) : promote_type(eltype(S1), eltype(S2))
     S1 = Matrix{scalar_type}(S1)
     S2 = Matrix{scalar_type}(S2)
 
-    # The raw solution is multiplied by symmetric Kronecker products.  Store
-    # the symmetrised derivative tensors; this is algebraically equivalent and
-    # makes the Gaussian contractions below use the actual Hessian/third
-    # derivative of the polynomial.
-    H = zeros(scalar_type, nout, dv, dv)
-    @inbounds for a in 1:nout, i in 1:dv, j in 1:dv
-        H[a, i, j] = (S2[a, polynomial_pair_index(i, j, dv)] +
-                      S2[a, polynomial_pair_index(j, i, dv)]) / 2
+    S3 = nothing
+    if order == :third_order
+        n_triple = dv * (dv + 1) * (dv + 2) ÷ 6
+        S3 = Matrix(𝐒[3][output_rows, :])
+        size(S3, 2) == n_triple || throw(DimensionMismatch("S₃ has $(size(S3, 2)) columns; expected $n_triple compressed cubic monomials."))
+        S3 = Matrix{scalar_type}(S3)
     end
 
-    third_derivative = nothing
+    pair_indices = Tuple{Int, Int}[]
+    pair_multiplicities = Int[]
+    for i in 1:dv, j in 1:i
+        push!(pair_indices, (i, j))
+        push!(pair_multiplicities, i == j ? 1 : 2)
+    end
+    triple_indices = Tuple{Int, Int, Int}[]
+    triple_multiplicities = Int[]
     if order == :third_order
-        S3 = Matrix(𝐒[3][output_rows, :])
-        size(S3, 2) == dv^3 || throw(DimensionMismatch("S₃ has $(size(S3, 2)) columns; expected $(dv^3)."))
-        S3 = Matrix{scalar_type}(S3)
-        third_derivative = zeros(scalar_type, nout, dv, dv, dv)
-        @inbounds for a in 1:nout, i in 1:dv, j in 1:dv, k in 1:dv
-            third_derivative[a, i, j, k] = (
-                S3[a, polynomial_triple_index(i, j, k, dv)] +
-                S3[a, polynomial_triple_index(i, k, j, dv)] +
-                S3[a, polynomial_triple_index(j, i, k, dv)] +
-                S3[a, polynomial_triple_index(j, k, i, dv)] +
-                S3[a, polynomial_triple_index(k, i, j, dv)] +
-                S3[a, polynomial_triple_index(k, j, i, dv)]) / 6
+        for i in 1:dv, j in 1:i, k in 1:j
+            push!(triple_indices, (i, j, k))
+            push!(triple_multiplicities, i == j == k ? 1 : (i == j || j == k ? 3 : 6))
         end
     end
 
@@ -75,6 +116,26 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
     state_position = row_position[past]
     observation_position = row_position[observables_index]
     random_indices = vcat(collect(1:nPast), collect(nPast + 2:dv))
+    random_pair_indices = Tuple{Int, Int}[]
+    random_pair_columns = Int[]
+    random_pair_multiplicities = Int[]
+    for r in 1:d, s in 1:r
+        push!(random_pair_indices, (r, s))
+        i, j = random_indices[r], random_indices[s]
+        push!(random_pair_columns, compressed_pair_index(i, j, dv))
+        push!(random_pair_multiplicities, r == s ? 1 : 2)
+    end
+    random_triple_indices = Tuple{Int, Int, Int}[]
+    random_triple_columns = Int[]
+    random_triple_multiplicities = Int[]
+    if order == :third_order
+        for r in 1:d, s in 1:r, q in 1:s
+            push!(random_triple_indices, (r, s, q))
+            i, j, k = random_indices[r], random_indices[s], random_indices[q]
+            push!(random_triple_columns, compressed_triple_index(i, j, k, dv))
+            push!(random_triple_multiplicities, r == s == q ? 1 : (r == s || s == q ? 3 : 6))
+        end
+    end
 
     # The linear-limit covariance is a useful starting point for the nonlinear
     # stationary fixed point and also makes the :diagonal option match Kalman's
@@ -84,54 +145,37 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
     B = state_s1[:, nPast + 2:dv]
 
     return (; order, nVars, nPast, nExo, d, dv, nout, output_rows, past,
-            S1, H, third_derivative, state_position, observation_position,
-            random_indices, A, B)
+            n_pair, pair_indices, pair_multiplicities, triple_indices,
+            triple_multiplicities, S1, S2, S3, state_position,
+            observation_position, random_indices, random_pair_indices,
+            random_pair_columns, random_pair_multiplicities,
+            random_triple_indices, random_triple_columns,
+            random_triple_multiplicities, A, B)
 end
 
 build_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol) =
     build_ivashchenko_kalman_system_from_constants(𝓂.constants, 𝐒, oi, order)
 
 function ivashchenko_kalman_workspace(sys, scalar_type::Type)
-    nout, d, dv = sys.nout, sys.d, sys.dv
+    nout, d, n_pair = sys.nout, sys.d, sys.n_pair
     third = sys.order == :third_order
+    n_triple = length(sys.triple_indices)
     return (; covariance_input = zeros(scalar_type, d, d),
-            vbar = zeros(scalar_type, dv),
+            vbar = zeros(scalar_type, sys.dv),
             mean = zeros(scalar_type, nout),
             linear = zeros(scalar_type, nout, d),
             effective_linear = zeros(scalar_type, nout, d),
-            hessian = zeros(scalar_type, nout, d, d),
-            hessian_covariance = zeros(scalar_type, nout, d, d),
+            hessian = zeros(scalar_type, nout, n_pair),
+            pair_mean = zeros(scalar_type, n_pair),
+            pair_covariance = zeros(scalar_type, n_pair, n_pair),
             covariance = zeros(scalar_type, nout, nout),
-            third_derivative = third ? zeros(scalar_type, nout, d, d, d) : nothing,
-            third_covariance = third ? zeros(scalar_type, nout, d, d, d) : nothing,
-            third_scratch = third ? zeros(scalar_type, nout, d, d, d) : nothing)
-end
-
-function ivashchenko_transform_third_tensor!(destination, scratch, tensor, covariance)
-    nout, d = size(tensor, 1), size(tensor, 2)
-    @inbounds for a in 1:nout, p in 1:d, j in 1:d, k in 1:d
-        value = zero(eltype(destination))
-        for i in 1:d
-            value += covariance[p, i] * tensor[a, i, j, k]
-        end
-        scratch[a, p, j, k] = value
-    end
-    @inbounds for a in 1:nout, p in 1:d, q in 1:d, k in 1:d
-        value = zero(eltype(destination))
-        for j in 1:d
-            value += covariance[q, j] * scratch[a, p, j, k]
-        end
-        destination[a, p, q, k] = value
-    end
-    @inbounds for a in 1:nout, p in 1:d, q in 1:d, r in 1:d
-        value = zero(eltype(destination))
-        for k in 1:d
-            value += covariance[r, k] * destination[a, p, q, k]
-        end
-        scratch[a, p, q, r] = value
-    end
-    destination .= scratch
-    return nothing
+            third_derivative = third ? zeros(scalar_type, nout, n_triple) : nothing,
+            third_covariance = third ? zeros(scalar_type, n_triple, n_triple) : nothing,
+            third_cross = third ? zeros(scalar_type, d, n_triple) : nothing,
+            third_linear = third ? zeros(scalar_type, n_triple, d) : nothing,
+            pair_scratch = zeros(scalar_type, n_pair),
+            triple_scratch = third ? zeros(scalar_type, n_triple) : nothing,
+            basis = zeros(scalar_type, sys.dv))
 end
 
 function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
@@ -147,77 +191,90 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
     ws.vbar[1:nPast] .= mean_state
     ws.vbar[nPast + 1] = one(eltype(ws.vbar))
 
-    @inbounds for a in 1:nout
-        Hfull = view(sys.H, a, :, :)
-        third_full = sys.third_derivative === nothing ? nothing : view(sys.third_derivative, a, :, :, :)
-        value = ℒ.dot(view(sys.S1, a, :), ws.vbar)
-        for i in 1:dv, j in 1:dv
-            value += Hfull[i, j] * ws.vbar[i] * ws.vbar[j] / 2
-        end
-        if third_full !== nothing
-            for i in 1:dv, j in 1:dv, k in 1:dv
-                value += third_full[i, j, k] * ws.vbar[i] * ws.vbar[j] * ws.vbar[k] / 6
-            end
-        end
-
-        for r in 1:d
-            i = sys.random_indices[r]
-            slope = sys.S1[a, i]
-            for j in 1:dv
-                slope += Hfull[i, j] * ws.vbar[j]
-            end
-            if third_full !== nothing
-                for j in 1:dv, k in 1:dv
-                    slope += third_full[i, j, k] * ws.vbar[j] * ws.vbar[k] / 2
-                end
-            end
-            ws.linear[a, r] = slope
-        end
-
-        for r in 1:d, s in 1:d
-            i, j = sys.random_indices[r], sys.random_indices[s]
-            hessian = Hfull[i, j]
-            if third_full !== nothing
-                for k in 1:dv
-                    hessian += third_full[i, j, k] * ws.vbar[k]
-                end
-            end
-            ws.hessian[a, r, s] = hessian
-        end
-
-        if third_full !== nothing
-            for r in 1:d, s in 1:d, q in 1:d
-                ws.third_derivative[a, r, s, q] = third_full[
-                    sys.random_indices[r], sys.random_indices[s], sys.random_indices[q]]
-            end
-        end
-
-        ws.mean[a] = value + sum(ws.hessian[a, r, s] * Σ[r, s] for r in 1:d, s in 1:d) / 2
+    compressed_kron²_power!(ws.pair_scratch, ws.vbar)
+    ws.mean .= sys.S1 * ws.vbar + sys.S2 * ws.pair_scratch / 2
+    if sys.order == :third_order
+        compressed_kron³_power!(ws.triple_scratch, ws.vbar)
+        ws.mean .+= sys.S3 * ws.triple_scratch / 6
     end
 
+    fill!(ws.linear, zero(eltype(ws.linear)))
+    @inbounds for r in 1:d
+        i = sys.random_indices[r]
+        ws.linear[:, r] .= sys.S1[:, i]
+        fill!(ws.basis, zero(eltype(ws.basis)))
+        ws.basis[i] = one(eltype(ws.basis))
+        compressed_kron²!(ws.pair_scratch, ws.vbar, ws.basis)
+        ws.linear[:, r] .+= sys.S2 * ws.pair_scratch / 2
+        if sys.order == :third_order
+            compressed_kron³!(ws.triple_scratch, ws.vbar, ws.vbar, ws.basis)
+            ws.linear[:, r] .+= sys.S3 * ws.triple_scratch / 2
+        end
+    end
+
+    @inbounds for p in eachindex(sys.random_pair_indices)
+        r, s = sys.random_pair_indices[p]
+        ws.hessian[:, p] .= sys.S2[:, sys.random_pair_columns[p]]
+        if sys.order == :third_order
+            fill!(ws.basis, zero(eltype(ws.basis)))
+            ws.basis[sys.random_indices[r]] = one(eltype(ws.basis))
+            fill!(ws.pair_scratch, zero(eltype(ws.pair_scratch)))
+            second_basis = copy(ws.basis)
+            fill!(ws.basis, zero(eltype(ws.basis)))
+            ws.basis[sys.random_indices[s]] = one(eltype(ws.basis))
+            compressed_kron³!(ws.triple_scratch, ws.vbar, second_basis, ws.basis)
+            ws.hessian[:, p] .+= sys.S3 * ws.triple_scratch
+        end
+    end
+
+    fill!(ws.pair_mean, zero(eltype(ws.pair_mean)))
+    @inbounds for p in eachindex(sys.random_pair_indices)
+        r, s = sys.random_pair_indices[p]
+        ws.pair_mean[p] = sys.random_pair_multiplicities[p] * Σ[r, s]
+    end
+    fill!(ws.pair_covariance, zero(eltype(ws.pair_covariance)))
+    @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+        i, j = sys.random_pair_indices[p]
+        k, l = sys.random_pair_indices[q]
+        ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
+            sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
+    end
+
+    ws.mean .+= ws.hessian * ws.pair_mean / 2
     ws.effective_linear .= ws.linear
+    ws.covariance .= ws.linear * Σ * ws.linear'
+    ws.covariance .+= ws.hessian * ws.pair_covariance * ws.hessian' / 4
+
     if sys.order == :third_order
-        @inbounds for a in 1:nout, r in 1:d
-            correction = zero(eltype(ws.effective_linear))
-            for s in 1:d, q in 1:d
-                correction += ws.third_derivative[a, r, s, q] * Σ[s, q] / 2
-            end
-            ws.effective_linear[a, r] += correction
+        fill!(ws.third_derivative, zero(eltype(ws.third_derivative)))
+        @inbounds for p in eachindex(sys.random_triple_columns)
+            ws.third_derivative[:, p] .= sys.S3[:, sys.random_triple_columns[p]]
         end
-    end
-
-    @inbounds for a in 1:nout
-        H = view(ws.hessian, a, :, :)
-        ws.hessian_covariance[a, :, :] .= Σ * H * Σ
-    end
-    ws.covariance .= ws.effective_linear * Σ * ws.effective_linear'
-    ws.covariance .+= reshape(ws.hessian, nout, d^2) * reshape(ws.hessian_covariance, nout, d^2)' / 2
-
-    if sys.order == :third_order
-        ivashchenko_transform_third_tensor!(ws.third_covariance, ws.third_scratch,
-                                             ws.third_derivative, Σ)
-        ws.covariance .+= reshape(ws.third_derivative, nout, d^3) *
-                          reshape(ws.third_covariance, nout, d^3)' / 6
+        fill!(ws.third_cross, zero(eltype(ws.third_cross)))
+        fill!(ws.third_linear, zero(eltype(ws.third_linear)))
+        @inbounds for p in eachindex(sys.random_triple_indices)
+            i, j, k = sys.random_triple_indices[p]
+            multiplicity = sys.random_triple_multiplicities[p]
+            for r in 1:d
+                ws.third_cross[r, p] = multiplicity * (Σ[r, i] * Σ[j, k] +
+                    Σ[r, j] * Σ[i, k] + Σ[r, k] * Σ[i, j])
+                ws.third_linear[p, r] = multiplicity * ((r == i) * Σ[j, k] +
+                    (r == j) * Σ[i, k] + (r == k) * Σ[i, j])
+            end
+        end
+        ws.effective_linear .+= ws.third_derivative * ws.third_linear / 6
+        fill!(ws.third_covariance, zero(eltype(ws.third_covariance)))
+        @inbounds for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
+            i, j, k = sys.random_triple_indices[p]
+            l, m, n = sys.random_triple_indices[q]
+            indices = (i, j, k, l, m, n)
+            ws.third_covariance[p, q] = sys.random_triple_multiplicities[p] *
+                sys.random_triple_multiplicities[q] * ivashchenko_gaussian_sixth(indices, Σ)
+        end
+        ws.covariance .+= (ws.linear * ws.third_cross * ws.third_derivative' +
+                           ws.third_derivative * ws.third_cross' * ws.linear') / 6
+        ws.covariance .+= ws.third_derivative * ws.third_covariance *
+                          ws.third_derivative' / 36
     end
 
     @inbounds for j in 1:nout, i in 1:j
@@ -293,9 +350,12 @@ function ivashchenko_copy_moment_tape(ws)
     return (; covariance_input = copy(ws.covariance_input),
             vbar = copy(ws.vbar), mean = copy(ws.mean), linear = copy(ws.linear),
             effective_linear = copy(ws.effective_linear), hessian = copy(ws.hessian),
-            hessian_covariance = copy(ws.hessian_covariance), covariance = copy(ws.covariance),
+            pair_mean = copy(ws.pair_mean), pair_covariance = copy(ws.pair_covariance),
+            covariance = copy(ws.covariance),
             third_derivative = ws.third_derivative === nothing ? nothing : copy(ws.third_derivative),
-            third_covariance = ws.third_covariance === nothing ? nothing : copy(ws.third_covariance))
+            third_covariance = ws.third_covariance === nothing ? nothing : copy(ws.third_covariance),
+            third_cross = ws.third_cross === nothing ? nothing : copy(ws.third_cross),
+            third_linear = ws.third_linear === nothing ? nothing : copy(ws.third_linear))
 end
 
 function ivashchenko_stationary_initialization_taped(sys, initial_mean, initial_covariance, ws;
@@ -503,151 +563,165 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
     nout, d, dv = sys.nout, sys.d, sys.dv
     Σ = moment_tape.covariance_input
     v = moment_tape.vbar
-    L = moment_tape.effective_linear
+    L = moment_tape.linear
     K = moment_tape.hessian
     third = moment_tape.third_derivative
+    pair_mean = moment_tape.pair_mean
+    pair_covariance = moment_tape.pair_covariance
     gΣ = zeros(eltype(Σ), d, d)
     gv = zeros(eltype(v), dv)
-    gL = zeros(eltype(L), nout, d)
-    gK = zeros(eltype(K), nout, d, d)
     gS1 = zeros(eltype(sys.S1), nout, dv)
-    gH = zeros(eltype(sys.H), nout, dv, dv)
-    gthird = third === nothing ? nothing : zeros(eltype(third), nout, dv, dv, dv)
+    gS2 = zeros(eltype(sys.S2), nout, sys.n_pair)
+    gS3 = third === nothing ? nothing : zeros(eltype(third), nout, length(sys.triple_indices))
 
-    # C₁ = L Σ L'.
-    @inbounds for a in 1:nout, b in 1:nout, r in 1:d, s in 1:d
-        gL[a, r] += (covariance_bar[a, b] + covariance_bar[b, a]) * L[b, s] * Σ[r, s]
-        gΣ[r, s] += covariance_bar[a, b] * L[a, r] * L[b, s]
+    covariance_bar_symmetric = (covariance_bar + covariance_bar') / 2
+    gL = 2 * covariance_bar_symmetric * L * Σ
+    gΣ .+= L' * covariance_bar_symmetric * L
+    gK = covariance_bar_symmetric * K * pair_covariance / 2
+    gG2 = K' * covariance_bar_symmetric * K / 4
+    gK .+= mean_bar * pair_mean' / 2
+    gpair_mean = K' * mean_bar / 2
+
+    if third !== nothing
+        third_covariance = moment_tape.third_covariance
+        third_cross = moment_tape.third_cross
+        gL .+= covariance_bar_symmetric * third * third_cross' / 3
+        gT = covariance_bar_symmetric * L * third_cross / 3 +
+             covariance_bar_symmetric * third * third_covariance / 18
+        gR = L' * covariance_bar_symmetric * third / 3
+        gG3 = third' * covariance_bar_symmetric * third / 36
+
+        @inbounds for p in eachindex(sys.random_pair_indices)
+            i, j = sys.random_pair_indices[p]
+            gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
+        end
+        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+            i, j = sys.random_pair_indices[p]
+            k, l = sys.random_pair_indices[q]
+            weight = gG2[p, q] * sys.random_pair_multiplicities[p] *
+                     sys.random_pair_multiplicities[q]
+            gΣ[i, k] += weight * Σ[j, l]
+            gΣ[j, l] += weight * Σ[i, k]
+            gΣ[i, l] += weight * Σ[j, k]
+            gΣ[j, k] += weight * Σ[i, l]
+        end
+        @inbounds for p in eachindex(sys.random_triple_indices), r in 1:d
+            i, j, k = sys.random_triple_indices[p]
+            weight = gR[r, p] * sys.random_triple_multiplicities[p]
+            gΣ[r, i] += weight * (Σ[j, k])
+            gΣ[j, k] += weight * Σ[r, i]
+            gΣ[r, j] += weight * Σ[i, k]
+            gΣ[i, k] += weight * Σ[r, j]
+            gΣ[r, k] += weight * Σ[i, j]
+            gΣ[i, j] += weight * Σ[r, k]
+        end
+        @inbounds for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
+            i, j, k = sys.random_triple_indices[p]
+            l, m, n = sys.random_triple_indices[q]
+            weight = gG3[p, q] * sys.random_triple_multiplicities[p] *
+                     sys.random_triple_multiplicities[q]
+            ivashchenko_gaussian_sixth_pullback!(gΣ, weight, (i, j, k, l, m, n), Σ)
+        end
+    else
+        @inbounds for p in eachindex(sys.random_pair_indices)
+            i, j = sys.random_pair_indices[p]
+            gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
+        end
+        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+            i, j = sys.random_pair_indices[p]
+            k, l = sys.random_pair_indices[q]
+            weight = gG2[p, q] * sys.random_pair_multiplicities[p] *
+                     sys.random_pair_multiplicities[q]
+            gΣ[i, k] += weight * Σ[j, l]
+            gΣ[j, l] += weight * Σ[i, k]
+            gΣ[i, l] += weight * Σ[j, k]
+            gΣ[j, k] += weight * Σ[i, l]
+        end
     end
 
-    # C₂ = 1/2 K : (Σ K Σ), written with matrix contractions to keep the cubic
-    # reverse pass manageable for the unpruned state dimension.
-    hessian_covariance_bar = zeros(eltype(K), nout, d, d)
-    @inbounds for b in 1:nout, i in 1:d, j in 1:d, a in 1:nout
-        hessian_covariance_bar[b, i, j] += covariance_bar[a, b] * K[a, i, j] / 2
-        gK[a, i, j] += covariance_bar[a, b] * moment_tape.hessian_covariance[b, i, j] / 2
+    pair_cotangent = zeros(eltype(v), sys.n_pair)
+    triple_cotangent = third === nothing ? nothing : zeros(eltype(v), length(sys.triple_indices))
+    first_bar = zeros(eltype(v), dv)
+    second_bar = zeros(eltype(v), dv)
+    third_bar = zeros(eltype(v), dv)
+    basis = zeros(eltype(v), dv)
+    second_basis = zeros(eltype(v), dv)
+    pair_value = zeros(eltype(v), sys.n_pair)
+    triple_value = third === nothing ? nothing : zeros(eltype(v), length(sys.triple_indices))
+
+    compressed_kron²_power!(pair_value, v)
+    gS1 .+= mean_bar * v'
+    gv .+= sys.S1' * mean_bar
+    gS2 .+= mean_bar * pair_value' / 2
+    pair_cotangent .= sys.S2' * mean_bar / 2
+    compressed_kron²_power_vjp!(first_bar, pair_cotangent, v)
+    gv .+= first_bar
+    if third !== nothing
+        compressed_kron³_power!(triple_value, v)
+        gS3 .+= mean_bar * triple_value' / 6
+        triple_cotangent .= sys.S3' * mean_bar / 6
+        compressed_kron³_power_vjp!(first_bar, triple_cotangent, v)
+        gv .+= first_bar
     end
-    @inbounds for b in 1:nout, i in 1:d, j in 1:d, p in 1:d, q in 1:d
-        value = hessian_covariance_bar[b, i, j]
-        gK[b, p, q] += value * Σ[i, p] * Σ[q, j]
-        gΣ[i, p] += value * K[b, p, q] * Σ[q, j]
-        gΣ[q, j] += value * Σ[i, p] * K[b, p, q]
+
+    @inbounds for r in 1:d
+        i = sys.random_indices[r]
+        fill!(basis, zero(eltype(basis)))
+        basis[i] = one(eltype(basis))
+        compressed_kron²!(pair_value, v, basis)
+        gS1[:, i] .+= gL[:, r]
+        gS2 .+= gL[:, r] * (pair_value / 2)'
+        pair_cotangent .= sys.S2' * gL[:, r] / 2
+        compressed_kron²_vjp!(first_bar, second_bar, pair_cotangent, v, basis)
+        gv .+= first_bar
+        if third !== nothing
+            compressed_kron³!(triple_value, v, v, basis)
+            gS3 .+= gL[:, r] * (triple_value / 2)'
+            triple_cotangent .= sys.S3' * gL[:, r] / 2
+            compressed_kron³_vjp!(first_bar, second_bar, third_bar,
+                                  triple_cotangent, v, v, basis)
+            gv .+= first_bar + second_bar
+        end
+    end
+
+    @inbounds for p in eachindex(sys.random_pair_indices)
+        r, s = sys.random_pair_indices[p]
+        global_column = sys.random_pair_columns[p]
+        gS2[:, global_column] .+= gK[:, p]
+        if third !== nothing
+            fill!(basis, zero(eltype(basis)))
+            fill!(second_basis, zero(eltype(second_basis)))
+            basis[sys.random_indices[r]] = one(eltype(basis))
+            second_basis[sys.random_indices[s]] = one(eltype(second_basis))
+            compressed_kron³!(triple_value, v, basis, second_basis)
+            gS3 .+= gK[:, p] * triple_value'
+            triple_cotangent .= sys.S3' * gK[:, p]
+            compressed_kron³_vjp!(first_bar, second_bar, third_bar,
+                                  triple_cotangent, v, basis, second_basis)
+            gv .+= first_bar
+        end
     end
 
     if third !== nothing
-        # C₃ = 1/6 T : (Σ ⊗ Σ ⊗ Σ)T'.
-        third_covariance_bar = zeros(eltype(third), nout, d, d, d)
-        @inbounds for b in 1:nout, i in 1:d, j in 1:d, k in 1:d, a in 1:nout
-            third_covariance_bar[b, i, j, k] += covariance_bar[a, b] * third[a, i, j, k] / 6
-            gthird[a, sys.random_indices[i], sys.random_indices[j], sys.random_indices[k]] +=
-                covariance_bar[a, b] * moment_tape.third_covariance[b, i, j, k] / 6
-        end
-        @inbounds for b in 1:nout, i in 1:d, j in 1:d, k in 1:d,
-                       p in 1:d, q in 1:d, r in 1:d
-            value = third_covariance_bar[b, i, j, k] * third[b, p, q, r]
-            gthird[b, sys.random_indices[p], sys.random_indices[q], sys.random_indices[r]] +=
-                third_covariance_bar[b, i, j, k] * Σ[i, p] * Σ[j, q] * Σ[k, r]
-            gΣ[i, p] += value * Σ[j, q] * Σ[k, r]
-            gΣ[j, q] += value * Σ[i, p] * Σ[k, r]
-            gΣ[k, r] += value * Σ[i, p] * Σ[j, q]
-        end
-    end
-
-    # The mean is f(v) + 1/2 K:Σ.
-    @inbounds for a in 1:nout, r in 1:d, s in 1:d
-        gK[a, r, s] += mean_bar[a] * Σ[r, s] / 2
-        gΣ[r, s] += mean_bar[a] * K[a, r, s] / 2
-    end
-
-    # L_eff = L₀ + 1/2 T⋅Σ.
-    @inbounds for a in 1:nout, r in 1:d
-        if third !== nothing
-            for s in 1:d, q in 1:d
-                i = sys.random_indices[r]
-                j = sys.random_indices[s]
-                k = sys.random_indices[q]
-                gthird[a, i, j, k] += gL[a, r] * Σ[s, q] / 2
-                gΣ[s, q] += gL[a, r] * third[a, r, s, q] / 2
-            end
-        end
-    end
-    linear_bar = gL
-
-    # K = H[random, random] + T[random, random, :]⋅v.
-    @inbounds for a in 1:nout, r in 1:d, s in 1:d
-        i, j = sys.random_indices[r], sys.random_indices[s]
-        gH[a, i, j] += gK[a, r, s]
-        if third !== nothing
-            for q in 1:dv
-                gthird[a, i, j, q] += gK[a, r, s] * v[q]
-                gv[q] += gK[a, r, s] * sys.third_derivative[a, i, j, q]
-            end
-        end
-    end
-
-    # L₀ = S₁[random] + H[random, :]v + 1/2 T[random, :, :]vv.
-    @inbounds for a in 1:nout, r in 1:d
-        i = sys.random_indices[r]
-        gS1[a, i] += linear_bar[a, r]
-        for j in 1:dv
-            gH[a, i, j] += linear_bar[a, r] * v[j]
-            gv[j] += linear_bar[a, r] * sys.H[a, i, j]
-        end
-        if third !== nothing
-            for j in 1:dv, k in 1:dv
-                value = linear_bar[a, r] * v[j] * v[k] / 2
-                gthird[a, i, j, k] += value
-                gv[j] += linear_bar[a, r] * sys.third_derivative[a, i, j, k] * v[k] / 2
-                gv[k] += linear_bar[a, r] * sys.third_derivative[a, i, j, k] * v[j] / 2
-            end
-        end
-    end
-
-    # f(v) = S₁v + 1/2 Hv² + 1/6 Tv³.
-    @inbounds for a in 1:nout
-        coefficient_bar = mean_bar[a]
-        for i in 1:dv
-            gS1[a, i] += coefficient_bar * v[i]
-            gv[i] += coefficient_bar * sys.S1[a, i]
-        end
-        for i in 1:dv, j in 1:dv
-            value = coefficient_bar * v[i] * v[j] / 2
-            gH[a, i, j] += value
-            gv[i] += coefficient_bar * sys.H[a, i, j] * v[j] / 2
-            gv[j] += coefficient_bar * sys.H[a, i, j] * v[i] / 2
-        end
-        if third !== nothing
-            for i in 1:dv, j in 1:dv, k in 1:dv
-                value = coefficient_bar * v[i] * v[j] * v[k] / 6
-                gthird[a, i, j, k] += value
-                gv[i] += coefficient_bar * sys.third_derivative[a, i, j, k] * v[j] * v[k] / 6
-                gv[j] += coefficient_bar * sys.third_derivative[a, i, j, k] * v[i] * v[k] / 6
-                gv[k] += coefficient_bar * sys.third_derivative[a, i, j, k] * v[i] * v[j] / 6
-            end
+        @inbounds for p in eachindex(sys.random_triple_columns)
+            gS3[:, sys.random_triple_columns[p]] .+= gT[:, p]
         end
     end
 
     gΣ .= (gΣ + gΣ') / 2
     gmean = copy(view(gv, 1:sys.nPast))
     gcovariance = copy(view(gΣ, 1:sys.nPast, 1:sys.nPast))
-    return gmean, gcovariance, gS1, gH, gthird
+    return gmean, gcovariance, gS1, gS2, gS3
 end
 
-function ivashchenko_solution_matrix_pullback(sys, gS1, gH, gthird, solution_matrices)
-    gS2 = zeros(eltype(solution_matrices[2]), size(solution_matrices[2]))
-    @inbounds for a in 1:sys.nout, i in 1:sys.dv, j in 1:sys.dv
-        gS2[a, polynomial_pair_index(i, j, sys.dv)] += (gH[a, i, j] + gH[a, j, i]) / 2
-    end
-    if gthird === nothing
+function ivashchenko_solution_matrix_pullback(sys, gS1, gS2, gS3, solution_matrices)
+    size(solution_matrices[2], 2) == sys.n_pair ||
+        throw(DimensionMismatch("Ivashchenko quadratic pullback requires compressed solution columns."))
+    if gS3 === nothing
         return gS1, gS2, nothing
     end
-    gS3 = zeros(eltype(solution_matrices[3]), size(solution_matrices[3]))
-    @inbounds for a in 1:sys.nout, i in 1:sys.dv, j in 1:sys.dv, k in 1:sys.dv
-        gS3[a, polynomial_triple_index(i, j, k, sys.dv)] += (
-            gthird[a, i, j, k] + gthird[a, i, k, j] +
-            gthird[a, j, i, k] + gthird[a, j, k, i] +
-            gthird[a, k, i, j] + gthird[a, k, j, i]) / 6
-    end
+    size(solution_matrices[3], 2) == length(sys.triple_indices) ||
+        throw(DimensionMismatch("Ivashchenko cubic pullback requires compressed solution columns."))
     return gS1, gS2, gS3
 end
 
@@ -670,8 +744,8 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
     covariance_bar = zeros(scalar_type, sys.nPast, sys.nPast)
     data_bar = zeros(scalar_type, size(tape.data))
     gS1 = zeros(scalar_type, size(sys.S1))
-    gH = zeros(scalar_type, size(sys.H))
-    gthird = sys.third_derivative === nothing ? nothing : zeros(scalar_type, size(sys.third_derivative))
+    gS2 = zeros(scalar_type, size(sys.S2))
+    gS3 = sys.S3 === nothing ? nothing : zeros(scalar_type, size(sys.S3))
 
     @inbounds for t in nT:-1:1
         idx = tape.observed_indices[t]
@@ -721,13 +795,13 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
             covariance_output_bar[sys.observation_position[idx], sys.state_position] .+= cross_bar' / 2
         end
 
-        mean_bar, covariance_bar, local_S1, local_H, local_third =
+        mean_bar, covariance_bar, local_S1, local_S2, local_S3 =
             ivashchenko_polynomial_moments_pullback(sys, tape.moment_tapes[t],
                                                     mean_output_bar, covariance_output_bar)
         gS1 .+= local_S1
-        gH .+= local_H
-        if gthird !== nothing
-            gthird .+= local_third
+        gS2 .+= local_S2
+        if gS3 !== nothing
+            gS3 .+= local_S3
         end
     end
 
@@ -740,13 +814,13 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
             output_mean_bar[sys.state_position] .= initialization_mean_bar
             output_covariance_bar[sys.state_position, sys.state_position] .=
                 (initialization_covariance_bar + initialization_covariance_bar') / 2
-            initialization_mean_bar, initialization_covariance_bar, local_S1, local_H, local_third =
+            initialization_mean_bar, initialization_covariance_bar, local_S1, local_S2, local_S3 =
                 ivashchenko_polynomial_moments_pullback(sys, iteration.moment_tape,
                                                         output_mean_bar, output_covariance_bar)
             gS1 .+= local_S1
-            gH .+= local_H
-            if gthird !== nothing
-                gthird .+= local_third
+            gS2 .+= local_S2
+            if gS3 !== nothing
+                gS3 .+= local_S3
             end
         end
         initial_covariance_bar = (initialization_covariance_bar + initialization_covariance_bar') / 2
@@ -759,7 +833,7 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
     end
 
     local_S1, local_S2, local_S3 = ivashchenko_solution_matrix_pullback(
-        sys, gS1, gH, gthird, solution_matrices)
+        sys, gS1, gS2, gS3, solution_matrices)
     solution_bar = [zeros(scalar_type, size(solution_matrices[1])),
                     zeros(scalar_type, size(solution_matrices[2]))]
     solution_bar[1][sys.output_rows, :] .= local_S1
