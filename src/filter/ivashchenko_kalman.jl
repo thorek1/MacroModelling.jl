@@ -517,6 +517,10 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
     innovation_covariance = zeros(scalar_type, n_obs, n_obs)
     inverse_innovation_covariance = zeros(scalar_type, n_obs, n_obs)
     gain = zeros(scalar_type, n_state, n_obs)
+    if scalar_type === Float64
+        linear_cache = 𝒮.init(𝒮.LinearProblem(innovation_covariance, innovation_solve),
+                               𝒮.FastLUFactorization(), verbose = false)
+    end
     ll = zero(scalar_type)
     log2pi = log(2π)
     @inbounds for t in 1:nT
@@ -600,14 +604,26 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
             innovation[i] = observations[i] - observation_mean[i]
         end
 
-        # A full observation period can use the concrete dense buffer directly;
-        # LU on a SubArray takes a considerably more allocating generic path.
-        # F = lu(innovation_covariance), overwriting the full covariance buffer.
-        factor = m == n_obs ? ℒ.lu!(innovation_covariance, check = false) :
-                               ℒ.lu(view(innovation_covariance, 1:m, 1:m), check = false)
-        ℒ.issuccess(factor) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
-                                              convert(scalar_type, on_failure_loglikelihood)
-        logabsdetF, signF = ℒ.logabsdet(factor)
+        fast_lu = scalar_type === Float64 && m == n_obs
+        if fast_lu
+            copyto!(innovation_solve, innovation)
+            linear_cache.A = innovation_covariance
+            linear_cache.b = innovation_solve
+            solution = 𝒮.solve!(linear_cache)
+            successful = 𝒮.SciMLBase.successful_retcode(solution.retcode) ||
+                         solution.retcode == 𝒮.SciMLBase.ReturnCode.Default
+            successful || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
+                                          convert(scalar_type, on_failure_loglikelihood)
+            logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
+        else
+            # LU on a SubArray takes a considerably more allocating generic path;
+            # retain it for partial observations and non-Float64 element types.
+            factor = m == n_obs ? ℒ.lu!(innovation_covariance, check = false) :
+                                   ℒ.lu(view(innovation_covariance, 1:m, 1:m), check = false)
+            ℒ.issuccess(factor) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
+                                                  convert(scalar_type, on_failure_loglikelihood)
+            logabsdetF, signF = ℒ.logabsdet(factor)
+        end
         (primal(signF) > 0 && isfinite(primal(logabsdetF))) ||
             return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                             convert(scalar_type, on_failure_loglikelihood)
@@ -618,12 +634,20 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
         @inbounds for i in 1:m
             inverse_view[i, i] = one(scalar_type)
         end
-        ℒ.ldiv!(factor, inverse_view)
+        if fast_lu
+            solve_linear_cache_lu_left!(linear_cache, inverse_view)
+        else
+            ℒ.ldiv!(factor, inverse_view)
+        end
 
         if t > presample_periods
-            copyto!(view(innovation_solve, 1:m), view(innovation, 1:m))
-            ℒ.ldiv!(factor, view(innovation_solve, 1:m))
-            ll -= (ℒ.dot(view(innovation, 1:m), view(innovation_solve, 1:m)) + logabsdetF + m * log2pi) / 2
+            if fast_lu
+                ll -= (ℒ.dot(view(innovation, 1:m), linear_cache.u) + logabsdetF + m * log2pi) / 2
+            else
+                copyto!(view(innovation_solve, 1:m), view(innovation, 1:m))
+                ℒ.ldiv!(factor, view(innovation_solve, 1:m))
+                ll -= (ℒ.dot(view(innovation, 1:m), view(innovation_solve, 1:m)) + logabsdetF + m * log2pi) / 2
+            end
             isfinite(primal(ll)) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                                                    convert(scalar_type, on_failure_loglikelihood)
         end

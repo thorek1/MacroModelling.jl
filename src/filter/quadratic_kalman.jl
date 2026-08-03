@@ -485,6 +485,12 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
     Kg = Matrix{Tv}(undef, nz, n_obs)
     v  = Vector{Tv}(undef, n_obs)
     Fv = Vector{Tv}(undef, n_obs)
+    if Tv === Float64
+        # LinearSolve owns the FastLapack LU factorization; the wrapper layer
+        # below reuses its FastLapack workspace for the matrix gain solve.
+        linear_cache = 𝒮.init(𝒮.LinearProblem(F, Fv), 𝒮.FastLUFactorization(), verbose = false)
+        rhs_t = Matrix{Float64}(undef, n_obs, nz)
+    end
 
     ll = zero(Tv); log2pi = log(2π)
 
@@ -519,18 +525,37 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
             m = (F[i, j] + F[j, i]) / 2; F[i, j] = m; F[j, i] = m
         end
 
-        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
-        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
-        ℒ.issuccess(Fc) || return Tv(on_failure_loglikelihood)
+        if Tv === Float64
+            copyto!(Fv, v)
+            linear_cache.A = F
+            linear_cache.b = Fv
+            solution = 𝒮.solve!(linear_cache)
+            successful = 𝒮.SciMLBase.successful_retcode(solution.retcode) ||
+                         solution.retcode == 𝒮.SciMLBase.ReturnCode.Default
+            successful || return Tv(on_failure_loglikelihood)
+            logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
+            signF > 0 && isfinite(logabsdetF) || return Tv(on_failure_loglikelihood)
 
-        if t > presample_periods
-            copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
-            ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
-            isfinite(ll) || return Tv(on_failure_loglikelihood)
+            if t > presample_periods
+                ll -= 0.5 * (ℒ.dot(v, linear_cache.u) + logabsdetF + n_obs * log2pi)
+                isfinite(ll) || return Tv(on_failure_loglikelihood)
+            end
+
+            # K = CP' F⁻¹; FastLapack solves the matrix right-hand side in-place.
+            copyto!(Kg, CP')
+            solve_linear_cache_lu_right!(linear_cache, Kg, rhs_t)
+        else
+            Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
+            ℒ.issuccess(Fc) || return Tv(on_failure_loglikelihood)
+            if t > presample_periods
+                copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
+                ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
+                isfinite(ll) || return Tv(on_failure_loglikelihood)
+            end
+            copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
         end
 
-        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP
-        copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
+        # z = zp + K v ; Pc = Pp − K CP
         copyto!(z, zp); ℒ.mul!(z, Kg, v, one(Tv), one(Tv))
         copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -one(Tv), one(Tv))
         for j in 1:nz, i in 1:j
@@ -566,6 +591,8 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
     past_positions = [findfirst(!iszero, view(Pz, i, :)) for i in axes(Pz, 1)]
     CP = zeros(n_obs, nz); F = zeros(n_obs, n_obs); Fv = zeros(n_obs)
     identity_obs = Matrix{Float64}(ℒ.I(n_obs))
+    linear_cache = 𝒮.init(𝒮.LinearProblem(F, Fv), 𝒮.FastLUFactorization(), verbose = false)
+    rhs_t = Matrix{Float64}(undef, n_obs, nz)
     ll = 0.0; log2pi = log(2π); failed = false
     for t in 1:nT
         copyto!(zs[t], z); copyto!(Ps[t], Pc)
@@ -589,15 +616,22 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
             value = (F[i, j] + F[j, i]) / 2
             F[i, j] = value; F[j, i] = value
         end
-        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
-        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
-        if !ℒ.issuccess(Fc); failed = true; break; end
-        copyto!(Fis[t], identity_obs); ℒ.ldiv!(Fc, Fis[t])
+        copyto!(Fv, vs[t])
+        linear_cache.A = F
+        linear_cache.b = Fv
+        solution = 𝒮.solve!(linear_cache)
+        successful = 𝒮.SciMLBase.successful_retcode(solution.retcode) ||
+                     solution.retcode == 𝒮.SciMLBase.ReturnCode.Default
+        successful || (failed = true; break)
+        logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
+        (signF > 0 && isfinite(logabsdetF)) || (failed = true; break)
+        copyto!(Fis[t], identity_obs)
+        solve_linear_cache_lu_left!(linear_cache, Fis[t])
         if t > presample_periods
-            copyto!(Fv, vs[t]); ℒ.mul!(Fv, Fis[t], vs[t])
-            ll -= 0.5 * (ℒ.dot(vs[t], Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
+            ll -= 0.5 * (ℒ.dot(vs[t], linear_cache.u) + logabsdetF + n_obs * log2pi)
         end
-        copyto!(Ks[t], CP'); ℒ.rdiv!(Ks[t], Fc)
+        copyto!(Ks[t], CP')
+        solve_linear_cache_lu_right!(linear_cache, Ks[t], rhs_t)
         copyto!(z, zp); ℒ.mul!(z, Ks[t], vs[t], 1.0, 1.0)
         copyto!(Pc, Pp); ℒ.mul!(Pc, Ks[t], CP, -1.0, 1.0)
         @inbounds for j in 1:nz, i in 1:j-1

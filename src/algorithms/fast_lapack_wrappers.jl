@@ -160,6 +160,22 @@ function solve_lu_right!(A::AbstractMatrix{R},
     return B
 end
 
+# The FastLUFactorization LinearSolve extension keeps the FastLapackInterface
+# workspace and LU handle in `cacheval`. Reuse those objects for matrix RHS
+# solves, which LinearSolve's scalar cache path does not handle directly.
+function solve_linear_cache_lu_left!(cache::𝒮.LinearCache,
+                                     B::AbstractVecOrMat{R}) where {R <: AbstractFloat}
+    cacheval = cache.cacheval
+    return solve_lu_left!(cache.A, B, cacheval.workspace, cacheval.factors)
+end
+
+function solve_linear_cache_lu_right!(cache::𝒮.LinearCache,
+                                      B::AbstractMatrix{R},
+                                      rhs_t::AbstractMatrix{R}) where {R <: AbstractFloat}
+    cacheval = cache.cacheval
+    return solve_lu_right!(cache.A, B, cacheval.workspace, cacheval.factors, rhs_t)
+end
+
 # ─── Generalized Schur factorization ──────────────────────────────────────────
 
 # Returns NamedTuple{(:S,:T,:Z)} for the decomposition (or dummy values on failure).

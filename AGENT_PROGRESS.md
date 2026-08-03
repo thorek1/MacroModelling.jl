@@ -164,10 +164,13 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
 - LinearSolve factorization backends can overwrite their cached `A`; a separate preallocated
   factor buffer must be refilled before every solve. Reusing the source matrix without restoring it
   gives invalid repeated factorizations and was excluded from the measurements.
-- The higher-order filter covariance buffers now use direct in-place `cholesky!`/`lu!` where the
-  unfactored covariance is dead. This removes factor-object allocations while preserving the
-  existing multi-RHS `rdiv!`/inverse solves. LinearSolve remains appropriate for the existing
-  single-RHS SSS caches, but no LinearSolve path was added to the higher-order filters.
+- Per the follow-up backend requirement, the Float64 higher-order filter paths now factor with
+  `LinearSolve.FastLUFactorization()` (the repository's FastLapack extension) and use the
+  existing FastLapack `solve_lu_left!`/`solve_lu_right!` wrappers for matrix RHS solves. Generic
+  non-Float64 paths retain the Cholesky/Julia fallback. The requested LinearSolve/FastLapack
+  combination is allocation-free in the period loop; its 446×7 gain microbenchmark is about
+  3.8% slower than calling the standalone FastLapack workspace directly, but it is the selected
+  backend and preserves the established repository abstraction.
 - Focused verification after this pass: quadratic Kalman 33/33, cubic Kalman 30/30, Ivashchenko
   35/35, and the repository allocation-pattern check passed. SW07 EA compressed forward LLHs
   remained `-1119.47663867078` (pruned quadratic) and `-1098.4913541550648` (Ivashchenko).

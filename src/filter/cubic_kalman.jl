@@ -1205,6 +1205,10 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     Kg = Matrix{Tv}(undef, nz, n_obs)
     v = Vector{Tv}(undef, n_obs)
     Fv = Vector{Tv}(undef, n_obs)
+    if Tv === Float64
+        linear_cache = 𝒮.init(𝒮.LinearProblem(F, Fv), 𝒮.FastLUFactorization(), verbose = false)
+        rhs_t = Matrix{Float64}(undef, n_obs, nz)
+    end
 
     ll = zero(Tv)
     log2pi = log(2π)
@@ -1238,21 +1242,30 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
             F[i, j] = m; F[j, i] = m
         end
 
-        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
-        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
-        ℒ.issuccess(Fc) || return on_failure_loglikelihood
-
-        if t > presample_periods
-            copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
-            ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
-            isfinite(ll) || return on_failure_loglikelihood
-        end
-
-        # K = CP' F⁻¹ ; z = zp + K v ; Pc = Pp − K CP.  `rdiv!` has no Cholesky
-        # method for dual element types, so the AD path solves and transposes.
         if Tv === Float64
-            copyto!(Kg, CP'); ℒ.rdiv!(Kg, Fc)
+            copyto!(Fv, v)
+            linear_cache.A = F
+            linear_cache.b = Fv
+            solution = 𝒮.solve!(linear_cache)
+            successful = 𝒮.SciMLBase.successful_retcode(solution.retcode) ||
+                         solution.retcode == 𝒮.SciMLBase.ReturnCode.Default
+            successful || return on_failure_loglikelihood
+            logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
+            signF > 0 && isfinite(logabsdetF) || return on_failure_loglikelihood
+            if t > presample_periods
+                ll -= 0.5 * (ℒ.dot(v, linear_cache.u) + logabsdetF + n_obs * log2pi)
+                isfinite(ll) || return on_failure_loglikelihood
+            end
+            copyto!(Kg, CP')
+            solve_linear_cache_lu_right!(linear_cache, Kg, rhs_t)
         else
+            Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
+            ℒ.issuccess(Fc) || return on_failure_loglikelihood
+            if t > presample_periods
+                copyto!(Fv, v); ℒ.ldiv!(Fc, Fv)
+                ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
+                isfinite(ll) || return on_failure_loglikelihood
+            end
             Kg = Matrix((Fc \ CP)')
         end
         copyto!(z, zp); ℒ.mul!(z, Kg, v, one(Tv), one(Tv))
@@ -1289,6 +1302,11 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
     Λnoise = Matrix(Λ[:, noise_state_indices])
     Pnoise = zeros(length(noise_state_indices), length(noise_state_indices))
     mixvec = zeros(nz * N); mixΨ = zeros(nz, N); CΨ = zeros(nz, N); Q = zeros(nz, nz)
+    Fseed = zeros(n_obs, n_obs)
+    Fv = zeros(n_obs)
+    identity_obs = Matrix{Float64}(ℒ.I(n_obs))
+    linear_cache = 𝒮.init(𝒮.LinearProblem(Fseed, Fv), 𝒮.FastLUFactorization(), verbose = false)
+    rhs_t = Matrix{Float64}(undef, n_obs, nz)
 
     for t in 1:nT
         push!(zs, copy(z)); push!(Ps, copy(Pc))
@@ -1301,14 +1319,22 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
         v = Y[:, t] - 𝒞 * zp
         CP = 𝒞 * Pp
         F = CP * 𝒞' + Hm; F = (F + F') / 2
-        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
-        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
-        ℒ.issuccess(Fc) || return on_failure_loglikelihood, nothing
-        Fi = inv(Fc)
+        copyto!(Fv, v)
+        linear_cache.A = F
+        linear_cache.b = Fv
+        solution = 𝒮.solve!(linear_cache)
+        successful = 𝒮.SciMLBase.successful_retcode(solution.retcode) ||
+                     solution.retcode == 𝒮.SciMLBase.ReturnCode.Default
+        successful || return on_failure_loglikelihood, nothing
+        logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
+        signF > 0 && isfinite(logabsdetF) || return on_failure_loglikelihood, nothing
+        Fi = copy(identity_obs)
+        solve_linear_cache_lu_left!(linear_cache, Fi)
         if t > presample_periods
-            ll -= 0.5 * (ℒ.dot(v, Fi * v) + ℒ.logdet(Fc) + n_obs * log2pi)
+            ll -= 0.5 * (ℒ.dot(v, linear_cache.u) + logabsdetF + n_obs * log2pi)
         end
-        K = CP' * Fi
+        K = copy(CP')
+        solve_linear_cache_lu_right!(linear_cache, K, rhs_t)
         z = zp + K * v
         Pc = Pp - K * CP; Pc = (Pc + Pc') / 2
         push!(Cs, C); push!(vs, v); push!(CPs, CP); push!(Fis, Fi); push!(Ks, K)
