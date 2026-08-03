@@ -280,13 +280,14 @@ function run_kalman_iterations(A::Matrix{S},
             end
 
             if t > presample_periods
-                ztmp = Flu \ z
+                copyto!(ztmp, z)
+                ℒ.ldiv!(Flu, ztmp)                         # ztmp = F⁻¹ * z
                 loglik += logabsdetF + ℒ.dot(z, ztmp)
             end
 
             # K = P * C' / F
             ℒ.mul!(K, Pwork, C')
-            K = K * inv(Flu)
+            ℒ.rdiv!(K, Flu)                                  # K = K / F
         end
 
         # P = A * (P - K * C * P) * A' + 𝐁
@@ -652,12 +653,16 @@ function filter_and_smooth(𝓂::ℳ,
     filter_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
 
     filter_decomposition[:,end,:] .= μ[:, 2:end]
-    filter_decomposition[:,1:end-2,1] .= B .* repeat(ϵ[:, 1]', size(A,1))
+    @inbounds for j in axes(B, 2), i in axes(B, 1)
+        filter_decomposition[i, j, 1] = B[i, j] * ϵ[j, 1]
+    end
     filter_decomposition[:,end-1,1] .= filter_decomposition[:,end,1] - sum(filter_decomposition[:,1:end-2,1],dims=2)
 
     for i in 2:size(data_in_deviations,2)
         filter_decomposition[:,1:end-2,i] .= A * filter_decomposition[:,1:end-2,i-1]
-        filter_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ[:, i]', size(A,1))
+        @inbounds for j in axes(B, 2), k in axes(B, 1)
+            filter_decomposition[k, j, i] += B[k, j] * ϵ[j, i]
+        end
         filter_decomposition[:,end-1,i] .= filter_decomposition[:,end,i] - sum(filter_decomposition[:,1:end-2,i],dims=2)
     end
     
@@ -681,12 +686,16 @@ function filter_and_smooth(𝓂::ℳ,
     smooth_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
 
     smooth_decomposition[:,end,:] .= μ̄
-    smooth_decomposition[:,1:end-2,1] .= B .* repeat(ϵ̄[:, 1]', size(A,1))
+    @inbounds for j in axes(B, 2), i in axes(B, 1)
+        smooth_decomposition[i, j, 1] = B[i, j] * ϵ̄[j, 1]
+    end
     smooth_decomposition[:,end-1,1] .= smooth_decomposition[:,end,1] - sum(smooth_decomposition[:,1:end-2,1],dims=2)
 
     for i in 2:size(data_in_deviations,2)
         smooth_decomposition[:,1:end-2,i] .= A * smooth_decomposition[:,1:end-2,i-1]
-        smooth_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ̄[:, i]', size(A,1))
+        @inbounds for j in axes(B, 2), k in axes(B, 1)
+            smooth_decomposition[k, j, i] += B[k, j] * ϵ̄[j, i]
+        end
         smooth_decomposition[:,end-1,i] .= smooth_decomposition[:,end,i] - sum(smooth_decomposition[:,1:end-2,i],dims=2)
     end
 

@@ -126,3 +126,25 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
 - `git diff --check` passes. The full test suite was not run because the repository's optional
   resolver targets are intentionally incompatible; the isolated focused suites are the required
   verification for this pass.
+
+## Repository-wide allocation pattern pass (2026-08-03)
+
+- Audited Kalman, Ivashchenko, particle, inversion, cubic, quadratic, Sylvester, and reverse-mode
+  code for repeated inverses, temporary solves, `repeat`-based scaling, and avoidable matrix
+  products. Only the following measured, local changes were retained.
+- The non-Float64 Kalman branch now reuses its solve vector with `copyto!`/`ldiv!` and updates the
+  gain with `rdiv!` instead of forming `inv(LU)`. The isolated microbenchmark reduced the generic
+  solve from 16 to 8 allocations and 6.53 KiB to 2.34 KiB; numerical error was below `4e-16` on
+  the Float64 equivalence check and the ForwardDiff Kalman reproduction passed.
+- The legacy Kalman smoother/decomposition no longer creates `repeat(shock', n_state)` for each
+  period. Direct column scaling was about 3.4× faster in the microbenchmark and reduced the
+  temporary allocation from 3.28 KiB/4 allocations to 1.64 KiB/2 allocations.
+- Ivashchenko RTS smoothing now uses Cholesky-backed `rdiv!` solves instead of explicit covariance
+  inverses. The isolated smoother check matched to `2.3e-15` and reduced temporary bytes by about
+  42%; the full Ivashchenko suite still passes 35/35.
+- The particle tempering proposal now computes `U⁻¹` through an in-place triangular solve. The
+  isolated check matches the inverse reference exactly; the microbenchmark was slightly faster
+  and reduced temporary bytes, though allocation count was unchanged-to-slightly higher, so this
+  is recorded as a memory/robustness cleanup rather than a major runtime claim.
+- `test/test_particle_filter.jl` could not run in the isolated environment because it imports the
+  unavailable `StatsPlots` package. The proposal-factor equivalence check ran independently.

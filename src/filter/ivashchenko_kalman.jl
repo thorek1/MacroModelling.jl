@@ -1114,7 +1114,11 @@ function ivashchenko_smooth_pass(sys, tape)
     for t in nT - 1:-1:1
         transition = tape.transitions[t + 1]
         cross = transition * tape.post_covariances[t]
-        smoother_gain = cross * inv(tape.predicted_covariances[t + 1])
+        predicted_factor = ℒ.cholesky(tape.predicted_covariances[t + 1], check = false)
+        ℒ.issuccess(predicted_factor) || error(
+            "Ivashchenko smoother covariance factorization failed at period $(t + 1).")
+        ℒ.rdiv!(cross, predicted_factor)
+        smoother_gain = cross
         delta = smoothed_means[t + 1] - tape.predicted_means[t + 1]
         smoothed_means[t] .+= smoother_gain * delta
         smoothed_covariances[t] .= tape.post_covariances[t] +
@@ -1127,15 +1131,19 @@ function ivashchenko_smooth_pass(sys, tape)
     shocks = zeros(eltype(tape.post_means[1]), sys.nExo, nT)
     @inbounds for t in 1:nT
         pred_covariance = tape.predicted_covariances[t]
+        predicted_factor = ℒ.cholesky(pred_covariance, check = false)
+        ℒ.issuccess(predicted_factor) || error("Ivashchenko smoother covariance factorization failed at period $t.")
         state_delta = smoothed_means[t] - tape.predicted_means[t]
-        state_regression = tape.output_covariances[t][ :, tape.state_position] * inv(pred_covariance)
+        state_regression = copy(tape.output_covariances[t][ :, tape.state_position])
+        ℒ.rdiv!(state_regression, predicted_factor)
         variables[:, t] .= tape.output_means[t] + state_regression * state_delta
         variables[tape.state_position, t] .= smoothed_means[t]
         standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(tape.output_covariances[t] -
             state_regression * pred_covariance * state_regression')))
         standard_deviations[tape.state_position, t] .= sqrt.(abs.(ℒ.diag(smoothed_covariances[t])))
 
-        shock_regression = tape.shock_loadings[t]' * inv(pred_covariance)
+        shock_regression = copy(tape.shock_loadings[t]')
+        ℒ.rdiv!(shock_regression, predicted_factor)
         shocks[:, t] .= shock_regression * state_delta
     end
 

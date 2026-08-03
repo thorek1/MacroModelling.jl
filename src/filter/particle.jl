@@ -2142,7 +2142,9 @@ function tempering_proposal_factor(G::Matrix{Float64}, φ::Float64)
     end
     F = ℒ.cholesky(ℒ.Symmetric(M), check = false)
     ℒ.issuccess(F) || return Matrix{Float64}(ℒ.I, n, n)
-    return Matrix{Float64}(inv(F.U))
+    proposal = Matrix{Float64}(ℒ.I, n, n)
+    ℒ.ldiv!(F.U, proposal)                         # proposal = U⁻¹ * I
+    return proposal
 end
 
 # One Metropolis sweep over the whole swarm at level `φ`. Proposals are formed
