@@ -74,5 +74,19 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   pruned higher-order implementation therefore compresses only `q11` and `q111`; keeping
   the `nPast²` mixed block is required for correctness while remaining compressed everywhere
   permutation symmetry exists.
+- Ivashchenko SW07 profile: the likelihood is `-1098.49135415507`, allocates
+  `504,881,680` bytes (`481.49 MiB`), and has a warmed median runtime of `662.643 ms`.
+  The physical filtered covariance is only `27×27`, but the second-order moment closure
+  forms `d = nPast+nExo = 34` random inputs, `595 = 34·35/2` compressed random pairs, a
+  `595×595` pair covariance, and a `34×595` Hessian contraction each period. Flat profiling
+  points to `ivashchenko_polynomial_moments!` (pair-covariance construction and the
+  Hessian covariance contraction) and the coupled theoretical stationary initialization;
+  measurement updates are comparatively small.
+- Ivashchenko reverse mode allocates `13,676,536,800` bytes (`12.73 GiB`) and has a warmed
+  median runtime of `3.983 s`. Its profile is dominated by the analytical moment pullback,
+  repeated tape/matrix construction, and the stationary-initialization pullback. Thus the
+  lower filtered-state dimension is real, but it is currently offset by moment-closure work
+  and allocation overhead; the pruned Kalman forward/reverse profiles are `~552 ms/2.636 s`
+  with `61.44 MiB/632.69 MiB` allocation.
 - Direct root `Pkg.test()` remains intentionally unsatisfiable because incompatible optional
   targets are resolved together; focused tests use `tasks/isolated_test_env`.
