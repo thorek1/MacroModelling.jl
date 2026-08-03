@@ -148,3 +148,26 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   is recorded as a memory/robustness cleanup rather than a major runtime claim.
 - `test/test_particle_filter.jl` could not run in the isolated environment because it imports the
   unavailable `StatsPlots` package. The proposal-factor equivalence check ran independently.
+
+## LinearSolve workspace audit (2026-08-03)
+
+- Preallocated `LinearSolve.CholeskyFactorization` and `FastLUFactorization` caches were compared
+  with direct in-place LAPACK on the filter-relevant dimensions. The cache solves were numerically
+  exact and allocation-free when given a dedicated factor buffer; Cholesky medians were
+  `0.333/2.208/528.625 μs` at dimensions `7/27/446`, versus `0.292/2.000/475.584 μs` for direct
+  `cholesky!` plus `ldiv!`. The current FastLapack LU workspace remained about `0.95 ms` at `446`.
+- The real gain solve is a `446×7` matrix divided on the right by a `7×7` innovation factor.
+  Reusing the LinearSolve cache's factor object was exact and allocation-free but measured
+  `4.334 μs` versus `4.125 μs` for direct `cholesky!` plus `rdiv!`. The cache's normal matrix-RHS
+  initialization does not provide a usable multi-RHS `u` buffer in the current LinearSolve
+  version, so using its internal factor field would add coupling without improving the hot path.
+- LinearSolve factorization backends can overwrite their cached `A`; a separate preallocated
+  factor buffer must be refilled before every solve. Reusing the source matrix without restoring it
+  gives invalid repeated factorizations and was excluded from the measurements.
+- The higher-order filter covariance buffers now use direct in-place `cholesky!`/`lu!` where the
+  unfactored covariance is dead. This removes factor-object allocations while preserving the
+  existing multi-RHS `rdiv!`/inverse solves. LinearSolve remains appropriate for the existing
+  single-RHS SSS caches, but no LinearSolve path was added to the higher-order filters.
+- Focused verification after this pass: quadratic Kalman 33/33, cubic Kalman 30/30, Ivashchenko
+  35/35, and the repository allocation-pattern check passed. SW07 EA compressed forward LLHs
+  remained `-1119.47663867078` (pruned quadratic) and `-1098.4913541550648` (Ivashchenko).

@@ -602,7 +602,8 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
 
         # A full observation period can use the concrete dense buffer directly;
         # LU on a SubArray takes a considerably more allocating generic path.
-        factor = m == n_obs ? ℒ.lu(innovation_covariance, check = false) :
+        # F = lu(innovation_covariance), overwriting the full covariance buffer.
+        factor = m == n_obs ? ℒ.lu!(innovation_covariance, check = false) :
                                ℒ.lu(view(innovation_covariance, 1:m, 1:m), check = false)
         ℒ.issuccess(factor) || return record ? (convert(scalar_type, on_failure_loglikelihood), nothing) :
                                               convert(scalar_type, on_failure_loglikelihood)

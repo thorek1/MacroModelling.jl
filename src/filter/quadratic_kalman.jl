@@ -519,7 +519,8 @@ function quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Y, 𝒞, Pz, z0, Σ
             m = (F[i, j] + F[j, i]) / 2; F[i, j] = m; F[j, i] = m
         end
 
-        Fc = ℒ.cholesky(F, check = false)
+        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
         ℒ.issuccess(Fc) || return Tv(on_failure_loglikelihood)
 
         if t > presample_periods
@@ -588,7 +589,8 @@ function rrule(::typeof(quadratic_kalman_recursion), 𝒜, c, QH, g0, Λ, Hm, Y,
             value = (F[i, j] + F[j, i]) / 2
             F[i, j] = value; F[j, i] = value
         end
-        Fc = ℒ.cholesky(F, check = false)
+        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
         if !ℒ.issuccess(Fc); failed = true; break; end
         copyto!(Fis[t], identity_obs); ℒ.ldiv!(Fc, Fis[t])
         if t > presample_periods

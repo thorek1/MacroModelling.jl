@@ -1238,7 +1238,8 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
             F[i, j] = m; F[j, i] = m
         end
 
-        Fc = ℒ.cholesky(F, check = false)
+        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
         ℒ.issuccess(Fc) || return on_failure_loglikelihood
 
         if t > presample_periods
@@ -1300,7 +1301,8 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
         v = Y[:, t] - 𝒞 * zp
         CP = 𝒞 * Pp
         F = CP * 𝒞' + Hm; F = (F + F') / 2
-        Fc = ℒ.cholesky(F, check = false)
+        # Fc = chol(F), overwriting F because the covariance is dead after factorization.
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
         ℒ.issuccess(Fc) || return on_failure_loglikelihood, nothing
         Fi = inv(Fc)
         if t > presample_periods
