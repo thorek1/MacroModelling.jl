@@ -1017,6 +1017,10 @@ function cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, Ψ, noise_state_in
     mixΨ = Matrix{Tv}(undef, nz, N)
     mixAll = Matrix{Tv}(undef, nz * N, max(1, min(length(noise_state_indices), 16)))
     Q = Matrix{Tv}(undef, nz, nz)
+    # `qkf_lyapunov` is the shared higher-order wrapper: Float64 uses the
+    # package's `solve_lyapunov_equation` and its workspace, while the fallback
+    # is retained only for dual/non-Float64 paths that the package solver does
+    # not accept.
     Σ = qkf_lyapunov(𝒜, Qbase; workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
     float_path = eltype(𝒜) <: AbstractFloat

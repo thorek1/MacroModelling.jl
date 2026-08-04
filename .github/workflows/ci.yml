@@ -176,15 +176,7 @@ jobs:
           - version: '1'
             os: ubuntu-latest
             arch: x64
-            test_set: "particle_filter"
-          - version: '1'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "quadratic_kalman"
-          - version: '1'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "ivashchenko_kalman"
+            test_set: "higher_order_filters"
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2

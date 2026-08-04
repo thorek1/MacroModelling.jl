@@ -160,9 +160,12 @@ function solve_lu_right!(A::AbstractMatrix{R},
     return B
 end
 
-# The FastLUFactorization LinearSolve extension keeps the FastLapackInterface
-# workspace and LU handle in `cacheval`. Reuse those objects for matrix RHS
-# solves, which LinearSolve's scalar cache path does not handle directly.
+# `solve_lu_left!` and `solve_lu_right!` above are the backend kernels used by
+# filters that own a FastLapack workspace directly.  The higher-order filters
+# instead own a `LinearSolve.LinearCache`; these two adapters reach the same
+# workspace and LU factors through `cacheval`.  They are intentionally not a
+# second solve implementation, and they are not a reason to replace the
+# generic Kalman path, whose direct workspace is faster on its tested shapes.
 function solve_linear_cache_lu_left!(cache::𝒮.LinearCache,
                                      B::AbstractVecOrMat{R}) where {R <: AbstractFloat}
     cacheval = cache.cacheval

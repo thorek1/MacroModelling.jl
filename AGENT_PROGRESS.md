@@ -409,3 +409,24 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
 - Focused verification after this pass: quadratic Kalman `34/34` and cubic Kalman `31/31`.
   The earlier raw/pruned Ivashchenko suites remain `48/48` and `32/32`; full `Pkg.test()` stays
   intentionally unrun.
+
+## Review follow-up: higher-order filters and documentation (2026-08-04)
+
+- The CI matrix now has one `higher_order_filters` row covering quadratic, cubic, raw/pruned
+  Ivashchenko, and particle-filter tests. The old `particle_filter` name remains as a local
+  focused-test alias. The DynamicPPL restriction is already a single pigeons-only step in the
+  current workflow; no duplicate was present to remove.
+- The FastLapack/LinearSolve wrapper comments now document the distinction: the generic kernels
+  are reused by thin `LinearCache` adapters for higher-order matrix-RHS solves, while the generic
+  Kalman path keeps its directly owned, faster tested workspace.
+- The filter overview and higher-order sections now state the lifted Gaussian-manifold assumption,
+  the square/full-rank and zero-measurement-error condition for an exact inversion change of
+  variables, the difference between Ivashchenko's physical-state closure and Kollmann's lifted
+  closure, and the fact that cubic monomial moments are not used by the quadratic filter.
+- The cubic symmetry explanation now matches `symmetric_pair_maps`/`symmetric_triple_maps` and
+  the uncompressed mixed `q₁₂` block. The SW07 preflight produced `n_z=4863`; no cubic SW07
+  likelihood is claimed, and the existing fail-fast resource guard is documented as intentional.
+- Focused verification: quadratic Kalman `34/34`, cubic Kalman `31/31`, raw Ivashchenko `48/48`,
+  pruned Ivashchenko `32/32`; SW07 cubic dimension preflight `nPast=27`, `nExo=7`, `nObs=7`,
+  `n_z=4863`. The docs build could not run because `Documenter` is not installed in the local
+  docs environment; YAML, Julia test-file parsing, whitespace, and `git diff --check` pass.

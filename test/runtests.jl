@@ -2,7 +2,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths", "particle_filter"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths", "particle_filter", "higher_order_filters"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 
@@ -71,11 +71,16 @@ elseif test_set == "update_equations"
     include("test_update_equations.jl")
 elseif test_set == "jet_hot_paths"
     include("test_jet_hot_paths.jl")
-elseif test_set == "quadratic_kalman"
+elseif test_set == "higher_order_filters"
     include("test_quadratic_kalman.jl")
-elseif test_set == "ivashchenko_kalman"
     include("test_ivashchenko_kalman.jl")
+    include("test_pruned_ivashchenko_kalman.jl")
+    include("test_cubic_kalman.jl")
+    include("test_particle_filter.jl")
+    include("test_particle_filter_sw07.jl")
 elseif test_set == "particle_filter"
+    # Keep the focused local test-set name as a compatibility alias; CI runs
+    # these tests together with the higher-order filters above.
     include("test_particle_filter.jl")
     include("test_particle_filter_sw07.jl")
 elseif test_set == "dynare_comparison"
