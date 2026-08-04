@@ -52,6 +52,39 @@ import AxisKeys: KeyedArray
             @test size(sys.S3, 2) == sys.dv * (sys.dv + 1) * (sys.dv + 2) ÷ 6
         end
 
+        if order == :second_order
+            # A likelihood needs only the state recursion and observed rows;
+            # dropping unobserved jumpers must preserve both the moments and
+            # the analytical reverse rule.
+            single_obs = [:c]
+            single_obs_idx = convert(Vector{Int}, indexin(single_obs, names))
+            full_single = MacroModelling.build_ivashchenko_kalman_system_from_constants(
+                constants, solution, single_obs_idx, order; keep_all_rows = true)
+            compact_single = MacroModelling.build_ivashchenko_kalman_system_from_constants(
+                constants, solution, single_obs_idx, order; keep_all_rows = false)
+            single_data = KeyedArray(zeros(1, 10); Variable = single_obs, Time = 1:10)
+            full_single_llh = MacroModelling.run_ivashchenko_kalman(
+                full_single, collect(single_data), state[full_single.past];
+                initial_covariance = :diagonal, measurement_error = 1e-4)
+            compact_single_llh = MacroModelling.run_ivashchenko_kalman(
+                compact_single, collect(single_data), state[compact_single.past];
+                initial_covariance = :diagonal, measurement_error = 1e-4)
+            @test compact_single.nout < full_single.nout
+            @test compact_single_llh ≈ full_single_llh
+
+            single_likelihood(p) = get_loglikelihood(
+                RBC_ivashchenko, single_data, p;
+                algorithm = :second_order,
+                filter = :ivashchenko_kalman,
+                initial_covariance = :diagonal,
+                measurement_error = 1e-4)
+            single_reverse = Zygote.gradient(single_likelihood,
+                                              RBC_ivashchenko.parameter_values)[1]
+            single_forward = ForwardDiff.gradient(single_likelihood,
+                                                   RBC_ivashchenko.parameter_values)
+            @test isapprox(single_reverse, single_forward; rtol = 1e-5, atol = 1e-5)
+        end
+
         # The closed moments of the raw polynomial map are checked against a
         # direct Monte-Carlo evaluation, rather than against another filter.
         Random.seed!(17 + (order == :third_order))
@@ -63,6 +96,27 @@ import AxisKeys: KeyedArray
             sys, mean_state, covariance_state, ws)
         closed_mean = copy(closed_mean)
         closed_covariance = copy(closed_covariance)
+
+        if order == :third_order
+            # The compressed Hermite factorisation must reproduce the direct
+            # sixth-Gaussian contraction exactly, without relying on Monte Carlo.
+            factorized = zeros(size(closed_covariance))
+            MacroModelling.ivashchenko_third_order_covariance!(
+                factorized, sys, ws.third_derivative, ws.third_linear,
+                ws.covariance_input, ws)
+            direct = zeros(size(closed_covariance))
+            for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
+                i, j, k = sys.random_triple_indices[p]
+                l, m, n = sys.random_triple_indices[q]
+                weight = sys.random_triple_multiplicities[p] *
+                         sys.random_triple_multiplicities[q] *
+                         MacroModelling.ivashchenko_gaussian_sixth(
+                             (i, j, k, l, m, n), ws.covariance_input) / 36
+                direct .+= weight .* (ws.third_derivative[:, p] *
+                                      ws.third_derivative[:, q]')
+            end
+            @test factorized ≈ direct rtol = 1e-10 atol = 1e-10
+        end
 
         selected_S1 = sys.S1
         selected_S2 = sys.S2
@@ -163,8 +217,45 @@ import AxisKeys: KeyedArray
         @test isapprox(reverse_gradient, forward_gradient; rtol = 1e-5, atol = 1e-5)
     end
 
-    # The filter is deliberately gated away from pruned solutions: those have a
-    # different state-space representation and belong to the Kollmann filters.
+    # Cheaper Gaussian covariance closures retain the exact polynomial mean but
+    # make an explicit covariance approximation. Their analytical pullbacks
+    # must agree with forward mode on the same second-order likelihood.
+    for closure in (:linearized, :diagonal)
+        closure_likelihood(p) = get_loglikelihood(
+            RBC_ivashchenko, data, p;
+            algorithm = :second_order,
+            filter = :ivashchenko_kalman,
+            initial_covariance = :diagonal,
+            measurement_error = 1e-4,
+            ivashchenko_gaussian_closure = closure)
+        closure_value = closure_likelihood(RBC_ivashchenko.parameter_values)
+        @test isfinite(closure_value)
+        closure_reverse = Zygote.gradient(closure_likelihood,
+                                          RBC_ivashchenko.parameter_values)[1]
+        closure_forward = ForwardDiff.gradient(closure_likelihood,
+                                               RBC_ivashchenko.parameter_values)
+        @test all(isfinite, closure_reverse)
+        @test isapprox(closure_reverse, closure_forward; rtol = 1e-5, atol = 1e-5)
+    end
+
+    linearized_third_likelihood(p) = get_loglikelihood(
+        RBC_ivashchenko, data, p;
+        algorithm = :third_order,
+        filter = :ivashchenko_kalman,
+        initial_covariance = :diagonal,
+        measurement_error = 1e-4,
+        ivashchenko_gaussian_closure = :linearized)
+    @test isfinite(linearized_third_likelihood(RBC_ivashchenko.parameter_values))
+    linearized_third_reverse = Zygote.gradient(
+        linearized_third_likelihood, RBC_ivashchenko.parameter_values)[1]
+    linearized_third_forward = ForwardDiff.gradient(
+        linearized_third_likelihood, RBC_ivashchenko.parameter_values)
+    @test all(isfinite, linearized_third_reverse)
+    @test isapprox(linearized_third_reverse, linearized_third_forward;
+                   rtol = 1e-5, atol = 1e-5)
+
+    # First-order solutions remain outside the Ivashchenko moment closure and
+    # continue to fall back to the inversion filter.
     @test get_loglikelihood(RBC_ivashchenko, data, RBC_ivashchenko.parameter_values;
                             algorithm = :first_order,
                             filter = :ivashchenko_kalman) ==

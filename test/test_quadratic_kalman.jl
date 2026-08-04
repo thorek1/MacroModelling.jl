@@ -76,6 +76,11 @@ import Zygote
         LPa = zeros(sys.nz, sys.nPast); Q = zeros(sys.nz, sys.nz)
         MacroModelling.quadratic_kalman_noise_covariance!(Q, G, QH, Λ, Pz, Pc,
                                                           PzPc, Pa, LPa)
+        Qbatched = similar(Q)
+        LPaAll = zeros(sys.nz * sys.nExo, sys.nPast)
+        MacroModelling.quadratic_kalman_noise_covariance!(Qbatched, G, QH, Λ, Pz, Pc,
+                                                          PzPc, Pa, LPa;
+                                                          LPaAll = LPaAll)
         expected = G * G' + QH
         Pa_expected = sys.P * Pc[1:sys.nr, 1:sys.nr] * sys.P'
         for j in 1:sys.nExo
@@ -83,6 +88,7 @@ import Zygote
             expected .+= L * Pa_expected * L'
         end
         @test Q ≈ (expected + expected') / 2
+        @test Qbatched ≈ Q
         @test maximum(abs, Q - (G * G' + QH)) > 1e-8
     end
 

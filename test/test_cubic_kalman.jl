@@ -116,6 +116,12 @@ import AxisKeys: KeyedArray
         MacroModelling.cubic_kalman_noise_covariance!(Q, Ctest, Λnoise, basis.Ψ, Pc,
                                                        sys.noise_state_indices, Pnoise,
                                                        mixvec, mixΨ, CΨ)
+        Qbatched = similar(Q)
+        mixAll = zeros(sys.nz * basis.N, max(1, min(length(sys.noise_state_indices), 16)))
+        MacroModelling.cubic_kalman_noise_covariance!(Qbatched, Ctest, Λnoise, basis.Ψ, Pc,
+                                                       sys.noise_state_indices, Pnoise,
+                                                       mixvec, mixΨ, CΨ;
+                                                       mixAll = mixAll)
         expected = Ctest * basis.Ψ * Ctest'
         Pload = Pc[sys.noise_state_indices, sys.noise_state_indices]
         for i in eachindex(sys.noise_state_indices), j in eachindex(sys.noise_state_indices)
@@ -124,6 +130,7 @@ import AxisKeys: KeyedArray
             expected .+= Pload[i, j] .* (Di * basis.Ψ * Dj')
         end
         @test Q ≈ (expected + expected') / 2
+        @test Qbatched ≈ Q
         Pc_outside = copy(Pc)
         outside = setdiff(1:sys.nz, sys.noise_state_indices)
         Pc_outside[outside, outside] .+= 10

@@ -404,7 +404,7 @@ function normalize_filtering_options(filter::Symbol,
     # `:particle` is a convenience alias for the bootstrap particle filter.
     filter = get(PARTICLE_FILTER_ALIASES, filter, filter)
 
-    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), the unpruned Ivashchenko filter (`:ivashchenko_kalman`, second- and third-order models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
+    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), the Ivashchenko Gaussian moment-closure filter (`:ivashchenko_kalman`, raw or pruned second- and third-order models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
 
     is_particle = filter ∈ PARTICLE_FILTERS
 
@@ -429,8 +429,8 @@ function normalize_filtering_options(filter::Symbol,
         filter = :inversion
     end
 
-    if filter == :ivashchenko_kalman && algorithm ∉ (:second_order, :third_order)
-        @info "The Ivashchenko filter is only defined for `algorithm = :second_order` or `:third_order`; got `:$(algorithm)`. Setting `filter = :inversion`." maxlog = maxlog
+    if filter == :ivashchenko_kalman && algorithm ∉ (:second_order, :third_order, :pruned_second_order, :pruned_third_order)
+        @info "The Ivashchenko filter is only defined for second- and third-order raw or pruned solutions; got `:$(algorithm)`. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
     end
 

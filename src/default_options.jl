@@ -14,8 +14,8 @@ const DEFAULT_PRESAMPLE_PERIODS = 0
 # identified by a single symbol (no separate "which particle filter" argument).
 const PARTICLE_FILTERS = (:bootstrap_particle, :auxiliary_particle, :tempered_particle, :guided_particle)
 # The quadratic and cubic Kalman filters apply to the pruned second- and
-# third-order solutions. Ivashchenko's filter is the separate unpruned Gaussian
-# moment-closure filter for the raw second- and third-order solutions.
+# third-order solutions. Ivashchenko's filter is a separate Gaussian
+# moment-closure filter for raw or pruned second- and third-order solutions.
 const SUPPORTED_FILTERS = (:kalman, :inversion, :quadratic_kalman, :cubic_kalman,
                            :ivashchenko_kalman, PARTICLE_FILTERS...)
 # `:particle` is accepted as a convenience alias for the variant a user asking for

@@ -4551,9 +4551,9 @@ end
 
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, inversion filter, unpruned Ivashchenko filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, inversion filter, Ivashchenko Gaussian moment-closure filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-The Kalman, inversion, and Ivashchenko likelihoods are differentiable. The Ivashchenko likelihood has analytical reverse-mode rules for its unpruned second- and third-order moment recursions. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
+The Kalman, inversion, and Ivashchenko likelihoods are differentiable. The Ivashchenko likelihood has analytical reverse-mode rules for its raw and pruned second- and third-order moment recursions. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4570,6 +4570,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_COVARIANCE®
 - $INITIAL_STATE®
 - $ON_FAILURE_LOGLIKELIHOOD®
+- `ivashchenko_gaussian_closure` [Default: `:exact`, Type: `Symbol`]: Gaussian covariance closure used by `filter = :ivashchenko_kalman`. `:linearized` retains the exact nonlinear mean and effective Jacobian covariance; `:diagonal` additionally retains second-order curvature variances while discarding their cross-covariances.
 $PARTICLE_FILTER_KEYWORDS®
 - $QME®
 - $SYLVESTER®
@@ -4620,6 +4621,7 @@ function get_loglikelihood(𝓂::ℳ,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                            ivashchenko_gaussian_closure::Symbol = :exact,
                             n_particles::Int = DEFAULT_N_PARTICLES,
                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -4649,6 +4651,7 @@ function get_loglikelihood(𝓂::ℳ,
                              initial_covariance = initial_covariance,
                              filter_algorithm = filter_algorithm,
                              measurement_error = measurement_error,
+                             ivashchenko_gaussian_closure = ivashchenko_gaussian_closure,
                              n_particles = n_particles,
                              particle_resampling = particle_resampling,
                              particle_resampling_threshold = particle_resampling_threshold,
@@ -4680,6 +4683,7 @@ function get_loglikelihood(𝓂::ℳ,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                            ivashchenko_gaussian_closure::Symbol = :exact,
                             n_particles::Int = DEFAULT_N_PARTICLES,
                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
@@ -4903,9 +4907,9 @@ function get_loglikelihood(𝓂::ℳ,
                                 on_failure_loglikelihood = on_failure_loglikelihood,
                                 opts = opts)
     elseif filter == :ivashchenko_kalman
-        # Ivashchenko's filter treats the raw perturbation solution as a
-        # polynomial and closes its Gaussian moments; it is separate from the
-        # pruned augmented-state Kalman recursions.
+        # Ivashchenko's filter closes Gaussian moments of either the raw
+        # perturbation polynomial or the compressed pruned stage map; it does
+        # not recreate Kollmann's augmented pair/triple state.
         if has_missing
             calculate_loglikelihood_with_missing(Val(:ivashchenko_kalman), Val(algorithm), obs_indices,
                                                   𝐒, data_in_deviations, constants_obj, state,
@@ -4913,6 +4917,7 @@ function get_loglikelihood(𝓂::ℳ,
                                                   presample_periods = presample_periods,
                                                   initial_covariance = initial_covariance,
                                                   measurement_error = measurement_error_H,
+                                                  gaussian_closure = ivashchenko_gaussian_closure,
                                                   on_failure_loglikelihood = on_failure_loglikelihood,
                                                   opts = opts)
         else
@@ -4921,6 +4926,7 @@ function get_loglikelihood(𝓂::ℳ,
                                     presample_periods = presample_periods,
                                     initial_covariance = initial_covariance,
                                     measurement_error = measurement_error_H,
+                                    gaussian_closure = ivashchenko_gaussian_closure,
                                     on_failure_loglikelihood = on_failure_loglikelihood,
                                     opts = opts)
         end

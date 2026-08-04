@@ -11,14 +11,31 @@
 
 const IVASHCHENKO_STATIONARY_MAXITER = 500
 const IVASHCHENKO_STATIONARY_TOLERANCE = 1e-10
+const IVASHCHENKO_GAUSSIAN_CLOSURES = (:exact, :linearized, :diagonal)
+
+function validate_ivashchenko_gaussian_closure(sys, gaussian_closure::Symbol)
+    gaussian_closure ∈ IVASHCHENKO_GAUSSIAN_CLOSURES ||
+        throw(ArgumentError("Unsupported Ivashchenko Gaussian closure `:$(gaussian_closure)`. Choose :exact, :linearized, or :diagonal."))
+    gaussian_closure == :diagonal && sys.order != :second_order &&
+        throw(ArgumentError("The :diagonal Ivashchenko Gaussian closure is currently implemented only for second-order systems."))
+    return gaussian_closure
+end
 
 compressed_pair_index(i::Int, j::Int, n::Int) = begin
     i, j = max(i, j), min(i, j)
     (i - 1) * i ÷ 2 + j
 end
 
-compressed_triple_index(i::Int, j::Int, k::Int, n::Int) = begin
-    i, j, k = sort((i, j, k), rev = true)
+@inline function compressed_triple_index(i::Int, j::Int, k::Int, n::Int)
+    if i < j
+        i, j = j, i
+    end
+    if i < k
+        i, k = k, i
+    end
+    if j < k
+        j, k = k, j
+    end
     (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + k
 end
 
@@ -59,14 +76,18 @@ function ivashchenko_gaussian_sixth_pullback!(covariance_bar, weight,
     return covariance_bar
 end
 
-function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_index::Vector{Int}, order::Symbol)
+function build_ivashchenko_kalman_system_from_constants(cons, 𝐒,
+                                                        observables_index::Vector{Int},
+                                                        order::Symbol;
+                                                        keep_all_rows::Bool = true)
     T = cons.post_model_macro
     nVars, nPast, nExo = T.nVars, T.nPast_not_future_and_mixed, T.nExo
     past = collect(T.past_not_future_and_mixed_idx)
-    # Keep all model-variable rows.  The likelihood still selects only the
-    # state and observable blocks, while the full row set lets the estimate API
-    # return a value for every model variable and makes smoothing well-defined.
-    output_rows = collect(1:nVars)
+    # The estimate API needs every model-variable row.  A likelihood pass only
+    # needs the state recursion and the requested observables, so it can use the
+    # exact smaller output map without changing the Gaussian closure.
+    output_rows = keep_all_rows ? collect(1:nVars) :
+                  sort!(unique(vcat(past, observables_index)))
     nout = length(output_rows)
     dv = nPast + 1 + nExo
     d = nPast + nExo
@@ -173,10 +194,331 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒, observables_
             random_triple_multiplicities, quadratic_hessian, A, B)
 end
 
-build_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol) =
-    build_ivashchenko_kalman_system_from_constants(𝓂.constants, 𝐒, oi, order)
+build_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol;
+                                keep_all_rows::Bool = true) =
+    build_ivashchenko_kalman_system_from_constants(𝓂.constants, 𝐒, oi, order;
+                                                   keep_all_rows = keep_all_rows)
 
-function ivashchenko_kalman_workspace(sys, scalar_type::Type)
+const IVASHCHENKO_PRUNED_THIRD_MAX_BYTES = 768 * 1024^2
+
+@inline function pruned_ivashchenko_effective_index(stage::Int, i::Int,
+                                                     nPast::Int, nStages::Int,
+                                                     nExo::Int)
+    if i <= nPast
+        return (stage - 1) * nPast + i
+    elseif i == nPast + 1
+        return nStages * nPast + 1
+    end
+    return nStages * nPast + 1 + (i - nPast - 1)
+end
+
+function pruned_ivashchenko_initial_mean(sys, state)
+    stages = sys.nStages
+    past = sys.original_past
+    if state isa AbstractVector{<:AbstractVector}
+        length(state) == stages ||
+            throw(DimensionMismatch("The pruned Ivashchenko state must contain $stages stage vectors."))
+        return vcat((state[stage][past] for stage in 1:stages)...)
+    end
+    length(state) == sys.original_nVars ||
+        throw(DimensionMismatch("The pruned Ivashchenko initial state must have $(sys.original_nVars) entries."))
+    result = [zeros(eltype(state), sys.original_nVars) for _ in 1:stages]
+    result[1][past] .= state[past]
+    return vcat((result[stage][past] for stage in 1:stages)...)
+end
+
+function build_pruned_ivashchenko_kalman_system_from_constants(cons, 𝐒,
+                                                               observables_index::Vector{Int},
+                                                               order::Symbol;
+                                                               keep_all_rows::Bool = false)
+    order ∈ (:pruned_second_order, :pruned_third_order) ||
+        throw(ArgumentError("The pruned Ivashchenko builder requires a pruned second- or third-order algorithm."))
+    T = cons.post_model_macro
+    original_nVars = T.nVars
+    original_nPast = T.nPast_not_future_and_mixed
+    nExo = T.nExo
+    original_past = collect(T.past_not_future_and_mixed_idx)
+    nStages = order == :pruned_second_order ? 2 : 3
+    nObs = length(observables_index)
+    original_dv = original_nPast + 1 + nExo
+    required_order = nStages == 3 ? 3 : 2
+    length(𝐒) >= required_order ||
+        throw(DimensionMismatch("The $(order) solution must provide the required perturbation matrices."))
+
+    scalar_type = nStages == 3 ?
+        promote_type(eltype(𝐒[1]), eltype(𝐒[2]), eltype(𝐒[3])) :
+        promote_type(eltype(𝐒[1]), eltype(𝐒[2]))
+    original_S1 = Matrix{scalar_type}(𝐒[1])
+    original_S2 = Matrix{scalar_type}(𝐒[2])
+    size(original_S1) == (original_nVars, original_dv) ||
+        throw(DimensionMismatch("The pruned S₁ matrix has the wrong dimensions."))
+    size(original_S2, 1) == original_nVars &&
+    size(original_S2, 2) == original_dv * (original_dv + 1) ÷ 2 ||
+        throw(DimensionMismatch("The pruned S₂ matrix has the wrong compressed dimensions."))
+    original_S3 = nothing
+    if nStages == 3
+        original_S3 = Matrix{scalar_type}(𝐒[3])
+        size(original_S3, 1) == original_nVars &&
+        size(original_S3, 2) == original_dv * (original_dv + 1) * (original_dv + 2) ÷ 6 ||
+            throw(DimensionMismatch("The pruned S₃ matrix has the wrong compressed dimensions."))
+    end
+
+    # Only rows needed by the state recursion and the requested observables are
+    # retained.  The remaining model rows cannot affect this likelihood pass.
+    keep_rows = keep_all_rows ? collect(1:original_nVars) :
+                sort!(unique(vcat(original_past, observables_index)))
+    nKeep = length(keep_rows)
+    past_local = [findfirst(==(row), keep_rows) for row in original_past]
+    state_output_positions = Int[]
+    for stage in 1:nStages
+        append!(state_output_positions, (stage - 1) * nKeep .+ past_local)
+    end
+    measurement_rows = nStages * nKeep .+ (1:nObs)
+    flat_nPast = nStages * original_nPast
+    effective_dv = flat_nPast + 1 + nExo
+    effective_nout = nStages * nKeep + nObs
+    effective_pair_count = effective_dv * (effective_dv + 1) ÷ 2
+
+    if nStages == 3
+        effective_triple_count = effective_dv * (effective_dv + 1) * (effective_dv + 2) ÷ 6
+        d = effective_dv - 1
+        n_pair = d * (d + 1) ÷ 2
+        estimated_elements = 5 * effective_nout * effective_triple_count +
+                             6 * d * effective_triple_count + n_pair * n_pair +
+                             effective_nout * (effective_pair_count + n_pair)
+        estimated_bytes = estimated_elements * sizeof(scalar_type)
+        estimated_bytes <= IVASHCHENKO_PRUNED_THIRD_MAX_BYTES ||
+            throw(ArgumentError("The pruned third-order Ivashchenko closure would require about " *
+                                string(round(estimated_bytes / 1024^2, digits = 1)) *
+                                " MiB in compressed workspaces for this model. " *
+                                "This exceeds the configured " *
+                                string(round(IVASHCHENKO_PRUNED_THIRD_MAX_BYTES / 1024^2)) *
+                                " MiB safety limit; use Kollmann's cubic filter when its dimension limit permits it, " *
+                                "or use inversion/particle filtering for this model."))
+    end
+
+    effective_S1 = zeros(scalar_type, effective_nout, effective_dv)
+    effective_S2 = zeros(scalar_type, effective_nout, effective_pair_count)
+    effective_S3 = nStages == 3 ?
+        zeros(scalar_type, effective_nout,
+              effective_dv * (effective_dv + 1) * (effective_dv + 2) ÷ 6) : nothing
+
+    for stage in 1:nStages
+        output_offset = (stage - 1) * nKeep
+        for (row_position_local, row) in enumerate(keep_rows)
+            if stage == 1
+                @inbounds for i in 1:original_dv
+                    effective_S1[output_offset + row_position_local,
+                                 pruned_ivashchenko_effective_index(1, i, original_nPast,
+                                                                     nStages, nExo)] = original_S1[row, i]
+                end
+            else
+                @inbounds for i in 1:original_nPast
+                    effective_S1[output_offset + row_position_local,
+                                 pruned_ivashchenko_effective_index(stage, i, original_nPast,
+                                                                     nStages, nExo)] = original_S1[row, i]
+                end
+            end
+        end
+    end
+
+    @inbounds for i in 1:original_dv, j in 1:i
+        original_column = compressed_pair_index(i, j, original_dv)
+        effective_column = compressed_pair_index(
+            pruned_ivashchenko_effective_index(1, i, original_nPast, nStages, nExo),
+            pruned_ivashchenko_effective_index(1, j, original_nPast, nStages, nExo),
+            effective_dv)
+        for (row_position_local, row) in enumerate(keep_rows)
+            effective_S2[nKeep + row_position_local, effective_column] =
+                original_S2[row, original_column]
+        end
+    end
+
+    # The line above writes the second-stage block because it starts at nKeep;
+    # keep the explicit offsets below for the mixed third-stage term and to make
+    # the two pruned recursions visibly separate.
+    if nStages == 3
+        @inbounds for i in 1:original_dv, j in 1:i
+            original_column = compressed_pair_index(i, j, original_dv)
+            if j <= original_nPast
+                effective_column = compressed_pair_index(
+                    pruned_ivashchenko_effective_index(1, i, original_nPast, nStages, nExo),
+                    pruned_ivashchenko_effective_index(2, j, original_nPast, nStages, nExo),
+                    effective_dv)
+                for (row_position_local, row) in enumerate(keep_rows)
+                    effective_S2[2 * nKeep + row_position_local, effective_column] += original_S2[row, original_column]
+                end
+            end
+            if i != j && i <= original_nPast
+                effective_column = compressed_pair_index(
+                    pruned_ivashchenko_effective_index(1, j, original_nPast, nStages, nExo),
+                    pruned_ivashchenko_effective_index(2, i, original_nPast, nStages, nExo),
+                    effective_dv)
+                for (row_position_local, row) in enumerate(keep_rows)
+                    effective_S2[2 * nKeep + row_position_local, effective_column] += original_S2[row, original_column]
+                end
+            end
+        end
+
+        @inbounds for i in 1:original_dv, j in 1:i, k in 1:j
+            original_column = compressed_triple_index(i, j, k, original_dv)
+            effective_column = compressed_triple_index(
+                pruned_ivashchenko_effective_index(1, i, original_nPast, nStages, nExo),
+                pruned_ivashchenko_effective_index(1, j, original_nPast, nStages, nExo),
+                pruned_ivashchenko_effective_index(1, k, original_nPast, nStages, nExo),
+                effective_dv)
+            for (row_position_local, row) in enumerate(keep_rows)
+                effective_S3[2 * nKeep + row_position_local, effective_column] = original_S3[row, original_column]
+            end
+        end
+    end
+
+    # The observation map is the sum of the pruned stages.  Appending these
+    # rows gives the generic Ivashchenko pass the same measurement covariance
+    # interface as its unpruned system without adding a physical state block.
+    @inbounds for (observation, row) in enumerate(observables_index)
+        row_position_local = findfirst(==(row), keep_rows)
+        measurement_row = measurement_rows[observation]
+        for stage in 1:nStages
+            source_row = (stage - 1) * nKeep + row_position_local
+            effective_S1[measurement_row, :] .+= effective_S1[source_row, :]
+            effective_S2[measurement_row, :] .+= effective_S2[source_row, :]
+            if effective_S3 !== nothing
+                effective_S3[measurement_row, :] .+= effective_S3[source_row, :]
+            end
+        end
+    end
+
+    fake_constants = (; post_model_macro = (; nVars = effective_nout,
+                                             nPast_not_future_and_mixed = flat_nPast,
+                                             nExo,
+                                             past_not_future_and_mixed_idx = state_output_positions))
+    effective_solution = effective_S3 === nothing ?
+        [effective_S1, effective_S2] : [effective_S1, effective_S2, effective_S3]
+    base = build_ivashchenko_kalman_system_from_constants(
+        fake_constants, effective_solution, collect(measurement_rows),
+        nStages == 2 ? :second_order : :third_order)
+    return merge(base, (; past = collect(1:flat_nPast), pruned = true, nStages,
+                        original_nVars, original_nPast,
+                        original_past, original_observables = copy(observables_index),
+                        keep_rows, nKeep, state_output_positions, measurement_rows,
+                        effective_solution, effective_dv))
+end
+
+build_pruned_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol;
+                                       keep_all_rows::Bool = false) =
+    build_pruned_ivashchenko_kalman_system_from_constants(𝓂.constants, 𝐒, oi, order;
+                                                          keep_all_rows = keep_all_rows)
+
+function pruned_ivashchenko_solution_matrix_pullback(sys, effective_bar, solution_matrices)
+    original_bar = [zeros(eltype(effective_bar[1]), size(solution_matrices[1])),
+                    zeros(eltype(effective_bar[1]), size(solution_matrices[2]))]
+    if length(solution_matrices) == 3
+        push!(original_bar, zeros(eltype(effective_bar[1]), size(solution_matrices[3])))
+    end
+    row_bar_s1 = copy(effective_bar[1])
+    row_bar_s2 = copy(effective_bar[2])
+    row_bar_s3 = length(effective_bar) == 3 ? copy(effective_bar[3]) : nothing
+    @inbounds for (observation, row) in enumerate(sys.original_observables)
+        row_position_local = findfirst(==(row), sys.keep_rows)
+        measurement_row = sys.measurement_rows[observation]
+        for stage in 1:sys.nStages
+            source_row = (stage - 1) * sys.nKeep + row_position_local
+            row_bar_s1[source_row, :] .+= row_bar_s1[measurement_row, :]
+            row_bar_s2[source_row, :] .+= row_bar_s2[measurement_row, :]
+            if row_bar_s3 !== nothing
+                row_bar_s3[source_row, :] .+= row_bar_s3[measurement_row, :]
+            end
+        end
+    end
+
+    original_dv = sys.original_nPast + 1 + sys.nExo
+    @inbounds for stage in 1:sys.nStages
+        output_offset = (stage - 1) * sys.nKeep
+        for (row_position_local, row) in enumerate(sys.keep_rows)
+            source_row = output_offset + row_position_local
+            if stage == 1
+                for i in 1:original_dv
+                    effective_column = pruned_ivashchenko_effective_index(
+                        1, i, sys.original_nPast, sys.nStages, sys.nExo)
+                    original_bar[1][row, i] += row_bar_s1[source_row, effective_column]
+                end
+            else
+                for i in 1:sys.original_nPast
+                    effective_column = pruned_ivashchenko_effective_index(
+                        stage, i, sys.original_nPast, sys.nStages, sys.nExo)
+                    original_bar[1][row, i] += row_bar_s1[source_row, effective_column]
+                end
+            end
+
+            if stage == 2
+                for i in 1:original_dv, j in 1:i
+                    original_column = compressed_pair_index(i, j, original_dv)
+                    effective_column = compressed_pair_index(
+                        pruned_ivashchenko_effective_index(1, i, sys.original_nPast,
+                                                           sys.nStages, sys.nExo),
+                        pruned_ivashchenko_effective_index(1, j, sys.original_nPast,
+                                                           sys.nStages, sys.nExo),
+                        sys.effective_dv)
+                    original_bar[2][row, original_column] += row_bar_s2[source_row, effective_column]
+                end
+            elseif stage == 3
+                for i in 1:original_dv, j in 1:i
+                    original_column = compressed_pair_index(i, j, original_dv)
+                    if j <= sys.original_nPast
+                        effective_column = compressed_pair_index(
+                            pruned_ivashchenko_effective_index(1, i, sys.original_nPast,
+                                                               sys.nStages, sys.nExo),
+                            pruned_ivashchenko_effective_index(2, j, sys.original_nPast,
+                                                               sys.nStages, sys.nExo),
+                            sys.effective_dv)
+                        original_bar[2][row, original_column] += row_bar_s2[source_row, effective_column]
+                    end
+                    if i != j && i <= sys.original_nPast
+                        effective_column = compressed_pair_index(
+                            pruned_ivashchenko_effective_index(1, j, sys.original_nPast,
+                                                               sys.nStages, sys.nExo),
+                            pruned_ivashchenko_effective_index(2, i, sys.original_nPast,
+                                                               sys.nStages, sys.nExo),
+                            sys.effective_dv)
+                        original_bar[2][row, original_column] += row_bar_s2[source_row, effective_column]
+                    end
+                end
+                for i in 1:original_dv, j in 1:i, k in 1:j
+                    original_column = compressed_triple_index(i, j, k, original_dv)
+                    effective_column = compressed_triple_index(
+                        pruned_ivashchenko_effective_index(1, i, sys.original_nPast,
+                                                           sys.nStages, sys.nExo),
+                        pruned_ivashchenko_effective_index(1, j, sys.original_nPast,
+                                                           sys.nStages, sys.nExo),
+                        pruned_ivashchenko_effective_index(1, k, sys.original_nPast,
+                                                           sys.nStages, sys.nExo),
+                        sys.effective_dv)
+                    original_bar[3][row, original_column] += row_bar_s3[source_row, effective_column]
+                end
+            end
+        end
+    end
+    return original_bar
+end
+
+function pruned_ivashchenko_state_pullback(sys, flat_bar, state)
+    if state isa AbstractVector{<:AbstractVector}
+        result = [zeros(eltype(flat_bar), size(stage_state)) for stage_state in state]
+        @inbounds for stage in 1:sys.nStages
+            range = (stage - 1) * sys.original_nPast + 1:stage * sys.original_nPast
+            result[stage][sys.original_past] .= flat_bar[range]
+        end
+        return result
+    end
+    result = zeros(eltype(flat_bar), length(state))
+    result[sys.original_past] .= view(flat_bar, 1:sys.original_nPast)
+    return result
+end
+
+function ivashchenko_kalman_workspace(sys, scalar_type::Type;
+                                      gaussian_closure::Symbol = :exact)
+    validate_ivashchenko_gaussian_closure(sys, gaussian_closure)
     nout, d, n_pair = sys.nout, sys.d, sys.n_pair
     third = sys.order == :third_order
     n_triple = length(sys.triple_indices)
@@ -190,26 +532,324 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type)
             effective_linear = zeros(scalar_type, nout, d),
             hessian,
             quadratic_hessian,
-            quadratic_left = third ? nothing : zeros(scalar_type, d * d, nout),
-            quadratic_right = third ? nothing : zeros(scalar_type, d * d, nout),
+            quadratic_left = third || gaussian_closure == :linearized ? nothing :
+                             zeros(scalar_type, d * d, nout),
+            quadratic_right = third || gaussian_closure != :exact ? nothing :
+                              zeros(scalar_type, d * d, nout),
             pair_mean = zeros(scalar_type, n_pair),
-            pair_covariance = third ? zeros(scalar_type, n_pair, n_pair) : nothing,
-            pair_product = third ? zeros(scalar_type, nout, n_pair) : nothing,
+            pair_covariance = third && gaussian_closure == :exact ?
+                              zeros(scalar_type, n_pair, n_pair) : nothing,
+            pair_product = third && gaussian_closure == :exact ?
+                           zeros(scalar_type, nout, n_pair) : nothing,
             covariance = zeros(scalar_type, nout, nout),
             third_derivative = third ? zeros(scalar_type, nout, n_triple) : nothing,
-            third_covariance = third ? zeros(scalar_type, n_triple, n_triple) : nothing,
-            third_cross = third ? zeros(scalar_type, d, n_triple) : nothing,
+            third_cross = third && gaussian_closure == :exact ?
+                          zeros(scalar_type, d, n_triple) : nothing,
             third_linear = third ? zeros(scalar_type, n_triple, d) : nothing,
-            third_work = third ? zeros(scalar_type, nout, n_triple) : nothing,
-            third_output = third ? zeros(scalar_type, nout, nout) : nothing,
+            third_work = third && gaussian_closure == :exact ?
+                         zeros(scalar_type, nout, n_triple) : nothing,
+            third_output = third && gaussian_closure == :exact ?
+                           zeros(scalar_type, nout, nout) : nothing,
+            third_mode_source = third && gaussian_closure == :exact ?
+                                zeros(scalar_type, d, n_pair) : nothing,
+            third_mode_one = third && gaussian_closure == :exact ?
+                             zeros(scalar_type, d, n_pair) : nothing,
+            third_mode_two = third && gaussian_closure == :exact ?
+                             zeros(scalar_type, n_pair, d) : nothing,
+            third_mode_three = third && gaussian_closure == :exact ?
+                               zeros(scalar_type, n_pair, d) : nothing,
+            third_cross_compressed = third && gaussian_closure == :exact ?
+                                     zeros(scalar_type, n_triple, nout) : nothing,
+            third_linear_output = third && gaussian_closure == :exact ?
+                                  zeros(scalar_type, nout, d) : nothing,
+            third_linear_left = third && gaussian_closure == :exact ?
+                                zeros(scalar_type, nout, d) : nothing,
             pair_scratch = zeros(scalar_type, n_pair),
+            pair_jacobian = zeros(scalar_type, n_pair, d),
             triple_scratch = third ? zeros(scalar_type, n_triple) : nothing,
+            triple_jacobian = third ? zeros(scalar_type, n_triple, d) : nothing,
             basis = zeros(scalar_type, sys.dv),
-            second_basis = zeros(scalar_type, sys.dv))
+            second_basis = zeros(scalar_type, sys.dv),
+            gaussian_closure)
+end
+
+function ivashchenko_pair_jacobian!(output, sys, v)
+    @inbounds for pair in eachindex(sys.pair_indices)
+        i, j = sys.pair_indices[pair]
+        for column in 1:sys.d
+            random_index = sys.random_indices[column]
+            if i == j
+                output[pair, column] = i == random_index ? v[i] : zero(eltype(output))
+            else
+                output[pair, column] = (i == random_index ? v[j] : zero(eltype(output))) +
+                                       (j == random_index ? v[i] : zero(eltype(output)))
+            end
+        end
+    end
+    return output
+end
+
+function ivashchenko_selected_pair_identity_vjp!(gradient, cotangent, sys)
+    nPast = sys.nPast
+    constant_index = nPast + 1
+    @inbounds for (pair, (i, j)) in enumerate(sys.pair_indices)
+        if i == j
+            if i != constant_index
+                column = i <= nPast ? i : i - 1
+                gradient[i] += cotangent[pair, column]
+            end
+        else
+            if i != constant_index
+                column = i <= nPast ? i : i - 1
+                gradient[j] += cotangent[pair, column]
+            end
+            if j != constant_index
+                column = j <= nPast ? j : j - 1
+                gradient[i] += cotangent[pair, column]
+            end
+        end
+    end
+    return gradient
+end
+
+function ivashchenko_triple_jacobian!(output, sys, v, basis)
+    @inbounds for column in 1:sys.d
+        fill!(basis, zero(eltype(basis)))
+        basis[sys.random_indices[column]] = one(eltype(basis))
+        compressed_kron³!(view(output, :, column), v, v, basis)
+    end
+    return output
+end
+
+function ivashchenko_right_input_covariance!(destination::AbstractMatrix,
+                                             source::AbstractMatrix,
+                                             covariance_input::AbstractMatrix,
+                                             nPast::Int, scale = 1.0)
+    d = size(source, 2)
+    if nPast > 0
+        # destination[:, 1:nPast] = scale * source[:, 1:nPast] * P.
+        ℒ.mul!(view(destination, :, 1:nPast), view(source, :, 1:nPast),
+               view(covariance_input, 1:nPast, 1:nPast), scale, 0.0)
+    end
+    if nPast < d
+        # destination[:, nPast+1:d] = scale * source[:, nPast+1:d].
+        @inbounds for j in nPast + 1:d, i in axes(source, 1)
+            destination[i, j] = scale * source[i, j]
+        end
+    end
+    return destination
+end
+
+function ivashchenko_left_input_covariance!(destination::AbstractMatrix,
+                                            source::AbstractMatrix,
+                                            covariance_input::AbstractMatrix,
+                                            nPast::Int, scale = 1.0)
+    d = size(source, 1)
+    if nPast > 0
+        # destination[1:nPast, :] = scale * P * source[1:nPast, :].
+        ℒ.mul!(view(destination, 1:nPast, :),
+               view(covariance_input, 1:nPast, 1:nPast),
+               view(source, 1:nPast, :), scale, 0.0)
+    end
+    if nPast < d
+        # destination[nPast+1:d, :] = scale * source[nPast+1:d, :].
+        @inbounds for j in axes(source, 2), i in nPast + 1:d
+            destination[i, j] = scale * source[i, j]
+        end
+    end
+    return destination
+end
+
+function ivashchenko_third_order_pullback_workspace(sys, scalar_type::Type)
+    nout, d, dv = sys.nout, sys.d, sys.dv
+    n_pair = sys.n_pair
+    n_triple = length(sys.triple_indices)
+    return (; covariance_bar_symmetric = zeros(scalar_type, nout, nout),
+            gΣ = zeros(scalar_type, d, d),
+            gv = zeros(scalar_type, dv),
+            gS1 = zeros(scalar_type, nout, dv),
+            gS2 = zeros(scalar_type, nout, n_pair),
+            gS3 = zeros(scalar_type, nout, n_triple),
+            gL = zeros(scalar_type, nout, d),
+            gpair_mean = zeros(scalar_type, n_pair),
+            gK = zeros(scalar_type, nout, n_pair),
+            gG2 = zeros(scalar_type, n_pair, n_pair),
+            gT = zeros(scalar_type, nout, n_triple),
+            gR = zeros(scalar_type, d, n_triple),
+            gR_internal = zeros(scalar_type, n_triple, d),
+            gW = zeros(scalar_type, n_triple, nout),
+            gU = zeros(scalar_type, nout, d),
+            tmp_noutd = zeros(scalar_type, nout, d),
+            tmp_dnout = zeros(scalar_type, d, nout),
+            tmp_noutpair = zeros(scalar_type, nout, n_pair),
+            tmp_pairnout = zeros(scalar_type, n_pair, nout),
+            tmp_nouttriple = zeros(scalar_type, nout, n_triple),
+            third_mode_source = zeros(scalar_type, d, n_pair),
+            third_mode_one = zeros(scalar_type, d, n_pair),
+            third_mode_two = zeros(scalar_type, n_pair, d),
+            third_mode_three = zeros(scalar_type, n_pair, d),
+            third_cross_compressed = zeros(scalar_type, n_triple, nout),
+            third_linear_output = zeros(scalar_type, nout, d),
+            gmode_source = zeros(scalar_type, d, n_pair),
+            gmode_one = zeros(scalar_type, d, n_pair),
+            gmode_two = zeros(scalar_type, n_pair, d),
+            gmode_three = zeros(scalar_type, n_pair, d),
+            pair_jacobian = zeros(scalar_type, n_pair, d),
+            pair_cotangent_matrix = zeros(scalar_type, n_pair, d),
+            pair_cotangent = zeros(scalar_type, n_pair),
+            triple_jacobian = zeros(scalar_type, n_triple, d),
+            triple_cotangent_matrix = zeros(scalar_type, n_triple, d),
+            triple_cotangent = zeros(scalar_type, n_triple),
+            first_bar = zeros(scalar_type, dv),
+            second_bar = zeros(scalar_type, dv),
+            third_bar = zeros(scalar_type, dv),
+            basis = zeros(scalar_type, dv),
+            second_basis = zeros(scalar_type, dv),
+            pair_value = zeros(scalar_type, n_pair),
+            triple_value = zeros(scalar_type, n_triple),
+            mean_result = zeros(scalar_type, sys.nPast),
+            covariance_result = zeros(scalar_type, sys.nPast, sys.nPast))
+end
+
+function ivashchenko_third_order_transform_output!(transformed, output, sys,
+                                                   third_derivative, Σ, ws)
+    d = sys.d
+    pairs = sys.pair_indices
+    triples = sys.triple_indices
+
+    # Transform the symmetric cubic coefficient through Σ one mode at a time.
+    # The intermediates retain a compressed pair index; no d³ tensor or dense
+    # n_triple×n_triple sixth-moment matrix is materialised.
+    @inbounds for l in 1:d, pair in eachindex(pairs)
+        m, k = pairs[pair]
+        ws.third_mode_source[l, pair] =
+            third_derivative[output, compressed_triple_index(l, m, k, d)]
+    end
+    ivashchenko_left_input_covariance!(ws.third_mode_one, ws.third_mode_source,
+                                       Σ, sys.nPast)
+    @inbounds for pair in eachindex(pairs), k in 1:d
+        i, j = pairs[pair]
+        value = zero(eltype(ws.third_mode_two))
+        for m in 1:d
+            value += Σ[j, m] * ws.third_mode_one[i, compressed_pair_index(m, k, d)]
+        end
+        ws.third_mode_two[pair, k] = value
+    end
+    @inbounds for pair in eachindex(pairs), k in 1:d
+        value = zero(eltype(ws.third_mode_three))
+        for n in 1:d
+            value += ws.third_mode_two[pair, n] * Σ[k, n]
+        end
+        ws.third_mode_three[pair, k] = value
+    end
+    @inbounds for triple in eachindex(triples)
+        i, j, k = triples[triple]
+        transformed[triple, output] =
+            sys.triple_multiplicities[triple] *
+            ws.third_mode_three[compressed_pair_index(i, j, d), k]
+    end
+    return transformed
+end
+
+function ivashchenko_third_order_transform!(transformed, sys, third_derivative, Σ, ws)
+    @inbounds for output in 1:sys.nout
+        ivashchenko_third_order_transform_output!(transformed, output, sys,
+                                                  third_derivative, Σ, ws)
+    end
+
+    # The six cross pairings of the sixth Gaussian moment.
+    return transformed
+end
+
+function ivashchenko_third_order_covariance!(covariance, sys, third_derivative, third_linear, Σ, ws)
+    ivashchenko_third_order_transform!(ws.third_cross_compressed, sys,
+                                       third_derivative, Σ, ws)
+    ℒ.mul!(ws.third_output, third_derivative, ws.third_cross_compressed, 1 / 6, 0.0)
+
+    # The remaining nine pairings are the covariance of the cubic Hermite
+    # component that is linear in the Gaussian input.
+    ℒ.mul!(ws.third_linear_output, third_derivative, third_linear, 1 / 6, 0.0)
+    ivashchenko_right_input_covariance!(ws.third_linear_left,
+                                        ws.third_linear_output, Σ, sys.nPast)
+    ℒ.mul!(ws.third_output, ws.third_linear_left,
+           transpose(ws.third_linear_output), 1.0, 1.0)
+    covariance .+= ws.third_output
+    return covariance
+end
+
+function ivashchenko_third_order_covariance_pullback!(gΣ, gT, sys, third_derivative,
+                                                      third_linear, covariance_bar,
+                                                      Σ, B)
+    ivashchenko_third_order_transform!(B.third_cross_compressed, sys,
+                                       third_derivative, Σ, B)
+    W = B.third_cross_compressed
+
+    # Cross-Hermite term: Vₓ = T·W / 6.
+    ℒ.mul!(B.tmp_nouttriple, covariance_bar, transpose(W), 1 / 6, 0.0)
+    gT .+= B.tmp_nouttriple
+    ℒ.mul!(B.gW, transpose(third_derivative), covariance_bar, 1 / 6, 0.0)
+
+    # Cubic Hermite's linear component: Vᵢ = UΣU', U = T·R / 6.
+    ℒ.mul!(B.third_linear_output, third_derivative, third_linear, 1 / 6, 0.0)
+    U = B.third_linear_output
+    ℒ.mul!(B.tmp_noutd, covariance_bar, U)
+    ivashchenko_right_input_covariance!(B.gU, B.tmp_noutd, Σ,
+                                        sys.nPast, 2.0)
+    ℒ.mul!(B.tmp_dnout, transpose(U), covariance_bar)
+    ℒ.mul!(gΣ, B.tmp_dnout, U, 1.0, 1.0)
+    ℒ.mul!(gT, B.gU, transpose(third_linear), 1 / 6, 1.0)
+    ℒ.mul!(B.gR_internal, transpose(third_derivative), B.gU, 1 / 6, 0.0)
+
+    @inbounds for triple in eachindex(sys.triple_indices)
+        i, j, k = sys.triple_indices[triple]
+        multiplicity = sys.triple_multiplicities[triple]
+        for r in 1:sys.d
+            value = multiplicity * B.gR_internal[triple, r]
+            r == i && (gΣ[j, k] += value)
+            r == j && (gΣ[i, k] += value)
+            r == k && (gΣ[i, j] += value)
+        end
+    end
+
+    # Reverse the three compressed mode products. Recomputing the small mode
+    # intermediates avoids recording d³ work for every filtering period.
+    @inbounds for output in 1:sys.nout
+        ivashchenko_third_order_transform_output!(W, output, sys,
+                                                  third_derivative, Σ, B)
+        fill!(B.gmode_three, zero(eltype(B.gmode_three)))
+        for triple in eachindex(sys.triple_indices)
+            i, j, k = sys.triple_indices[triple]
+            B.gmode_three[compressed_pair_index(i, j, sys.d), k] +=
+                sys.triple_multiplicities[triple] * B.gW[triple, output]
+        end
+        ℒ.mul!(gΣ, transpose(B.gmode_three), B.third_mode_two, 1.0, 1.0)
+        ivashchenko_right_input_covariance!(B.gmode_two, B.gmode_three, Σ,
+                                            sys.nPast)
+        fill!(B.gmode_one, zero(eltype(B.gmode_one)))
+        for pair in eachindex(sys.pair_indices), k in 1:sys.d
+            i, j = sys.pair_indices[pair]
+            weight = B.gmode_two[pair, k]
+            for m in 1:sys.d
+                source_pair = compressed_pair_index(m, k, sys.d)
+                gΣ[j, m] += weight * B.third_mode_one[i, source_pair]
+                B.gmode_one[i, source_pair] += weight * Σ[j, m]
+            end
+        end
+        ℒ.mul!(gΣ, B.gmode_one, transpose(B.third_mode_source), 1.0, 1.0)
+        ivashchenko_left_input_covariance!(B.gmode_source, B.gmode_one, Σ,
+                                           sys.nPast)
+        for l in 1:sys.d, pair in eachindex(sys.pair_indices)
+            m, k = sys.pair_indices[pair]
+            triple = compressed_triple_index(l, m, k, sys.d)
+            gT[output, triple] += B.gmode_source[l, pair]
+        end
+    end
+    return gΣ, gT
 end
 
 function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
     nPast, d, dv, nout = sys.nPast, sys.d, sys.dv, sys.nout
+    gaussian_closure = ws.gaussian_closure
     Σ = ws.covariance_input
     fill!(Σ, zero(eltype(Σ)))
     Σ[1:nPast, 1:nPast] .= covariance_state
@@ -229,18 +869,17 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         ℒ.mul!(ws.mean, sys.S3, ws.triple_scratch, 1 / 6, 1.0)
     end
 
-    fill!(ws.linear, zero(eltype(ws.linear)))
-    @inbounds for r in 1:d
-        i = sys.random_indices[r]
-        fill!(ws.basis, zero(eltype(ws.basis)))
-        ws.basis[i] = one(eltype(ws.basis))
-        compressed_kron²!(ws.pair_scratch, ws.vbar, ws.basis)
-        ℒ.mul!(view(ws.linear, :, r), sys.S2, ws.pair_scratch, 0.5, 0.0)
-        @views ws.linear[:, r] .+= sys.S1[:, i]
-        if sys.order == :third_order
-            compressed_kron³!(ws.triple_scratch, ws.vbar, ws.vbar, ws.basis)
-            ℒ.mul!(view(ws.linear, :, r), sys.S3, ws.triple_scratch, 0.5, 1.0)
-        end
+    ivashchenko_pair_jacobian!(ws.pair_jacobian, sys, ws.vbar)
+    @inbounds for column in 1:d
+        copyto!(view(ws.linear, :, column),
+                view(sys.S1, :, sys.random_indices[column]))
+    end
+    # linear = S₁[:, random] + 1/2 * S₂ * D₂(v).
+    ℒ.mul!(ws.linear, sys.S2, ws.pair_jacobian, 0.5, 1.0)
+    if sys.order == :third_order
+        ivashchenko_triple_jacobian!(ws.triple_jacobian, sys, ws.vbar, ws.basis)
+        # linear += 1/2 * S₃ * D₃(v).
+        ℒ.mul!(ws.linear, sys.S3, ws.triple_jacobian, 0.5, 1.0)
     end
 
     if sys.order == :third_order
@@ -264,64 +903,81 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
     end
     ℒ.mul!(ws.mean, ws.hessian, ws.pair_mean, 0.5, 1.0)
     ws.effective_linear .= ws.linear
-    ℒ.mul!(ws.linear_left, ws.linear, Σ)
-    ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.linear), 1.0, 0.0)
 
     if sys.order == :third_order
-        fill!(ws.pair_covariance, zero(eltype(ws.pair_covariance)))
-        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
-            i, j = sys.random_pair_indices[p]
-            k, l = sys.random_pair_indices[q]
-            ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
-                sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
-        end
-        ℒ.mul!(ws.pair_product, ws.hessian, ws.pair_covariance)
-        ℒ.mul!(ws.covariance, ws.pair_product, transpose(ws.hessian), 0.25, 1.0)
         fill!(ws.third_derivative, zero(eltype(ws.third_derivative)))
         @inbounds for p in eachindex(sys.random_triple_columns)
             ws.third_derivative[:, p] .= sys.S3[:, sys.random_triple_columns[p]]
         end
-        fill!(ws.third_cross, zero(eltype(ws.third_cross)))
         fill!(ws.third_linear, zero(eltype(ws.third_linear)))
         @inbounds for p in eachindex(sys.random_triple_indices)
             i, j, k = sys.random_triple_indices[p]
             multiplicity = sys.random_triple_multiplicities[p]
             for r in 1:d
-                ws.third_cross[r, p] = multiplicity * (Σ[r, i] * Σ[j, k] +
-                    Σ[r, j] * Σ[i, k] + Σ[r, k] * Σ[i, j])
+                if gaussian_closure == :exact
+                    ws.third_cross[r, p] = multiplicity * (Σ[r, i] * Σ[j, k] +
+                        Σ[r, j] * Σ[i, k] + Σ[r, k] * Σ[i, j])
+                end
                 ws.third_linear[p, r] = multiplicity * ((r == i) * Σ[j, k] +
                     (r == j) * Σ[i, k] + (r == k) * Σ[i, j])
             end
         end
         ℒ.mul!(ws.effective_linear, ws.third_derivative, ws.third_linear, 1 / 6, 1.0)
-        fill!(ws.third_covariance, zero(eltype(ws.third_covariance)))
-        @inbounds for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
-            i, j, k = sys.random_triple_indices[p]
-            l, m, n = sys.random_triple_indices[q]
-            indices = (i, j, k, l, m, n)
-            ws.third_covariance[p, q] = sys.random_triple_multiplicities[p] *
-                sys.random_triple_multiplicities[q] * ivashchenko_gaussian_sixth(indices, Σ)
+        if gaussian_closure == :linearized
+            # Keep the exact Gaussian mean and cubic Hermite Jacobian, but
+            # Gaussianise the transformed state with its delta covariance.
+            ivashchenko_right_input_covariance!(ws.linear_left,
+                                                ws.effective_linear, Σ, nPast)
+            ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.effective_linear), 1.0, 0.0)
+        else
+            fill!(ws.pair_covariance, zero(eltype(ws.pair_covariance)))
+            @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+                i, j = sys.random_pair_indices[p]
+                k, l = sys.random_pair_indices[q]
+                ws.pair_covariance[p, q] = sys.random_pair_multiplicities[p] *
+                    sys.random_pair_multiplicities[q] * (Σ[i, k] * Σ[j, l] + Σ[i, l] * Σ[j, k])
+            end
+            ℒ.mul!(ws.pair_product, ws.hessian, ws.pair_covariance)
+            ivashchenko_right_input_covariance!(ws.linear_left, ws.linear,
+                                                Σ, nPast)
+            ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.linear), 1.0, 0.0)
+            ℒ.mul!(ws.covariance, ws.pair_product, transpose(ws.hessian), 0.25, 1.0)
+            ivashchenko_third_order_covariance!(ws.covariance, sys, ws.third_derivative,
+                                                 ws.third_linear, Σ, ws)
+            ℒ.mul!(ws.third_work, ws.linear, ws.third_cross)
+            ℒ.mul!(ws.third_output, ws.third_work, transpose(ws.third_derivative), 1 / 6, 0.0)
+            @inbounds for j in 1:nout, i in 1:nout
+                ws.covariance[i, j] += ws.third_output[i, j]
+                ws.covariance[i, j] += ws.third_output[j, i]
+            end
         end
-        ℒ.mul!(ws.third_work, ws.linear, ws.third_cross)
-        ℒ.mul!(ws.third_output, ws.third_work, transpose(ws.third_derivative), 1 / 6, 0.0)
-        @inbounds for j in 1:nout, i in 1:nout
-            ws.covariance[i, j] += ws.third_output[i, j]
-            ws.covariance[i, j] += ws.third_output[j, i]
-        end
-        ℒ.mul!(ws.third_work, ws.third_derivative, ws.third_covariance)
-        ℒ.mul!(ws.third_output, ws.third_work, transpose(ws.third_derivative), 1 / 36, 0.0)
-        ws.covariance .+= ws.third_output
     else
-        @inbounds for output in 1:nout
-            hessian = reshape(view(ws.quadratic_hessian, :, output), d, d)
-            left = reshape(view(ws.quadratic_left, :, output), d, d)
-            right = reshape(view(ws.quadratic_right, :, output), d, d)
-            ℒ.mul!(left, hessian, Σ)
-            copyto!(right, transpose(left))
+        ivashchenko_right_input_covariance!(ws.linear_left, ws.linear, Σ, nPast)
+        ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.linear), 1.0, 0.0)
+        if gaussian_closure != :linearized
+            @inbounds for output in 1:nout
+                hessian = reshape(view(ws.quadratic_hessian, :, output), d, d)
+                left = reshape(view(ws.quadratic_left, :, output), d, d)
+                ivashchenko_right_input_covariance!(left, hessian, Σ, nPast)
+                if gaussian_closure == :exact
+                    right = reshape(view(ws.quadratic_right, :, output), d, d)
+                    copyto!(right, transpose(left))
+                else
+                    # Retain each output's exact curvature variance, but
+                    # assume curvature shocks are independent across outputs.
+                    value = zero(eltype(ws.covariance))
+                    for j in 1:d, i in 1:d
+                        value += left[i, j] * left[j, i]
+                    end
+                    ws.covariance[output, output] += value / 2
+                end
+            end
         end
-        # For symmetric T_r and Σ, the quadratic covariance is
-        # 1/2 tr(T_r Σ T_s Σ). This avoids materialising the full pair covariance.
-        ℒ.mul!(ws.covariance, transpose(ws.quadratic_left), ws.quadratic_right, 0.5, 1.0)
+        if gaussian_closure == :exact
+            # For symmetric T_r and Σ, the quadratic covariance is
+            # 1/2 tr(T_r Σ T_s Σ). This avoids materialising the full pair covariance.
+            ℒ.mul!(ws.covariance, transpose(ws.quadratic_left), ws.quadratic_right, 0.5, 1.0)
+        end
     end
 
     @inbounds for j in 1:nout, i in 1:j
@@ -330,6 +986,130 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         ws.covariance[j, i] = value
     end
     return ws.mean, ws.covariance
+end
+
+function ivashchenko_stationary_mean_solve(A, rhs)
+    system = Matrix{eltype(A)}(ℒ.I(size(A, 1)))
+    system .-= A
+    factor = ℒ.lu!(system, check = false)
+    ℒ.issuccess(factor) || return nothing
+    return factor \ rhs
+end
+
+function ivashchenko_stationary_covariance_forcing(sys, state_rows,
+                                                   mean_state, covariance_state, ws,
+                                                   input_range)
+    ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
+    state_covariance = Matrix(view(ws.covariance, state_rows, state_rows))
+    state_linear = Matrix(view(ws.effective_linear, state_rows, 1:sys.nPast))
+    input_linear = state_linear[:, input_range]
+    input_covariance = Matrix(view(covariance_state, input_range, input_range))
+    forcing = state_covariance - input_linear * input_covariance * input_linear'
+    return state_linear, forcing
+end
+
+function ivashchenko_pruned_stationary_initialization(sys, initial_mean, ws;
+                                                      workspaces = nothing,
+                                                      lyapunov_algorithm::Symbol = :doubling)
+    hasproperty(sys, :pruned) && sys.pruned || return nothing
+    sys.nStages ∈ (2, 3) || return nothing
+    eltype(ws.vbar) === Float64 && workspaces !== nothing || return nothing
+
+    n_stage = sys.original_nPast
+    n_state = sys.nPast
+    n_stages = sys.nStages
+    n_state == n_stages * n_stage || return nothing
+    state_rows = sys.state_position
+    first_range = 1:n_stage
+    second_range = (n_stage + 1):(2n_stage)
+    third_range = (2n_stage + 1):(3n_stage)
+
+    # The first pruned stage is linear and the next stage has no first-stage
+    # linear term.  These exact zeros are what make the stationary equations
+    # block triangular; otherwise the generic fixed-point iteration remains the
+    # correct fallback.
+    maximum(abs, sys.S2[state_rows[first_range], :]) == 0 || return nothing
+    maximum(abs, sys.A[second_range, first_range]) == 0 || return nothing
+    if n_stages == 3
+        sys.S3 === nothing && return nothing
+        maximum(abs, sys.S3[state_rows[second_range], :]) == 0 || return nothing
+    end
+
+    A11 = Matrix(sys.A[first_range, first_range])
+    first_constant = Vector(sys.S1[state_rows[first_range], sys.nPast + 1])
+    first_mean = ivashchenko_stationary_mean_solve(A11, first_constant)
+    first_mean === nothing && return nothing
+    first_shocks = Matrix(sys.B[first_range, :])
+    first_covariance = qkf_lyapunov(A11, first_shocks * first_shocks';
+                                    workspaces = workspaces,
+                                    lyapunov_algorithm = lyapunov_algorithm)
+
+    mean_state = zeros(Float64, n_state)
+    mean_state[first_range] .= first_mean
+    covariance_seed = zeros(Float64, n_state, n_state)
+    covariance_seed[first_range, first_range] .= first_covariance
+
+    # Stage two's mean is affine in its own state, with all nonlinear forcing
+    # determined by stage one.  Solve it after evaluating that forcing once.
+    ivashchenko_polynomial_moments!(sys, mean_state, covariance_seed, ws)
+    second_rows = state_rows[second_range]
+    A22 = Matrix(sys.A[second_range, second_range])
+    second_forcing = Vector(ws.mean[second_rows])
+    second_mean = ivashchenko_stationary_mean_solve(A22, second_forcing)
+    second_mean === nothing && return nothing
+    mean_state[second_range] .= second_mean
+
+    # Solve the covariance of the first two stages using the same block
+    # Sylvester/Lyapunov pattern used by the higher-order moment code.
+    upper_range = 1:(2n_stage)
+    first_state_linear, first_forcing = ivashchenko_stationary_covariance_forcing(
+        sys, state_rows, mean_state, covariance_seed, ws, first_range)
+    opts = merge_calculation_options(lyapunov_algorithm = lyapunov_algorithm)
+    upper_covariance, solved = solve_block_triangular_lyapunov(
+        first_state_linear[first_range, first_range],
+        first_state_linear[second_range, first_range],
+        first_state_linear[second_range, second_range],
+        first_forcing[second_range, first_range],
+        first_forcing[second_range, second_range],
+        first_covariance, workspaces, opts)
+    solved || return nothing
+
+    if n_stages == 2
+        final_covariance = upper_covariance
+    else
+        # The third-stage mean depends on the already solved joint first/two
+        # stage Gaussian law through the mixed quadratic and cubic terms.
+        covariance_seed[upper_range, upper_range] .= upper_covariance
+        ivashchenko_polynomial_moments!(sys, mean_state, covariance_seed, ws)
+        A33 = Matrix(sys.A[third_range, third_range])
+        third_rows = state_rows[third_range]
+        third_forcing = Vector(ws.mean[third_rows])
+        third_mean = ivashchenko_stationary_mean_solve(A33, third_forcing)
+        third_mean === nothing && return nothing
+        mean_state[third_range] .= third_mean
+
+        final_state_linear, final_forcing = ivashchenko_stationary_covariance_forcing(
+            sys, state_rows, mean_state, covariance_seed, ws, upper_range)
+        final_covariance, solved = solve_block_triangular_lyapunov(
+            final_state_linear[upper_range, upper_range],
+            final_state_linear[third_range, upper_range],
+            final_state_linear[third_range, third_range],
+            final_forcing[third_range, upper_range],
+            final_forcing[third_range, third_range],
+            upper_covariance, workspaces, opts)
+        solved || return nothing
+    end
+
+    final_covariance = (final_covariance + final_covariance') / 2
+    ivashchenko_polynomial_moments!(sys, mean_state, final_covariance, ws)
+    mean_residual = maximum(abs, Vector(ws.mean[state_rows]) - mean_state)
+    covariance_residual = maximum(abs,
+                                  Matrix(view(ws.covariance, state_rows, state_rows)) -
+                                  final_covariance)
+    scale = max(1.0, maximum(abs, mean_state), maximum(abs, final_covariance))
+    max(mean_residual, covariance_residual) <= 100 *
+        IVASHCHENKO_STATIONARY_TOLERANCE * scale || return nothing
+    return mean_state, final_covariance, true
 end
 
 function ivashchenko_stationary_initialization(sys, initial_mean, initial_covariance, ws;
@@ -345,6 +1125,11 @@ function ivashchenko_stationary_initialization(sys, initial_mean, initial_covari
     elseif initial_covariance != :theoretical
         throw(ArgumentError("Unsupported Ivashchenko initial covariance: $(initial_covariance)."))
     end
+
+    pruned_initialization = ivashchenko_pruned_stationary_initialization(
+        sys, initial_mean, ws; workspaces = workspaces,
+        lyapunov_algorithm = lyapunov_algorithm)
+    pruned_initialization !== nothing && return pruned_initialization
 
     # Start from the linear stationary covariance, then solve the coupled
     # nonlinear mean/covariance fixed point implied by the unpruned polynomial.
@@ -399,12 +1184,13 @@ function ivashchenko_copy_moment_tape(ws)
             effective_linear = copy(ws.effective_linear),
             hessian = ws.third_derivative === nothing ? nothing : copy(ws.hessian),
             pair_mean = copy(ws.pair_mean),
-            pair_covariance = ws.third_derivative === nothing ? nothing : copy(ws.pair_covariance),
+            pair_covariance = ws.third_derivative === nothing ? nothing :
+                              (ws.pair_covariance === nothing ? nothing : copy(ws.pair_covariance)),
             covariance = copy(ws.covariance),
             third_derivative = ws.third_derivative === nothing ? nothing : copy(ws.third_derivative),
-            third_covariance = ws.third_covariance === nothing ? nothing : copy(ws.third_covariance),
             third_cross = ws.third_cross === nothing ? nothing : copy(ws.third_cross),
-            third_linear = ws.third_linear === nothing ? nothing : copy(ws.third_linear))
+            third_linear = ws.third_linear === nothing ? nothing : copy(ws.third_linear),
+            gaussian_closure = ws.gaussian_closure)
 end
 
 function ivashchenko_stationary_initialization_taped(sys, initial_mean, initial_covariance, ws;
@@ -456,6 +1242,7 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
                                  on_failure_loglikelihood::Real = -Inf,
                                  workspaces = nothing,
                                  lyapunov_algorithm::Symbol = :doubling,
+                                 gaussian_closure::Symbol = :exact,
                                  record::Bool = false)
     n_obs, nT = size(data_in_deviations)
     presample_periods = normalize_presample_periods(presample_periods, nT)
@@ -465,7 +1252,8 @@ function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}
     Hm = ivashchenko_measurement_covariance(measurement_error, n_obs, scalar_type)
     obs_idx_per_t, _ = build_obs_index(data_in_deviations)
 
-    ws = ivashchenko_kalman_workspace(sys, scalar_type)
+    ws = ivashchenko_kalman_workspace(sys, scalar_type;
+                                      gaussian_closure = gaussian_closure)
     if record
         mean_state, covariance_state, initialized, initialization_tape =
             ivashchenko_stationary_initialization_taped(sys, initial_mean, initial_covariance, ws;
@@ -696,17 +1484,20 @@ function run_ivashchenko_kalman(sys, data_in_deviations::AbstractMatrix{<:Real},
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::Real = -Inf,
                                 workspaces = nothing,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                lyapunov_algorithm::Symbol = :doubling,
+                                gaussian_closure::Symbol = :exact)
     return ivashchenko_filter_pass(sys, data_in_deviations, initial_mean;
                                    measurement_error = measurement_error,
                                    initial_covariance = initial_covariance,
                                    presample_periods = presample_periods,
                                    on_failure_loglikelihood = on_failure_loglikelihood,
                                    workspaces = workspaces,
-                                   lyapunov_algorithm = lyapunov_algorithm)
+                                   lyapunov_algorithm = lyapunov_algorithm,
+                                   gaussian_closure = gaussian_closure)
 end
 
-function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_bar, Σ, buffers)
+function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_bar, Σ, buffers;
+                                                   gaussian_closure::Symbol = :exact)
     d, nout = sys.d, sys.nout
     T = sys.quadratic_hessian
     mixed = buffers.mixed
@@ -714,18 +1505,35 @@ function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_ba
     left = buffers.left
     right = buffers.right
 
-    # If V_rs = 1/2 tr(T_r Σ T_s Σ), the symmetric covariance cotangent gives
-    # dV/dT_r = Σ (Σ_s V̄_rs T_s) Σ and dV/dΣ = Σ_r T_r Σ (Σ_s V̄_rs T_s).
-    ℒ.mul!(mixed, T, transpose(covariance_bar))
-    @inbounds for output in 1:nout
-        Tmix = reshape(view(mixed, :, output), d, d)
-        gT_output = reshape(view(gT, :, output), d, d)
-        ℒ.mul!(right, Σ, Tmix)
-        ℒ.mul!(gT_output, right, Σ)
-        T_output = reshape(view(T, :, output), d, d)
-        ℒ.mul!(right, T_output, Σ)
-        ℒ.mul!(left, right, Tmix)
-        gΣ .+= left
+    if gaussian_closure == :diagonal
+        # Only V̄_rr reaches the retained curvature variances. For
+        # V_rr = 1/2 tr(T_r Σ T_r Σ), the symmetric adjoints are
+        # dV_rr/dT_r = Σ T_r Σ and dV_rr/dΣ = T_r Σ T_r.
+        @inbounds for output in 1:nout
+            weight = covariance_bar[output, output]
+            T_output = reshape(view(T, :, output), d, d)
+            gT_output = reshape(view(gT, :, output), d, d)
+            ivashchenko_left_input_covariance!(right, T_output, Σ, sys.nPast)
+            ivashchenko_right_input_covariance!(gT_output, right, Σ,
+                                                sys.nPast, weight)
+            ivashchenko_right_input_covariance!(right, T_output, Σ, sys.nPast)
+            ℒ.mul!(left, right, T_output, weight, 0.0)
+            gΣ .+= left
+        end
+    else
+        # If V_rs = 1/2 tr(T_r Σ T_s Σ), the symmetric covariance cotangent gives
+        # dV/dT_r = Σ (Σ_s V̄_rs T_s) Σ and dV/dΣ = Σ_r T_r Σ (Σ_s V̄_rs T_s).
+        ℒ.mul!(mixed, T, transpose(covariance_bar))
+        @inbounds for output in 1:nout
+            Tmix = reshape(view(mixed, :, output), d, d)
+            gT_output = reshape(view(gT, :, output), d, d)
+            ivashchenko_left_input_covariance!(right, Tmix, Σ, sys.nPast)
+            ivashchenko_right_input_covariance!(gT_output, right, Σ, sys.nPast)
+            T_output = reshape(view(T, :, output), d, d)
+            ivashchenko_right_input_covariance!(right, T_output, Σ, sys.nPast)
+            ℒ.mul!(left, right, Tmix)
+            gΣ .+= left
+        end
     end
 
     @inbounds for p in eachindex(sys.random_pair_indices)
@@ -746,6 +1554,11 @@ function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_ba
 end
 
 function ivashchenko_rank_one_add!(matrix, left, right, scale)
+    if eltype(matrix) === Float64 && eltype(left) === Float64 && eltype(right) === Float64
+        # matrix += scale * left * right'; avoid a temporary outer product.
+        ℒ.BLAS.ger!(Float64(scale), left, right, matrix)
+        return matrix
+    end
     @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
         matrix[i, j] += scale * left[i] * right[j]
     end
@@ -774,12 +1587,16 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
     end
 
     ℒ.mul!(buffers.tmp_noutd, covariance_bar_symmetric, L)
-    ℒ.mul!(gL, buffers.tmp_noutd, Σ, 2.0, 0.0)
+    ivashchenko_right_input_covariance!(gL, buffers.tmp_noutd, Σ,
+                                        sys.nPast, 2.0)
     ℒ.mul!(buffers.tmp_dnout, transpose(L), covariance_bar_symmetric)
     ℒ.mul!(gΣ, buffers.tmp_dnout, L, 1.0, 0.0)
-    ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
-                                               covariance_bar_symmetric, Σ,
-                                               buffers)
+    if moment_tape.gaussian_closure != :linearized
+        ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
+                                                   covariance_bar_symmetric, Σ,
+                                                   buffers;
+                                                   gaussian_closure = moment_tape.gaussian_closure)
+    end
 
     compressed_kron²_power!(buffers.pair_value, v)
     ivashchenko_rank_one_add!(gS1, mean_bar, v, 1.0)
@@ -799,18 +1616,18 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
         end
     end
 
-    @inbounds for r in 1:d
-        i = sys.random_indices[r]
-        fill!(buffers.basis, zero(eltype(buffers.basis)))
-        buffers.basis[i] = one(eltype(buffers.basis))
-        compressed_kron²!(buffers.pair_value, v, buffers.basis)
-        gS1[:, i] .+= view(gL, :, r)
-        ivashchenko_rank_one_add!(gS2, view(gL, :, r), buffers.pair_value, 0.5)
-        ℒ.mul!(buffers.pair_cotangent, transpose(sys.S2), view(gL, :, r), 0.5, 0.0)
-        compressed_kron²_vjp!(buffers.first_bar, buffers.second_bar,
-                              buffers.pair_cotangent, v, buffers.basis)
-        gv .+= buffers.first_bar
+    ivashchenko_pair_jacobian!(buffers.pair_jacobian, sys, v)
+    @inbounds for column in 1:d
+        solution_column = sys.random_indices[column]
+        for output in axes(gS1, 1)
+            gS1[output, solution_column] += gL[output, column]
+        end
     end
+    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
+    ℒ.mul!(gS2, gL, transpose(buffers.pair_jacobian), 0.5, 1.0)
+    ℒ.mul!(buffers.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
+    ivashchenko_selected_pair_identity_vjp!(gv,
+                                            buffers.pair_cotangent_matrix, sys)
 
     @inbounds for j in 1:d, i in 1:j-1
         value = (gΣ[i, j] + gΣ[j, i]) / 2
@@ -822,8 +1639,37 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
     return buffers.mean_result, buffers.covariance_result, gS1, gS2, nothing
 end
 
+function ivashchenko_third_order_linearized_covariance_pullback!(gΣ, gL, gT, sys,
+                                                                  moment_tape,
+                                                                  covariance_bar, B)
+    Σ = moment_tape.covariance_input
+    effective_linear = moment_tape.effective_linear
+    third_derivative = moment_tape.third_derivative
+    third_linear = moment_tape.third_linear
+
+    # The linearized cubic closure uses V = EΣE', with
+    # E = L + T·R/6. Reverse that factorisation before mapping R back to Σ.
+    ℒ.mul!(B.tmp_noutd, covariance_bar, effective_linear)
+    ivashchenko_right_input_covariance!(gL, B.tmp_noutd, Σ,
+                                        sys.nPast, 2.0)
+    ℒ.mul!(B.tmp_dnout, transpose(effective_linear), covariance_bar)
+    ℒ.mul!(gΣ, B.tmp_dnout, effective_linear, 1.0, 0.0)
+    ℒ.mul!(gT, gL, transpose(third_linear), 1 / 6, 0.0)
+    ℒ.mul!(B.gR_internal, transpose(third_derivative), gL, 1 / 6, 0.0)
+
+    @inbounds for triple in eachindex(sys.random_triple_indices), r in 1:sys.d
+        i, j, k = sys.random_triple_indices[triple]
+        weight = sys.triple_multiplicities[triple] * B.gR_internal[triple, r]
+        r == i && (gΣ[j, k] += weight)
+        r == j && (gΣ[i, k] += weight)
+        r == k && (gΣ[i, j] += weight)
+    end
+    return gΣ, gL, gT
+end
+
 function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, covariance_bar;
-                                                 quadratic_buffers = nothing)
+                                                 quadratic_buffers = nothing,
+                                                 third_order_buffers = nothing)
     moment_tape.third_derivative === nothing &&
         return ivashchenko_second_order_moment_pullback!(sys, moment_tape,
                                                          mean_bar, covariance_bar,
@@ -835,60 +1681,87 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
     K = moment_tape.hessian === nothing ? sys.random_hessian : moment_tape.hessian
     third = moment_tape.third_derivative
     pair_mean = moment_tape.pair_mean
-    gΣ = zeros(eltype(Σ), d, d)
-    gv = zeros(eltype(v), dv)
-    gS1 = zeros(eltype(sys.S1), nout, dv)
-    gS2 = zeros(eltype(sys.S2), nout, sys.n_pair)
-    gS3 = third === nothing ? nothing : zeros(eltype(third), nout, length(sys.triple_indices))
+    B = third_order_buffers === nothing ?
+        ivashchenko_third_order_pullback_workspace(sys, eltype(Σ)) : third_order_buffers
+    covariance_bar_symmetric = B.covariance_bar_symmetric
+    gΣ, gv = B.gΣ, B.gv
+    gS1, gS2, gS3 = B.gS1, B.gS2, B.gS3
+    gL, gpair_mean = B.gL, B.gpair_mean
+    gK, gG2 = B.gK, B.gG2
+    gT, gR = B.gT, B.gR
+    fill!(gΣ, zero(eltype(gΣ)))
+    fill!(gv, zero(eltype(gv)))
+    fill!(gS1, zero(eltype(gS1)))
+    fill!(gS2, zero(eltype(gS2)))
+    fill!(gS3, zero(eltype(gS3)))
+    @inbounds for j in 1:nout, i in 1:j
+        value = (covariance_bar[i, j] + covariance_bar[j, i]) / 2
+        covariance_bar_symmetric[i, j] = value
+        covariance_bar_symmetric[j, i] = value
+    end
 
-    covariance_bar_symmetric = (covariance_bar + covariance_bar') / 2
-    gL = 2 * covariance_bar_symmetric * L * Σ
-    gΣ .+= L' * covariance_bar_symmetric * L
-    gpair_mean = K' * mean_bar / 2
+    if third !== nothing && moment_tape.gaussian_closure == :linearized
+        ivashchenko_third_order_linearized_covariance_pullback!(
+            gΣ, gL, gT, sys, moment_tape, covariance_bar_symmetric, B)
+    else
+        ℒ.mul!(B.tmp_noutd, covariance_bar_symmetric, L)
+        ivashchenko_right_input_covariance!(gL, B.tmp_noutd, Σ,
+                                            sys.nPast, 2.0)
+        ℒ.mul!(B.tmp_dnout, transpose(L), covariance_bar_symmetric)
+        ℒ.mul!(gΣ, B.tmp_dnout, L, 1.0, 0.0)
+    end
+    ℒ.mul!(gpair_mean, transpose(K), mean_bar, 0.5, 0.0)
 
     if third !== nothing
-        pair_covariance = moment_tape.pair_covariance
-        gK = covariance_bar_symmetric * K * pair_covariance / 2
-        gG2 = K' * covariance_bar_symmetric * K / 4
-        gK .+= mean_bar * pair_mean' / 2
-        third_covariance = moment_tape.third_covariance
-        third_cross = moment_tape.third_cross
-        gL .+= covariance_bar_symmetric * third * third_cross' / 3
-        gT = covariance_bar_symmetric * L * third_cross / 3 +
-             covariance_bar_symmetric * third * third_covariance / 18
-        gR = L' * covariance_bar_symmetric * third / 3
-        gG3 = third' * covariance_bar_symmetric * third / 36
+        if moment_tape.gaussian_closure == :linearized
+            # The linearized covariance helper already reversed the cubic
+            # Hermite Jacobian. Only the pair mean remains nonlinear here.
+            fill!(gK, zero(eltype(gK)))
+            ivashchenko_rank_one_add!(gK, mean_bar, pair_mean, 0.5)
+            @inbounds for p in eachindex(sys.random_pair_indices)
+                i, j = sys.random_pair_indices[p]
+                gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
+            end
+        else
+            pair_covariance = moment_tape.pair_covariance
+            ℒ.mul!(B.tmp_noutpair, covariance_bar_symmetric, K)
+            ℒ.mul!(gK, B.tmp_noutpair, pair_covariance, 0.5, 0.0)
+            ℒ.mul!(B.tmp_pairnout, transpose(K), covariance_bar_symmetric)
+            ℒ.mul!(gG2, B.tmp_pairnout, K, 0.25, 0.0)
+            ivashchenko_rank_one_add!(gK, mean_bar, pair_mean, 0.5)
+            third_cross = moment_tape.third_cross
+            ℒ.mul!(B.tmp_nouttriple, covariance_bar_symmetric, third)
+            ℒ.mul!(gL, B.tmp_nouttriple, transpose(third_cross), 1 / 3, 1.0)
+            ℒ.mul!(gT, B.tmp_noutd, third_cross, 1 / 3, 0.0)
+            ℒ.mul!(gR, B.tmp_dnout, third, 1 / 3, 0.0)
+            ivashchenko_third_order_covariance_pullback!(
+                gΣ, gT, sys, third, moment_tape.third_linear,
+                covariance_bar_symmetric, Σ, B)
 
-        @inbounds for p in eachindex(sys.random_pair_indices)
-            i, j = sys.random_pair_indices[p]
-            gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
-        end
-        @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
-            i, j = sys.random_pair_indices[p]
-            k, l = sys.random_pair_indices[q]
-            weight = gG2[p, q] * sys.random_pair_multiplicities[p] *
-                     sys.random_pair_multiplicities[q]
-            gΣ[i, k] += weight * Σ[j, l]
-            gΣ[j, l] += weight * Σ[i, k]
-            gΣ[i, l] += weight * Σ[j, k]
-            gΣ[j, k] += weight * Σ[i, l]
-        end
-        @inbounds for p in eachindex(sys.random_triple_indices), r in 1:d
-            i, j, k = sys.random_triple_indices[p]
-            weight = gR[r, p] * sys.random_triple_multiplicities[p]
-            gΣ[r, i] += weight * (Σ[j, k])
-            gΣ[j, k] += weight * Σ[r, i]
-            gΣ[r, j] += weight * Σ[i, k]
-            gΣ[i, k] += weight * Σ[r, j]
-            gΣ[r, k] += weight * Σ[i, j]
-            gΣ[i, j] += weight * Σ[r, k]
-        end
-        @inbounds for p in eachindex(sys.random_triple_indices), q in eachindex(sys.random_triple_indices)
-            i, j, k = sys.random_triple_indices[p]
-            l, m, n = sys.random_triple_indices[q]
-            weight = gG3[p, q] * sys.random_triple_multiplicities[p] *
-                     sys.random_triple_multiplicities[q]
-            ivashchenko_gaussian_sixth_pullback!(gΣ, weight, (i, j, k, l, m, n), Σ)
+            @inbounds for p in eachindex(sys.random_pair_indices)
+                i, j = sys.random_pair_indices[p]
+                gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
+            end
+            @inbounds for p in eachindex(sys.random_pair_indices), q in eachindex(sys.random_pair_indices)
+                i, j = sys.random_pair_indices[p]
+                k, l = sys.random_pair_indices[q]
+                weight = gG2[p, q] * sys.random_pair_multiplicities[p] *
+                         sys.random_pair_multiplicities[q]
+                gΣ[i, k] += weight * Σ[j, l]
+                gΣ[j, l] += weight * Σ[i, k]
+                gΣ[i, l] += weight * Σ[j, k]
+                gΣ[j, k] += weight * Σ[i, l]
+            end
+            @inbounds for p in eachindex(sys.random_triple_indices), r in 1:d
+                i, j, k = sys.random_triple_indices[p]
+                weight = gR[r, p] * sys.random_triple_multiplicities[p]
+                gΣ[r, i] += weight * (Σ[j, k])
+                gΣ[j, k] += weight * Σ[r, i]
+                gΣ[r, j] += weight * Σ[i, k]
+                gΣ[i, k] += weight * Σ[r, j]
+                gΣ[r, k] += weight * Σ[i, j]
+                gΣ[i, j] += weight * Σ[r, k]
+            end
         end
     else
         @inbounds for p in eachindex(sys.random_pair_indices)
@@ -905,48 +1778,57 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
                                                    quadratic_buffers)
     end
 
-    pair_cotangent = zeros(eltype(v), sys.n_pair)
-    triple_cotangent = third === nothing ? nothing : zeros(eltype(v), length(sys.triple_indices))
-    first_bar = zeros(eltype(v), dv)
-    second_bar = zeros(eltype(v), dv)
-    third_bar = zeros(eltype(v), dv)
-    basis = zeros(eltype(v), dv)
-    second_basis = zeros(eltype(v), dv)
-    pair_value = zeros(eltype(v), sys.n_pair)
-    triple_value = third === nothing ? nothing : zeros(eltype(v), length(sys.triple_indices))
+    pair_cotangent = B.pair_cotangent
+    triple_cotangent = B.triple_cotangent
+    first_bar = B.first_bar
+    second_bar = B.second_bar
+    third_bar = B.third_bar
+    basis = B.basis
+    second_basis = B.second_basis
+    pair_value = B.pair_value
+    triple_value = B.triple_value
 
     compressed_kron²_power!(pair_value, v)
-    gS1 .+= mean_bar * v'
+    ivashchenko_rank_one_add!(gS1, mean_bar, v, 1.0)
     gv .+= sys.S1' * mean_bar
-    gS2 .+= mean_bar * pair_value' / 2
-    pair_cotangent .= sys.S2' * mean_bar / 2
+    ivashchenko_rank_one_add!(gS2, mean_bar, pair_value, 0.5)
+    ℒ.mul!(pair_cotangent, transpose(sys.S2), mean_bar, 0.5, 0.0)
     compressed_kron²_power_vjp!(first_bar, pair_cotangent, v)
     gv .+= first_bar
     if third !== nothing
         compressed_kron³_power!(triple_value, v)
-        gS3 .+= mean_bar * triple_value' / 6
-        triple_cotangent .= sys.S3' * mean_bar / 6
+        ivashchenko_rank_one_add!(gS3, mean_bar, triple_value, 1 / 6)
+        ℒ.mul!(triple_cotangent, transpose(sys.S3), mean_bar, 1 / 6, 0.0)
         compressed_kron³_power_vjp!(first_bar, triple_cotangent, v)
         gv .+= first_bar
     end
 
-    @inbounds for r in 1:d
-        i = sys.random_indices[r]
-        fill!(basis, zero(eltype(basis)))
-        basis[i] = one(eltype(basis))
-        compressed_kron²!(pair_value, v, basis)
-        gS1[:, i] .+= gL[:, r]
-        gS2 .+= gL[:, r] * (pair_value / 2)'
-        pair_cotangent .= sys.S2' * gL[:, r] / 2
-        compressed_kron²_vjp!(first_bar, second_bar, pair_cotangent, v, basis)
-        gv .+= first_bar
-        if third !== nothing
-            compressed_kron³!(triple_value, v, v, basis)
-            gS3 .+= gL[:, r] * (triple_value / 2)'
-            triple_cotangent .= sys.S3' * gL[:, r] / 2
+    ivashchenko_pair_jacobian!(B.pair_jacobian, sys, v)
+    @inbounds for column in 1:d
+        solution_column = sys.random_indices[column]
+        for output in axes(gS1, 1)
+            gS1[output, solution_column] += gL[output, column]
+        end
+    end
+    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
+    ℒ.mul!(gS2, gL, transpose(B.pair_jacobian), 0.5, 1.0)
+    ℒ.mul!(B.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
+    ivashchenko_selected_pair_identity_vjp!(gv, B.pair_cotangent_matrix, sys)
+
+    if third !== nothing
+        ivashchenko_triple_jacobian!(B.triple_jacobian, sys, v, basis)
+        # gS₃ += 1/2 * gL * D₃(v)'; triple_cotangent = 1/2 * S₃' * gL.
+        ℒ.mul!(gS3, gL, transpose(B.triple_jacobian), 0.5, 1.0)
+        ℒ.mul!(B.triple_cotangent_matrix, transpose(sys.S3), gL, 0.5, 0.0)
+        @inbounds for r in 1:d
+            i = sys.random_indices[r]
+            fill!(basis, zero(eltype(basis)))
+            basis[i] = one(eltype(basis))
+            copyto!(triple_cotangent, view(B.triple_cotangent_matrix, :, r))
             compressed_kron³_vjp!(first_bar, second_bar, third_bar,
                                   triple_cotangent, v, v, basis)
-            gv .+= first_bar + second_bar
+            gv .+= first_bar
+            gv .+= second_bar
         end
     end
 
@@ -960,8 +1842,8 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
             basis[sys.random_indices[r]] = one(eltype(basis))
             second_basis[sys.random_indices[s]] = one(eltype(second_basis))
             compressed_kron³!(triple_value, v, basis, second_basis)
-            gS3 .+= gK[:, p] * triple_value'
-            triple_cotangent .= sys.S3' * gK[:, p]
+            ivashchenko_rank_one_add!(gS3, view(gK, :, p), triple_value, 1.0)
+            ℒ.mul!(triple_cotangent, transpose(sys.S3), view(gK, :, p), 1.0, 0.0)
             compressed_kron³_vjp!(first_bar, second_bar, third_bar,
                                   triple_cotangent, v, basis, second_basis)
             gv .+= first_bar
@@ -974,10 +1856,14 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
         end
     end
 
-    gΣ .= (gΣ + gΣ') / 2
-    gmean = copy(view(gv, 1:sys.nPast))
-    gcovariance = copy(view(gΣ, 1:sys.nPast, 1:sys.nPast))
-    return gmean, gcovariance, gS1, gS2, gS3
+    @inbounds for j in 1:d, i in 1:j-1
+        value = (gΣ[i, j] + gΣ[j, i]) / 2
+        gΣ[i, j] = value
+        gΣ[j, i] = value
+    end
+    copyto!(B.mean_result, view(gv, 1:sys.nPast))
+    copyto!(B.covariance_result, view(gΣ, 1:sys.nPast, 1:sys.nPast))
+    return B.mean_result, B.covariance_result, gS1, gS2, gS3
 end
 
 function ivashchenko_solution_matrix_pullback(sys, gS1, gS2, gS3, solution_matrices)
@@ -1022,9 +1908,9 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
            tmp_noutd = zeros(scalar_type, sys.nout, sys.d),
            tmp_dnout = zeros(scalar_type, sys.d, sys.nout),
            pair_cotangent = zeros(scalar_type, sys.n_pair),
+           pair_jacobian = zeros(scalar_type, sys.n_pair, sys.d),
+           pair_cotangent_matrix = zeros(scalar_type, sys.n_pair, sys.d),
            first_bar = zeros(scalar_type, sys.dv),
-           second_bar = zeros(scalar_type, sys.dv),
-           basis = zeros(scalar_type, sys.dv),
            pair_value = zeros(scalar_type, sys.n_pair),
            mixed = zeros(scalar_type, sys.d * sys.d, sys.nout),
            gT = zeros(scalar_type, sys.d * sys.d, sys.nout),
@@ -1032,6 +1918,8 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
            right = zeros(scalar_type, sys.d, sys.d),
            mean_result = zeros(scalar_type, sys.nPast),
            covariance_result = zeros(scalar_type, sys.nPast, sys.nPast)) : nothing
+    third_order_buffers = sys.order == :third_order ?
+        ivashchenko_third_order_pullback_workspace(sys, scalar_type) : nothing
 
     @inbounds for t in nT:-1:1
         idx = tape.observed_indices[t]
@@ -1080,7 +1968,8 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
         mean_bar, covariance_bar, local_S1, local_S2, local_S3 =
             ivashchenko_polynomial_moments_pullback(sys, tape.moment_tapes[t],
                                                     mean_output_bar, covariance_output_bar;
-                                                    quadratic_buffers = quadratic_buffers)
+                                                    quadratic_buffers = quadratic_buffers,
+                                                    third_order_buffers = third_order_buffers)
         gS1 .+= local_S1
         gS2 .+= local_S2
         if gS3 !== nothing
@@ -1100,7 +1989,8 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
             initialization_mean_bar, initialization_covariance_bar, local_S1, local_S2, local_S3 =
                 ivashchenko_polynomial_moments_pullback(sys, iteration.moment_tape,
                                                         output_mean_bar, output_covariance_bar;
-                                                        quadratic_buffers = quadratic_buffers)
+                                                        quadratic_buffers = quadratic_buffers,
+                                                        third_order_buffers = third_order_buffers)
             gS1 .+= local_S1
             gS2 .+= local_S2
             if gS3 !== nothing
@@ -1198,15 +2088,28 @@ function ivashchenko_filter_data_with_model(𝓂::ℳ,
         @error "Could not find a stochastic steady state for the Ivashchenko filter."
         return variables, shocks, standard_deviations, decomposition
     end
-    𝐒 = order == :second_order ? result[7:8] : result[8:10]
+    𝐒 = order ∈ (:second_order, :pruned_second_order) ? result[7:8] : result[8:10]
     ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, constants.post_complete_parameters)
-    state = collect(sss) - all_SS
+    state_deviation = collect(sss) - all_SS
+    pruned = order ∈ (:pruned_second_order, :pruned_third_order)
+    state = if order == :pruned_second_order
+        [zeros(Float64, T.nVars), state_deviation]
+    elseif order == :pruned_third_order
+        [zeros(Float64, T.nVars), state_deviation, zeros(Float64, T.nVars)]
+    else
+        state_deviation
+    end
     observables = get_and_check_observables(T, data_in_deviations)
     observable_indices = convert(Vector{Int}, indexin(observables, constants.post_complete_parameters.SS_and_pars_names))
-    sys = build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observable_indices, order)
+    sys = pruned ?
+        build_pruned_ivashchenko_kalman_system_from_constants(constants, 𝐒,
+                                                              observable_indices, order;
+                                                              keep_all_rows = true) :
+        build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observable_indices, order)
     data = collect(data_in_deviations)
-    pass = ivashchenko_filter_pass(sys, data, state[sys.past];
+    initial_mean = pruned ? pruned_ivashchenko_initial_mean(sys, state) : state[sys.past]
+    pass = ivashchenko_filter_pass(sys, data, initial_mean;
                                    measurement_error = measurement_error,
                                    initial_covariance = initial_covariance,
                                    presample_periods = 0,
@@ -1215,13 +2118,51 @@ function ivashchenko_filter_data_with_model(𝓂::ℳ,
                                    record = true)
     pass[2] === nothing && return variables, shocks, standard_deviations, decomposition
     if smooth
-        return ivashchenko_smooth_pass(sys, pass[2])[1:4]
+        if !pruned
+            return ivashchenko_smooth_pass(sys, pass[2])[1:4]
+        end
+        internal_variables, shocks, _, _, _, smoothed_covariances =
+            ivashchenko_smooth_pass(sys, pass[2])
+        variables = zeros(Float64, T.nVars, nT)
+        standard_deviations = zeros(Float64, T.nVars, nT)
+        @inbounds for t in 1:nT
+            variables[:, t] .= sum((view(internal_variables,
+                                         (stage - 1) * sys.nKeep .+ (1:T.nVars), t)
+                                     for stage in 1:sys.nStages))
+            predicted_covariance = pass[2].predicted_covariances[t]
+            predicted_factor = ℒ.cholesky(predicted_covariance, check = false)
+            ℒ.issuccess(predicted_factor) || error("Ivashchenko smoother covariance factorization failed at period $t.")
+            state_regression = copy(pass[2].output_covariances[t][:, sys.state_position])
+            ℒ.rdiv!(state_regression, predicted_factor)
+            conditional = pass[2].output_covariances[t] -
+                          state_regression * predicted_covariance * state_regression'
+            smoothed_output_covariance = conditional +
+                state_regression * smoothed_covariances[t] * state_regression'
+            for variable in 1:T.nVars
+                row_indices = [(stage - 1) * sys.nKeep + variable for stage in 1:sys.nStages]
+                standard_deviations[variable, t] = sqrt(abs(sum(smoothed_output_covariance[row_indices, row_indices])))
+            end
+        end
+        decomposition = zeros(Float64, T.nVars, T.nExo + 2, nT)
+        decomposition[:, end - 1, :] .= variables
+        return variables, shocks, standard_deviations, decomposition
     end
 
     tape = pass[2]
     @inbounds for t in 1:nT
-        variables[:, t] .= tape.output_means[t]
-        standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(tape.output_covariances[t])))
+        if pruned
+            for stage in 1:sys.nStages
+                variables[:, t] .+= tape.output_means[t][(stage - 1) * sys.nKeep .+ (1:T.nVars)]
+            end
+            for variable in 1:T.nVars
+                output_rows = [(stage - 1) * sys.nKeep + variable for stage in 1:sys.nStages]
+                standard_deviations[variable, t] =
+                    sqrt(abs(sum(tape.output_covariances[t][output_rows, output_rows])))
+            end
+        else
+            variables[:, t] .= tape.output_means[t]
+            standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(tape.output_covariances[t])))
+        end
     end
     decomposition[:, end - 1, :] .= variables
     return variables, shocks, standard_deviations, decomposition
@@ -1257,6 +2198,36 @@ end
                                               smooth = smooth, opts = opts)
 end
 
+@unstable function filter_data_with_model(𝓂::ℳ,
+                                          data_in_deviations::KeyedArray{Float64},
+                                          ::Val{:pruned_second_order},
+                                          ::Val{:ivashchenko_kalman};
+                                          warmup_iterations::Int = 0,
+                                          initial_covariance = :theoretical,
+                                          measurement_error = nothing,
+                                          smooth::Bool = true,
+                                          opts::CalculationOptions = merge_calculation_options())
+    return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :pruned_second_order;
+                                              initial_covariance = initial_covariance,
+                                              measurement_error = measurement_error,
+                                              smooth = smooth, opts = opts)
+end
+
+@unstable function filter_data_with_model(𝓂::ℳ,
+                                          data_in_deviations::KeyedArray{Float64},
+                                          ::Val{:pruned_third_order},
+                                          ::Val{:ivashchenko_kalman};
+                                          warmup_iterations::Int = 0,
+                                          initial_covariance = :theoretical,
+                                          measurement_error = nothing,
+                                          smooth::Bool = true,
+                                          opts::CalculationOptions = merge_calculation_options())
+    return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :pruned_third_order;
+                                              initial_covariance = initial_covariance,
+                                              measurement_error = measurement_error,
+                                              smooth = smooth, opts = opts)
+end
+
 function calculate_loglikelihood(::Val{:ivashchenko_kalman}, ::Val{O},
                                  observables_index::Vector{Int}, 𝐒,
                                  data_in_deviations::AbstractMatrix,
@@ -1268,18 +2239,24 @@ function calculate_loglikelihood(::Val{:ivashchenko_kalman}, ::Val{O},
                                  lyapunov_algorithm::Symbol = :doubling,
                                  on_failure_loglikelihood = -Inf,
                                  measurement_error = nothing,
+                                 gaussian_closure::Symbol = :exact,
                                  opts::CalculationOptions = merge_calculation_options()) where {O}
-    O ∈ (:second_order, :third_order) ||
-        throw(ArgumentError("The Ivashchenko filter requires `algorithm = :second_order` or `:third_order`."))
-    sys = build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O)
-    initial_mean = state[sys.past]
+    O ∈ (:second_order, :third_order, :pruned_second_order, :pruned_third_order) ||
+        throw(ArgumentError("The Ivashchenko filter requires a second- or third-order algorithm."))
+    pruned = O ∈ (:pruned_second_order, :pruned_third_order)
+    sys = pruned ?
+        build_pruned_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O) :
+        build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O;
+                                                       keep_all_rows = false)
+    initial_mean = pruned ? pruned_ivashchenko_initial_mean(sys, state) : state[sys.past]
     return run_ivashchenko_kalman(sys, data_in_deviations, initial_mean;
                                   measurement_error = measurement_error,
                                   initial_covariance = initial_covariance,
                                   presample_periods = presample_periods,
                                   on_failure_loglikelihood = on_failure_loglikelihood,
                                   workspaces = workspaces,
-                                  lyapunov_algorithm = lyapunov_algorithm)
+                                  lyapunov_algorithm = lyapunov_algorithm,
+                                  gaussian_closure = gaussian_closure)
 end
 
 function calculate_loglikelihood_with_missing(::Val{:ivashchenko_kalman}, ::Val{O},
@@ -1294,18 +2271,24 @@ function calculate_loglikelihood_with_missing(::Val{:ivashchenko_kalman}, ::Val{
                                               lyapunov_algorithm::Symbol = :doubling,
                                               on_failure_loglikelihood = -Inf,
                                               measurement_error = nothing,
+                                              gaussian_closure::Symbol = :exact,
                                               opts::CalculationOptions = merge_calculation_options()) where {O}
-    O ∈ (:second_order, :third_order) ||
-        throw(ArgumentError("The Ivashchenko filter requires `algorithm = :second_order` or `:third_order`."))
-    sys = build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O)
-    initial_mean = state[sys.past]
+    O ∈ (:second_order, :third_order, :pruned_second_order, :pruned_third_order) ||
+        throw(ArgumentError("The Ivashchenko filter requires a second- or third-order algorithm."))
+    pruned = O ∈ (:pruned_second_order, :pruned_third_order)
+    sys = pruned ?
+        build_pruned_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O) :
+        build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O;
+                                                       keep_all_rows = false)
+    initial_mean = pruned ? pruned_ivashchenko_initial_mean(sys, state) : state[sys.past]
     return run_ivashchenko_kalman(sys, data_in_deviations, initial_mean;
                                   measurement_error = measurement_error,
                                   initial_covariance = initial_covariance,
                                   presample_periods = presample_periods,
                                   on_failure_loglikelihood = on_failure_loglikelihood,
                                   workspaces = workspaces,
-                                  lyapunov_algorithm = lyapunov_algorithm)
+                                  lyapunov_algorithm = lyapunov_algorithm,
+                                  gaussian_closure = gaussian_closure)
 end
 
 end # @stable

@@ -947,7 +947,8 @@ end
 # avoids forming or multiplying by the full augmented covariance for the extra
 # term while retaining the full matrix Q required by the Kalman update.
 function cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
-                                        Pnoise, mixvec, mixΨ, CΨ)
+                                        Pnoise, mixvec, mixΨ, CΨ;
+                                        mixAll = nothing)
     nI = length(noise_state_indices)
     nz, N = size(C)
     ℒ.mul!(CΨ, C, Ψ)
@@ -955,12 +956,33 @@ function cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indic
     @inbounds for j in 1:nI, i in 1:nI
         Pnoise[i, j] = Pc[noise_state_indices[i], noise_state_indices[j]]
     end
-    @inbounds for i in 1:nI
-        ℒ.mul!(mixvec, Λnoise, view(Pnoise, :, i))
-        mix = reshape(mixvec, nz, N)
-        ℒ.mul!(mixΨ, mix, Ψ)
-        Di = reshape(view(Λnoise, :, i), nz, N)
-        ℒ.mul!(Q, mixΨ, Di', one(eltype(Q)), one(eltype(Q)))
+    if mixAll === nothing
+        @inbounds for i in 1:nI
+            # mixvec = Λnoise[:,i] * Pnoise[:,i].
+            ℒ.mul!(mixvec, Λnoise, view(Pnoise, :, i))
+            mix = reshape(mixvec, nz, N)
+            ℒ.mul!(mixΨ, mix, Ψ)
+            Di = reshape(view(Λnoise, :, i), nz, N)
+            # Q += (Λnoise[:,i] * Pnoise[:,i]) Ψ Di'.
+            ℒ.mul!(Q, mixΨ, Di', one(eltype(Q)), one(eltype(Q)))
+        end
+    else
+        batch_width = size(mixAll, 2)
+        @inbounds for first in 1:batch_width:nI
+            last = min(first + batch_width - 1, nI)
+            width = last - first + 1
+            mixes = view(mixAll, :, 1:width)
+            # mixes = Λnoise[:,first:last] * Pnoise[:,first:last].
+            ℒ.mul!(mixes, Λnoise, view(Pnoise, :, first:last))
+            for local_index in 1:width
+                i = first + local_index - 1
+                mix = reshape(view(mixes, :, local_index), nz, N)
+                ℒ.mul!(mixΨ, mix, Ψ)
+                Di = reshape(view(Λnoise, :, i), nz, N)
+                # Q += mixes[:,local] Ψ Di'.
+                ℒ.mul!(Q, mixΨ, Di', one(eltype(Q)), one(eltype(Q)))
+            end
+        end
     end
     @inbounds for j in 1:nz, i in 1:j
         m = (Q[i, j] + Q[j, i]) / 2
@@ -993,6 +1015,7 @@ function cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, Ψ, noise_state_in
     Pnoise = Matrix{Tv}(undef, length(noise_state_indices), length(noise_state_indices))
     mixvec = Vector{Tv}(undef, nz * N)
     mixΨ = Matrix{Tv}(undef, nz, N)
+    mixAll = Matrix{Tv}(undef, nz * N, max(1, min(length(noise_state_indices), 16)))
     Q = Matrix{Tv}(undef, nz, nz)
     Σ = qkf_lyapunov(𝒜, Qbase; workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
@@ -1003,12 +1026,21 @@ function cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, Ψ, noise_state_in
         @inbounds for j in 1:length(noise_state_indices), i in 1:length(noise_state_indices)
             Pnoise[i, j] = Σ[noise_state_indices[i], noise_state_indices[j]]
         end
-        @inbounds for i in 1:length(noise_state_indices)
-            ℒ.mul!(mixvec, Λnoise, view(Pnoise, :, i))
-            mix = reshape(mixvec, nz, N)
-            ℒ.mul!(mixΨ, mix, Ψ)
-            Di = reshape(view(Λnoise, :, i), nz, N)
-            ℒ.mul!(Q, mixΨ, Di', one(Tv), one(Tv))
+        batch_width = size(mixAll, 2)
+        @inbounds for first in 1:batch_width:length(noise_state_indices)
+            last = min(first + batch_width - 1, length(noise_state_indices))
+            width = last - first + 1
+            mixes = view(mixAll, :, 1:width)
+            # mixes = Λnoise[:,first:last] * Pnoise[:,first:last].
+            ℒ.mul!(mixes, Λnoise, view(Pnoise, :, first:last))
+            for local_index in 1:width
+                i = first + local_index - 1
+                mix = reshape(view(mixes, :, local_index), nz, N)
+                ℒ.mul!(mixΨ, mix, Ψ)
+                Di = reshape(view(Λnoise, :, i), nz, N)
+                # Q += mixes[:,local] Ψ Di'.
+                ℒ.mul!(Q, mixΨ, Di', one(Tv), one(Tv))
+            end
         end
         @inbounds for j in 1:nz, i in 1:j
             m = (Q[i, j] + Q[j, i]) / 2
@@ -1177,13 +1209,15 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
     Pnoise = Matrix{Tv}(undef, length(noise_state_indices), length(noise_state_indices))
     mixvec = Vector{Tv}(undef, nz * N)
     mixΨ = Matrix{Tv}(undef, nz, N)
+    mixAll = Matrix{Tv}(undef, nz * N, max(1, min(length(noise_state_indices), 16)))
     # Q(z) = C(z) Ψ C(z)' with vec(C) = c₀ + Λz.
     noise_covariance! = function (Q, z, Pc)
         copyto!(cvec, c₀)
         ℒ.mul!(cvec, Λ, z, one(Tv), one(Tv))
         C = reshape(cvec, nz, N)
         cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
-                                       Pnoise, mixvec, mixΨ, CΨ)
+                                       Pnoise, mixvec, mixΨ, CΨ;
+                                       mixAll = mixAll)
     end
 
     z = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
@@ -1266,7 +1300,10 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
                 ll -= 0.5 * (ℒ.dot(v, Fv) + ℒ.logdet(Fc) + n_obs * log2pi)
                 isfinite(ll) || return on_failure_loglikelihood
             end
-            Kg = Matrix((Fc \ CP)')
+            # K = CP' F⁻¹; solve the matrix RHS in the preallocated gain
+            # buffer instead of materialising Fc \ CP and its transpose.
+            copyto!(Kg, CP')
+            ℒ.rdiv!(Kg, Fc)
         end
         copyto!(z, zp); ℒ.mul!(z, Kg, v, one(Tv), one(Tv))
         copyto!(Pc, Pp); ℒ.mul!(Pc, Kg, CP, -one(Tv), one(Tv))
@@ -1292,33 +1329,63 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
                                       presample_periods, on_failure_loglikelihood,
                                       noise_state_indices)
     n_obs, nT = size(Y)
+    # The rrule is a Float64 path. Allocate the tape once, then keep all
+    # period-local algebra in reusable buffers. The previous implementation
+    # formed `Λ * z`, `𝒜 * Pc * 𝒜'`, `Y[:, t] - ...`, and the Kalman updates as
+    # new arrays on every period, even though every result is copied into the
+    # tape immediately afterwards.
+    zs = [Vector{Float64}(undef, nz) for _ in 1:nT]
+    Ps = [Matrix{Float64}(undef, nz, nz) for _ in 1:nT]
+    Cs = [Matrix{Float64}(undef, nz, N) for _ in 1:nT]
+    Pas = [Matrix{Float64}(undef, length(noise_state_indices), length(noise_state_indices)) for _ in 1:nT]
+    vs = [Vector{Float64}(undef, n_obs) for _ in 1:nT]
+    CPs = [Matrix{Float64}(undef, n_obs, nz) for _ in 1:nT]
+    Fis = [Matrix{Float64}(undef, n_obs, n_obs) for _ in 1:nT]
+    Ks = [Matrix{Float64}(undef, nz, n_obs) for _ in 1:nT]
+
     z = copy(z0); Pc = copy(Σ0)
-    zs = Vector{Vector{Float64}}(); Ps = Vector{Matrix{Float64}}()
-    Cs = Vector{Matrix{Float64}}(); Pas = Vector{Matrix{Float64}}()
-    vs = Vector{Vector{Float64}}()
-    CPs = Vector{Matrix{Float64}}(); Fis = Vector{Matrix{Float64}}()
-    Ks = Vector{Matrix{Float64}}()
     ll = 0.0; log2pi = log(2π)
     Λnoise = Matrix(Λ[:, noise_state_indices])
     Pnoise = zeros(length(noise_state_indices), length(noise_state_indices))
     mixvec = zeros(nz * N); mixΨ = zeros(nz, N); CΨ = zeros(nz, N); Q = zeros(nz, nz)
+    mixAll = zeros(nz * N, max(1, min(length(noise_state_indices), 16)))
+    cvec = zeros(nz * N)
+    C = reshape(cvec, nz, N)
+    zp = zeros(nz); Pp = zeros(nz, nz); Tm = zeros(nz, nz)
+    v = zeros(n_obs); CP = zeros(n_obs, nz); F = zeros(n_obs, n_obs)
+    Fi = zeros(n_obs, n_obs); K = zeros(nz, n_obs)
     Fseed = zeros(n_obs, n_obs)
     Fv = zeros(n_obs)
-    identity_obs = Matrix{Float64}(ℒ.I(n_obs))
     linear_cache = 𝒮.init(𝒮.LinearProblem(Fseed, Fv), 𝒮.FastLUFactorization(), verbose = false)
     rhs_t = Matrix{Float64}(undef, n_obs, nz)
 
     for t in 1:nT
-        push!(zs, copy(z)); push!(Ps, copy(Pc))
-        C = reshape(c₀ + Λ * z, nz, N)
+        copyto!(zs[t], z); copyto!(Ps[t], Pc)
+        copyto!(cvec, c₀)
+        ℒ.mul!(cvec, Λ, z, 1.0, 1.0)
         cubic_kalman_noise_covariance!(Q, C, Λnoise, Ψ, Pc, noise_state_indices,
-                                       Pnoise, mixvec, mixΨ, CΨ)
-        push!(Pas, copy(Pnoise))
-        zp = 𝒜 * z + c
-        Pp = 𝒜 * Pc * 𝒜' + Q; Pp = (Pp + Pp') / 2
-        v = Y[:, t] - 𝒞 * zp
-        CP = 𝒞 * Pp
-        F = CP * 𝒞' + Hm; F = (F + F') / 2
+                                       Pnoise, mixvec, mixΨ, CΨ;
+                                       mixAll = mixAll)
+        copyto!(Pas[t], Pnoise)
+        ℒ.mul!(zp, 𝒜, z); zp .+= c
+        ℒ.mul!(Tm, 𝒜, Pc)
+        ℒ.mul!(Pp, Tm, 𝒜')
+        Pp .+= Q
+        @inbounds for j in 1:nz, i in 1:j
+            value = (Pp[i, j] + Pp[j, i]) / 2
+            Pp[i, j] = value; Pp[j, i] = value
+        end
+        ℒ.mul!(v, 𝒞, zp, -1.0, 0.0)
+        @inbounds for i in 1:n_obs
+            v[i] += Y[i, t]
+        end
+        ℒ.mul!(CP, 𝒞, Pp)
+        ℒ.mul!(F, CP, 𝒞')
+        F .+= Hm
+        @inbounds for j in 1:n_obs, i in 1:j-1
+            value = (F[i, j] + F[j, i]) / 2
+            F[i, j] = value; F[j, i] = value
+        end
         copyto!(Fv, v)
         linear_cache.A = F
         linear_cache.b = Fv
@@ -1328,16 +1395,24 @@ function cubic_kalman_recursion_taped(𝒜, c, c₀, Λ, Ψ, Hm, Y, 𝒞, z0, Σ
         successful || return on_failure_loglikelihood, nothing
         logabsdetF, signF = ℒ.logabsdet(linear_cache.cacheval.factors)
         signF > 0 && isfinite(logabsdetF) || return on_failure_loglikelihood, nothing
-        Fi = copy(identity_obs)
+        fill!(Fi, 0.0)
+        @inbounds for i in 1:n_obs
+            Fi[i, i] = 1.0
+        end
         solve_linear_cache_lu_left!(linear_cache, Fi)
         if t > presample_periods
             ll -= 0.5 * (ℒ.dot(v, linear_cache.u) + logabsdetF + n_obs * log2pi)
         end
-        K = copy(CP')
+        copyto!(K, CP')
         solve_linear_cache_lu_right!(linear_cache, K, rhs_t)
-        z = zp + K * v
-        Pc = Pp - K * CP; Pc = (Pc + Pc') / 2
-        push!(Cs, C); push!(vs, v); push!(CPs, CP); push!(Fis, Fi); push!(Ks, K)
+        copyto!(z, zp); ℒ.mul!(z, K, v, 1.0, 1.0)
+        copyto!(Pc, Pp); ℒ.mul!(Pc, K, CP, -1.0, 1.0)
+        @inbounds for j in 1:nz, i in 1:j
+            value = (Pc[i, j] + Pc[j, i]) / 2
+            Pc[i, j] = value; Pc[j, i] = value
+        end
+        copyto!(Cs[t], C); copyto!(vs[t], v); copyto!(CPs[t], CP)
+        copyto!(Fis[t], Fi); copyto!(Ks[t], K)
     end
     return ll, (; zs, Ps, Cs, Pas, vs, CPs, Fis, Ks)
 end
@@ -1353,38 +1428,70 @@ function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, 
     P̄noise = zeros(nI, nI)
     E = zeros(nz, N)
     EΨ = zeros(nz, N)
-    mixvec = zeros(nz * N)
-    Dmix = reshape(mixvec, nz, N)
     D̄ = zeros(nz, N)
+    mixAll = zeros(nz * N, max(1, min(nI, 16)))
+    P̄p = zeros(nz, nz); K̄ = zeros(nz, n_obs); C̄P = zeros(n_obs, nz)
+    z̄p = zeros(nz); v̄ = zeros(n_obs); F̄ = zeros(n_obs, n_obs)
+    Fv = zeros(n_obs); C̄ = zeros(nz, N)
+    tmp_obsnz = zeros(n_obs, nz); tmp_obsobs = zeros(n_obs, n_obs)
+    tmp_obsobs₂ = zeros(n_obs, n_obs); tmp_nzn = zeros(nz, nz)
+    tmp_nzn₂ = zeros(nz, nz); tmp_nz = zeros(nz)
+
+    rank_one_add! = function (matrix, left, right, scale)
+        # matrix += scale * left * right'; all cubic rrule inputs are Float64.
+        ℒ.BLAS.ger!(Float64(scale), left, right, matrix)
+        matrix
+    end
+    add_scaled! = function (matrix, source, scale)
+        @inbounds for j in axes(matrix, 2), i in axes(matrix, 1)
+            matrix[i, j] += scale * source[i, j]
+        end
+        matrix
+    end
+    symmetrize! = function (matrix)
+        @inbounds for j in axes(matrix, 2), i in 1:j-1
+            value = (matrix[i, j] + matrix[j, i]) / 2
+            matrix[i, j] = value; matrix[j, i] = value
+        end
+        matrix
+    end
 
     for t in nT:-1:1
         z_, P_, C, v, CP, Fi, K = zs[t], Ps[t], Cs[t], vs[t], CPs[t], Fis[t], Ks[t]
-        P̄p = copy(P̄)
-        K̄ = -P̄ * CP'
-        C̄P = -K' * P̄
-        z̄p = copy(z̄)
-        K̄ .+= z̄ * v'
-        v̄ = K' * z̄
-        C̄P .+= Fi * K̄'
-        F̄ = -Fi * (CP * K̄) * Fi
+        copyto!(P̄p, P̄)
+        ℒ.mul!(K̄, P̄, CP'); K̄ .*= -1
+        ℒ.mul!(C̄P, K', P̄); C̄P .*= -1
+        copyto!(z̄p, z̄)
+        rank_one_add!(K̄, z̄, v, 1.0)
+        ℒ.mul!(v̄, K', z̄)
+        ℒ.mul!(tmp_obsnz, Fi, K̄'); C̄P .+= tmp_obsnz
+        ℒ.mul!(tmp_obsobs, CP, K̄)
+        ℒ.mul!(F̄, Fi, tmp_obsobs)
+        ℒ.mul!(tmp_obsobs₂, F̄, Fi); F̄ .= -tmp_obsobs₂
         if t > presample_periods
-            v̄ .+= -∂ll * (Fi * v)
-            F̄ .+= ∂ll * 0.5 * (Fi * v * v' * Fi - Fi)
+            ℒ.mul!(Fv, Fi, v)
+            v̄ .-= ∂ll .* Fv
+            rank_one_add!(F̄, Fv, Fv, ∂ll / 2)
+            add_scaled!(F̄, Fi, -∂ll / 2)
         end
-        F̄ = (F̄ + F̄') / 2
-        C̄P .+= F̄ * 𝒞
+        symmetrize!(F̄)
+        ℒ.mul!(tmp_obsnz, F̄, 𝒞); C̄P .+= tmp_obsnz
         H̄m .+= F̄
-        P̄p .+= 𝒞' * C̄P
-        z̄p .+= -𝒞' * v̄
-        Ȳ[:, t] .+= v̄
-        P̄p = (P̄p + P̄p') / 2
-        𝒜̄ .+= 2 .* (P̄p * 𝒜 * P_)
-        P̄ = 𝒜' * P̄p * 𝒜
+        ℒ.mul!(tmp_nzn, 𝒞', C̄P); P̄p .+= tmp_nzn
+        ℒ.mul!(tmp_nz, 𝒞', v̄); z̄p .-= tmp_nz
+        copyto!(view(Ȳ, :, t), v̄)
+        symmetrize!(P̄p)
+        ℒ.mul!(tmp_nzn, P̄p, 𝒜)
+        ℒ.mul!(tmp_nzn₂, tmp_nzn, P_)
+        add_scaled!(𝒜̄, tmp_nzn₂, 2.0)
+        ℒ.mul!(tmp_nzn, 𝒜', P̄p)
+        ℒ.mul!(P̄, tmp_nzn, 𝒜)
         Q̄ = P̄p
-        C̄ = 2 .* (Q̄ * C * Ψ)
+        ℒ.mul!(E, Q̄, C)
+        ℒ.mul!(C̄, E, Ψ, 2.0, 0.0)
         vC̄ = vec(C̄)
         c̄₀ .+= vC̄
-        Λ̄ .+= vC̄ * z_'
+        rank_one_add!(Λ̄, vC̄, z_, 1.0)
         fill!(P̄noise, zero(eltype(P̄noise)))
         @inbounds for i in 1:nI
             Di = reshape(view(Λnoise, :, i), nz, N)
@@ -1394,20 +1501,33 @@ function cubic_kalman_recursion_pullback(tape, 𝒜, c, c₀, Λ, Ψ, 𝒞, nz, 
                 Dj = reshape(view(Λnoise, :, j), nz, N)
                 P̄noise[i, j] = ℒ.dot(EΨ, Dj)
             end
-            ℒ.mul!(mixvec, Λnoise, view(Pas[t], :, i))
-            ℒ.mul!(D̄, Q̄, Dmix)
-            ℒ.mul!(E, D̄, Ψ)
-            column = noise_state_indices[i]
-            @inbounds for k in eachindex(E)
-                Λ̄[k, column] += 2 * E[k]
+        end
+        batch_width = size(mixAll, 2)
+        @inbounds for first in 1:batch_width:nI
+            last = min(first + batch_width - 1, nI)
+            width = last - first + 1
+            mixes = view(mixAll, :, 1:width)
+            # mixes = Λnoise * Pas[t][:,first:last].
+            ℒ.mul!(mixes, Λnoise, view(Pas[t], :, first:last))
+            for local_index in 1:width
+                i = first + local_index - 1
+                Dmix = reshape(view(mixes, :, local_index), nz, N)
+                ℒ.mul!(D̄, Q̄, Dmix)
+                ℒ.mul!(E, D̄, Ψ)
+                column = noise_state_indices[i]
+                for k in eachindex(E)
+                    Λ̄[k, column] += 2 * E[k]
+                end
             end
         end
         @inbounds for j in 1:nI, i in 1:nI
             P̄[noise_state_indices[i], noise_state_indices[j]] += P̄noise[i, j]
         end
-        𝒜̄ .+= z̄p * z_'
+        rank_one_add!(𝒜̄, z̄p, z_, 1.0)
         c̄ .+= z̄p
-        z̄ = 𝒜' * z̄p + Λ' * vC̄
+        ℒ.mul!(z̄, 𝒜', z̄p)
+        ℒ.mul!(tmp_nz, Λ', vC̄)
+        z̄ .+= tmp_nz
     end
     return 𝒜̄, c̄, c̄₀, Λ̄, H̄m, Ȳ, z̄, P̄
 end

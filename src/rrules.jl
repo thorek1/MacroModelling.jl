@@ -1836,6 +1836,7 @@ function rrule(::typeof(get_loglikelihood),
                 initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                 filter_algorithm::Symbol = :LagrangeNewton,
                 measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                ivashchenko_gaussian_closure::Symbol = :exact,
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -1954,6 +1955,9 @@ function rrule(::typeof(get_loglikelihood),
     # the measurement-error covariance; for the others it is inactive (the guard
     # above) and the kwarg would not be accepted.
     me_kw = filter ∈ (:quadratic_kalman, :cubic_kalman, :ivashchenko_kalman) ?
+        filter == :ivashchenko_kalman ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations),
+           gaussian_closure = ivashchenko_gaussian_closure) :
         (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
         NamedTuple()
 
@@ -2079,10 +2083,10 @@ function rrule(::typeof(get_loglikelihood),
     return llh, pullback
 end
 
-# Analytical reverse-mode rule for the unpruned Gaussian moment-closure
-# recursion.  The forward pass records the Gaussian update and each Hermite
-# moment contraction; the pullback reverses those algebraic contractions and
-# the fixed-point initialization directly.
+# Analytical reverse-mode rule for the raw or pruned Gaussian moment-closure
+# recursion. The pruned branch first scatters the stage-polynomial map into the
+# compressed internal system and then maps its analytical adjoints back to the
+# original stage solution matrices.
 function ivashchenko_likelihood_rrule(observables_index::Vector{Int}, 𝐒,
                                       data_in_deviations::AbstractMatrix,
                                       constants::constants, state, workspaces::workspaces,
@@ -2090,11 +2094,19 @@ function ivashchenko_likelihood_rrule(observables_index::Vector{Int}, 𝐒,
                                       presample_periods::Int = 0,
                                       initial_covariance = :theoretical,
                                       measurement_error = nothing,
+                                      gaussian_closure::Symbol = :exact,
                                       on_failure_loglikelihood = -Inf,
                                       lyapunov_algorithm::Symbol = :doubling,
                                       obs_idx_per_t = nothing) where {O}
-    sys = build_ivashchenko_kalman_system_from_constants(constants, 𝐒, observables_index, O)
-    initial_mean = state[sys.past]
+    pruned = O ∈ (:pruned_second_order, :pruned_third_order)
+    sys = pruned ?
+        build_pruned_ivashchenko_kalman_system_from_constants(constants, 𝐒,
+                                                              observables_index, O) :
+        build_ivashchenko_kalman_system_from_constants(constants, 𝐒,
+                                                       observables_index, O;
+                                                       keep_all_rows = false)
+    initial_mean = pruned ? pruned_ivashchenko_initial_mean(sys, state) : state[sys.past]
+    filter_solution = pruned ? sys.effective_solution : 𝐒
     ll, tape = ivashchenko_filter_pass(sys, data_in_deviations, initial_mean;
                                        measurement_error = measurement_error,
                                        initial_covariance = initial_covariance,
@@ -2102,6 +2114,7 @@ function ivashchenko_likelihood_rrule(observables_index::Vector{Int}, 𝐒,
                                        on_failure_loglikelihood = on_failure_loglikelihood,
                                        workspaces = workspaces,
                                        lyapunov_algorithm = lyapunov_algorithm,
+                                       gaussian_closure = gaussian_closure,
                                        record = true)
     tape === nothing && return ll, nothing
 
@@ -2110,15 +2123,24 @@ function ivashchenko_likelihood_rrule(observables_index::Vector{Int}, 𝐒,
         if scale isa Union{NoTangent, AbstractZero} || scale == 0
             zeros_solution = [zeros(eltype(𝐒[i]), size(𝐒[i])) for i in eachindex(𝐒)]
             zeros_data = zeros(eltype(data_in_deviations), size(data_in_deviations))
-            zeros_state = zeros(eltype(state), length(state))
+            zeros_state = pruned ?
+                [zeros(eltype(stage_state), length(stage_state)) for stage_state in state] :
+                zeros(eltype(state), length(state))
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(),
                     zeros_solution, zeros_data, NoTangent(), zeros_state,
                     NoTangent())
         end
-        solution_bar, data_bar, state_bar = ivashchenko_filter_pullback(
-            sys, tape, 𝐒, scale;
+        solution_bar, data_bar, effective_state_bar = ivashchenko_filter_pullback(
+            sys, tape, filter_solution, scale;
             initial_covariance = initial_covariance,
             lyapunov_algorithm = lyapunov_algorithm)
+        if pruned
+            solution_bar = pruned_ivashchenko_solution_matrix_pullback(
+                sys, solution_bar, 𝐒)
+            state_bar = pruned_ivashchenko_state_pullback(sys, effective_state_bar, state)
+        else
+            state_bar = effective_state_bar
+        end
         return (NoTangent(), NoTangent(), NoTangent(), NoTangent(),
                 solution_bar, data_bar, NoTangent(), state_bar, NoTangent())
     end
@@ -2136,12 +2158,14 @@ function rrule(::typeof(calculate_loglikelihood),
                 lyapunov_algorithm::Symbol = :doubling,
                 on_failure_loglikelihood = -Inf,
                 measurement_error = nothing,
+                gaussian_closure::Symbol = :exact,
                 opts::CalculationOptions = merge_calculation_options()) where {O}
     ll, pullback = ivashchenko_likelihood_rrule(observables_index, 𝐒, data_in_deviations,
                                                 constants, state, workspaces, val_algo;
                                                 presample_periods = presample_periods,
                                                 initial_covariance = initial_covariance,
                                                 measurement_error = measurement_error,
+                                                gaussian_closure = gaussian_closure,
                                                 on_failure_loglikelihood = on_failure_loglikelihood,
                                                 lyapunov_algorithm = lyapunov_algorithm)
     pullback === nothing && return ll, _ ->
@@ -2162,12 +2186,14 @@ function rrule(::typeof(calculate_loglikelihood_with_missing),
                 lyapunov_algorithm::Symbol = :doubling,
                 on_failure_loglikelihood = -Inf,
                 measurement_error = nothing,
+                gaussian_closure::Symbol = :exact,
                 opts::CalculationOptions = merge_calculation_options()) where {O}
     ll, pullback = ivashchenko_likelihood_rrule(observables_index, 𝐒, data_in_deviations,
                                                 constants, state, workspaces, val_algo;
                                                 presample_periods = presample_periods,
                                                 initial_covariance = initial_covariance,
                                                 measurement_error = measurement_error,
+                                                gaussian_closure = gaussian_closure,
                                                 on_failure_loglikelihood = on_failure_loglikelihood,
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 obs_idx_per_t = obs_idx_per_t)
