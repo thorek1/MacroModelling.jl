@@ -1538,6 +1538,15 @@ end
 
 
 # ── standard filter interface ────────────────────────────────────────────────
+# `normalize_filtering_options` rewrites unsupported algorithm/filter pairs to
+# the inversion filter before this entry point is reached. Keep an explicit
+# fallback for direct low-level calls as well so the dynamic `Val(algorithm)`
+# call in `get_loglikelihood` has a defined target for static analysis.
+function calculate_loglikelihood(::Val{:cubic_kalman}, ::Val{O}, args...;
+                                 kwargs...) where {O}
+    throw(ArgumentError("The cubic Kalman filter requires `algorithm = :pruned_third_order`; got `:$(O)`."))
+end
+
 function calculate_loglikelihood(::Val{:cubic_kalman},
                                  ::Val{:pruned_third_order},
                                  observables_index::Vector{Int},

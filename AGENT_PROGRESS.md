@@ -430,3 +430,18 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   pruned Ivashchenko `32/32`; SW07 cubic dimension preflight `nPast=27`, `nExo=7`, `nObs=7`,
   `n_z=4863`. The docs build could not run because `Documenter` is not installed in the local
   docs environment; YAML, Julia test-file parsing, whitespace, and `git diff --check` pass.
+
+## CI dispatch follow-up (2026-08-04)
+
+- The latest completed CI run reported JET missing-dispatch errors for the statically visible
+  calls to `calculate_loglikelihood(Val(:quadratic_kalman), Val(:first_order), ...)` and the
+  analogous cubic call. Public option normalization already rewrites those unsupported pairs
+  to the inversion filter, so the failure was in the low-level dispatch surface rather than
+  runtime filter behavior.
+- Added explicit throwing fallbacks for unsupported algorithm values in both higher-order
+  Kalman entry points. The supported methods remain the more-specific dispatch targets, while
+  static analysis now sees a complete target for the dynamic `Val(algorithm)` calls.
+- Focused verification after the fix: quadratic Kalman `34/34`, cubic Kalman `31/31`, raw
+  Ivashchenko `48/48`, direct unsupported-dispatch checks pass, and `git diff --check` passes.
+  The replacement GitHub run is pending after push; the observed in-flight run predates this
+  local fix.

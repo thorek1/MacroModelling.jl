@@ -1002,6 +1002,16 @@ end
 # `get_loglikelihood`) is what lets the existing reverse-mode machinery reach the
 # filter: the top-level rrule looks for `rrule(calculate_loglikelihood, Val(filter), …)`
 # and falls back to a zero gradient when none exists.
+# `normalize_filtering_options` rewrites unsupported algorithm/filter pairs to
+# the inversion filter before this entry point is reached. Keep an explicit
+# fallback for direct low-level calls as well: it gives static analyzers a
+# complete dispatch target for the dynamic `Val(algorithm)` call in
+# `get_loglikelihood`, while preserving the public normalization behavior.
+function calculate_loglikelihood(::Val{:quadratic_kalman}, ::Val{O}, args...;
+                                 kwargs...) where {O}
+    throw(ArgumentError("The quadratic Kalman filter requires `algorithm = :pruned_second_order`; got `:$(O)`."))
+end
+
 function calculate_loglikelihood(::Val{:quadratic_kalman},
                                  ::Val{:pruned_second_order},
                                  observables_index::Vector{Int},
