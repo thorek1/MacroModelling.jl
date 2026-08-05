@@ -650,4 +650,187 @@ function aumann_shapley_shock_decomposition_pruned_3rd_order!(
     return T(max_residual) / scale
 end
 
+# Historical decomposition for a filtered or smoothed shock path. The Kalman
+# filters only provide a path of conditional shock estimates; attribution is then
+# the same pruned state recursion used by the inversion and particle filters.
+# Keeping this driver here avoids making the decomposition depend on a particular
+# filter implementation.
+function pruned_shock_path_trajectory(shocks::AbstractMatrix,
+                                      initial_state,
+                                      𝐒,
+                                      T;
+                                      third_order::Bool = false)
+    nT = size(shocks, 2)
+    nVars = T.nVars
+    nExo = T.nExo
+    zero_shocks = zeros(eltype(shocks), nExo)
+    if third_order
+        current = [copy(initial_state[1]), copy(initial_state[2]), copy(initial_state[3])]
+        next_state = [zeros(eltype(shocks), nVars), zeros(eltype(shocks), nVars), zeros(eltype(shocks), nVars)]
+        aug1 = zeros(eltype(shocks), T.nPast_not_future_and_mixed + 1 + nExo)
+        aug1̂ = similar(aug1); aug2 = similar(aug1); aug3 = similar(aug1)
+        k11 = zeros(eltype(shocks), length(compressed_kron²_power(aug1)))
+        k12 = zeros(eltype(shocks), length(compressed_kron²_power(aug1)))
+        k111 = zeros(eltype(shocks), length(compressed_kron³_power(aug1)))
+        trajectory = zeros(eltype(shocks), nVars, nT)
+        for t in 1:nT
+            pruned_state_update_3rd_order!(next_state[1], next_state[2], next_state[3],
+                                           current[1], current[2], current[3],
+                                           T.past_not_future_and_mixed_idx,
+                                           view(shocks, :, t), zero_shocks,
+                                           aug1, aug1̂, aug2, aug3, k11, k12, k111, 𝐒)
+            @inbounds trajectory[:, t] .= next_state[1] .+ next_state[2] .+ next_state[3]
+            current, next_state = next_state, current
+        end
+        return trajectory
+    end
+
+    current = [copy(initial_state[1]), copy(initial_state[2])]
+    next_state = [zeros(eltype(shocks), nVars), zeros(eltype(shocks), nVars)]
+    aug1 = zeros(eltype(shocks), T.nPast_not_future_and_mixed + 1 + nExo)
+    aug2 = similar(aug1)
+    kk = zeros(eltype(shocks), length(compressed_kron²_power(aug1)))
+    trajectory = zeros(eltype(shocks), nVars, nT)
+    for t in 1:nT
+        pruned_state_update_2nd_order!(next_state[1], next_state[2],
+                                       current[1], current[2],
+                                       T.past_not_future_and_mixed_idx,
+                                       view(shocks, :, t), zero_shocks,
+                                       aug1, aug2, kk, 𝐒)
+        @inbounds trajectory[:, t] .= next_state[1] .+ next_state[2]
+        current, next_state = next_state, current
+    end
+    return trajectory
+end
+
+function sequential_pruned_shock_decomposition!(decomposition::AbstractArray{R},
+                                                variables::AbstractMatrix,
+                                                shocks::AbstractMatrix,
+                                                initial_state,
+                                                𝐒,
+                                                T,
+                                                nE::Int;
+                                                third_order::Bool = false,
+                                                marginal_contribution::Bool = false,
+                                                verbose::Bool = false) where R <: Real
+    nT = size(variables, 2)
+    decomposition[:, end, :] .= variables
+
+    if marginal_contribution
+        # Filtered/smoothed means need not lie on a single nonlinear model
+        # trajectory. The shock path does, so use its implied trajectory as the
+        # Aumann–Shapley reference; this makes the efficiency identity exact for
+        # QKF as well as for inversion and particle paths.
+        trajectory = pruned_shock_path_trajectory(shocks, initial_state, 𝐒, T;
+                                                  third_order = third_order)
+        decomposition[:, end, :] .= trajectory
+        if third_order
+            aumann_shapley_shock_decomposition_pruned_3rd_order!(decomposition,
+                                                                  trajectory,
+                                                                  shocks,
+                                                                  initial_state,
+                                                                  𝐒,
+                                                                  T,
+                                                                  nE;
+                                                                  verbose = verbose)
+        else
+            aumann_shapley_shock_decomposition_pruned_2nd_order!(decomposition,
+                                                                  trajectory,
+                                                                  shocks,
+                                                                  initial_state,
+                                                                  𝐒,
+                                                                  T,
+                                                                  nE;
+                                                                  verbose = verbose)
+        end
+        return decomposition
+    end
+
+    states = [deepcopy(initial_state) for _ in 1:(nE + 1)]
+    zero_shocks = zeros(R, nE)
+    single_shock = zeros(R, nE)
+
+    if third_order
+        next_state₁ = zeros(R, T.nVars)
+        next_state₂ = zeros(R, T.nVars)
+        next_state₃ = zeros(R, T.nVars)
+        aug_state₁ = zeros(R, T.nPast_not_future_and_mixed + 1 + nE)
+        aug_state₁̂ = similar(aug_state₁)
+        aug_state₂ = similar(aug_state₁)
+        aug_state₃ = similar(aug_state₁)
+        kron_state₁ = zeros(R, length(compressed_kron²_power(aug_state₁)))
+        kron_state₁₂ = zeros(R, length(compressed_kron²_power(aug_state₁)))
+        kron_state₁₁₁ = zeros(R, length(compressed_kron³_power(aug_state₁)))
+
+        for t in 1:nT
+            for ii in 1:nE
+                fill!(single_shock, zero(R))
+                single_shock[ii] = shocks[ii, t]
+                pruned_state_update_3rd_order!(next_state₁, next_state₂, next_state₃,
+                                               states[ii][1], states[ii][2], states[ii][3],
+                                               T.past_not_future_and_mixed_idx,
+                                               single_shock, zero_shocks,
+                                               aug_state₁, aug_state₁̂, aug_state₂, aug_state₃,
+                                               kron_state₁, kron_state₁₂, kron_state₁₁₁,
+                                               𝐒)
+                copyto!(states[ii][1], next_state₁)
+                copyto!(states[ii][2], next_state₂)
+                copyto!(states[ii][3], next_state₃)
+                decomposition[:, ii, t] .= next_state₁ .+ next_state₂ .+ next_state₃
+            end
+
+            pruned_state_update_3rd_order!(next_state₁, next_state₂, next_state₃,
+                                           states[end][1], states[end][2], states[end][3],
+                                           T.past_not_future_and_mixed_idx,
+                                           view(shocks, :, t), zero_shocks,
+                                           aug_state₁, aug_state₁̂, aug_state₂, aug_state₃,
+                                           kron_state₁, kron_state₁₂, kron_state₁₁₁,
+                                           𝐒)
+            copyto!(states[end][1], next_state₁)
+            copyto!(states[end][2], next_state₂)
+            copyto!(states[end][3], next_state₃)
+            decomposition[:, end - 2, t] .= next_state₁ .+ next_state₂ .+ next_state₃
+            decomposition[:, end - 2, t] .-= sum(decomposition[:, 1:end-3, t], dims = 2)
+            decomposition[:, end - 1, t] .= variables[:, t]
+            decomposition[:, end - 1, t] .-= sum(decomposition[:, 1:end-2, t], dims = 2)
+        end
+    else
+        next_state₁ = zeros(R, T.nVars)
+        next_state₂ = zeros(R, T.nVars)
+        aug_state₁ = zeros(R, T.nPast_not_future_and_mixed + 1 + nE)
+        aug_state₂ = similar(aug_state₁)
+        kron_state₁ = zeros(R, length(compressed_kron²_power(aug_state₁)))
+
+        for t in 1:nT
+            for ii in 1:nE
+                fill!(single_shock, zero(R))
+                single_shock[ii] = shocks[ii, t]
+                pruned_state_update_2nd_order!(next_state₁, next_state₂,
+                                               states[ii][1], states[ii][2],
+                                               T.past_not_future_and_mixed_idx,
+                                               single_shock, zero_shocks,
+                                               aug_state₁, aug_state₂, kron_state₁,
+                                               𝐒)
+                copyto!(states[ii][1], next_state₁)
+                copyto!(states[ii][2], next_state₂)
+                decomposition[:, ii, t] .= next_state₁ .+ next_state₂
+            end
+
+            pruned_state_update_2nd_order!(next_state₁, next_state₂,
+                                           states[end][1], states[end][2],
+                                           T.past_not_future_and_mixed_idx,
+                                           view(shocks, :, t), zero_shocks,
+                                           aug_state₁, aug_state₂, kron_state₁,
+                                           𝐒)
+            copyto!(states[end][1], next_state₁)
+            copyto!(states[end][2], next_state₂)
+            decomposition[:, end - 2, t] .= next_state₁ .+ next_state₂
+            decomposition[:, end - 2, t] .-= sum(decomposition[:, 1:end-3, t], dims = 2)
+            decomposition[:, end - 1, t] .= variables[:, t]
+            decomposition[:, end - 1, t] .-= sum(decomposition[:, 1:end-2, t], dims = 2)
+        end
+    end
+    return decomposition
+end
+
 end  # @stable

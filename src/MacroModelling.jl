@@ -442,8 +442,8 @@ function normalize_filtering_options(filter::Symbol,
         is_particle = false
     end
 
-    # Smoothing is available for the Kalman filter (Durbin-Koopman smoother) and
-    # for the particle filters (fixed-interval smoothing along the filter's
+    # Smoothing is available for the Kalman filters (Durbin-Koopman/RTS smoothers)
+    # and for the particle filters (fixed-interval smoothing along the filter's
     # genealogy).
     #
     # For the inversion filter there is nothing left to smooth. Given x₀ it solves
@@ -462,8 +462,8 @@ function normalize_filtering_options(filter::Symbol,
     # origin — see `find_shocks`), which is a per-period choice a smoother could in
     # principle redistribute across time; doing so would be a different estimator,
     # not the inversion filter's smoother.
-    if filter in (:quadratic_kalman, :cubic_kalman) && smooth
-        @info "The $(filter) filter does not provide smoothed estimates. Setting `smooth = false`." maxlog = maxlog
+    if filter == :cubic_kalman && smooth
+        @info "The cubic_kalman filter does not provide smoothed estimates. Setting `smooth = false`." maxlog = maxlog
         smooth = false
     end
 

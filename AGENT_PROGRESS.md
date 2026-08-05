@@ -445,3 +445,176 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   Ivashchenko `48/48`, direct unsupported-dispatch checks pass, and `git diff --check` passes.
   The replacement GitHub run is pending after push; the observed in-flight run predates this
   local fix.
+
+## SW07 nonlinear-filter benchmark and filtered estimates (2026-08-05)
+
+- Benchmarked the SW07 EA sample (`test/data/usmodel.csv`, 1960Q1–2005Q4, seven observables)
+  with `presample_periods=4`, `initial_covariance=:theoretical`, `measurement_error=:auto`,
+  and two post-warmup samples. The pruned Ivashchenko likelihood is `-2817.3079507088974`
+  at `362.0 ms` median; pruned quadratic Kalman is `-2343.6958473510495` at `569.8 ms`;
+  unpruned Ivashchenko returns `NaN` at `95.5 ms` for this calibration.
+- Fixed Ivashchenko non-smooth output extraction to condition outputs directly on the observed
+  measurement covariance, avoiding a full-state Cholesky that fails for singular moment-closure
+  covariances. A pseudo-inverse fallback remains for shock extraction.
+- Fixed both StatsPlots estimate-plot entry points to forward Ivashchenko initial covariance and
+  measurement-error settings. The saved SW07 `pinfobs` plot uses a diagonal prior and `1e-4`
+  measurement-error variance for numerical regularization; the benchmark settings remain
+  unchanged. The plot is non-flat and visually inspected.
+- Focused verification: pruned Ivashchenko `32/32`; filtered `pinfobs` values are finite and
+  range from `-0.6999999691922607` to `2.247634200660831` in deviations.
+
+## SW07 1990-onward nonlinear-filter comparison (2026-08-05)
+
+- Updated `tasks/benchmark_sw07_second_order_filters.jl` to use rows `167:230`, i.e. 1990Q1–
+  2005Q4, and to compare pruned Ivashchenko, pruned quadratic Kalman, unpruned Ivashchenko,
+  inversion, and all four supported particle variants.
+- Used `n_particles=10_000`, `particle_target_ratio=1.5`, `particle_mh_steps=4`, and a fresh
+  `Random.Xoshiro(20260805)` per likelihood call. Deterministic filters retain the theoretical
+  prior and `measurement_error=:auto`; particle filters use the finite default failure penalty
+  so their stochastic likelihoods remain benchmarkable.
+- Results are saved in `tasks/artifacts/sw07_second_order/benchmark_results_1990_onward.txt`.
+  Medians are 126.7 ms (pruned Ivashchenko), 221.9 ms (quadratic), 1.77 ms (inversion),
+  643.6 ms (bootstrap), 1.21 s (auxiliary), 70.16 s (tempered), and 12.15 s (guided).
+  Unpruned Ivashchenko is `NaN` at the calibration; inversion is `-5029.3998`, while the
+  particle likelihoods are stochastic and use the positive auto measurement-error path.
+- Regenerated `tasks/artifacts/sw07_second_order/sw07_1990_onward_pinfobs_pruned_ivashchenko_filtered_estimates.png`
+  with `plot_model_estimates` from `StatsPlotsExt.jl`; the visible filtered path is finite and
+  non-flat. The first four quarters are used as presample periods, so the plotted axis begins
+  after the 1990Q1 sample start.
+
+## Nonlinearities-repo EA sample through 2024Q2 (2026-08-05)
+
+- Reworked `tasks/benchmark_sw07_second_order_filters.jl` to load and transform
+  `/Users/thorekockerols/GitHub/nonlinearisties/EA_SW_rawdata.csv` by date, selecting 138
+  observations from 1990Q1 through 2024Q2. The file's last date is 2024-04-01; no 2024Q3/Q4
+  observations are present.
+- Loaded `/Users/thorekockerols/GitHub/nonlinearisties/sw07_common.jl` in a namespace, which
+  supplies the 27-state `Smets_Wouters_2007_estim.jl` model, the repo's calibrated
+  `SW07_INITIAL_FREE_PARAMETERS`, `sw07_full_parameters`, and `sw07_legacy_steady_state!`.
+  This corrected the calibration mismatch that made the first 2024 inversion attempt nonfinite.
+- Final benchmark artifact: `tasks/artifacts/sw07_second_order/benchmark_results_1990_2024.txt`.
+  Medians are 307.01 ms (pruned Ivashchenko), 514.78 ms (quadratic), 123.20 ms (unpruned
+  Ivashchenko), 3.34 ms (inversion), 1.55 s (bootstrap), 2.95 s (auxiliary), 81.59 s
+  (tempered), and 12.82 s (guided). All reported likelihoods are finite under the repo
+  calibration.
+- Final plot artifact: `tasks/artifacts/sw07_second_order/sw07_1990_2024_pinfobs_pruned_ivashchenko_filtered_estimates.png`.
+  It was generated through `plot_model_estimates`, passed the repo steady-state function and
+  regularized plotting covariance, and was visually inspected as non-flat through the EA
+  sample endpoint.
+
+## SW07 filtered profiles and decomposition (2026-08-05)
+
+- A fresh flat profile covers all eight requested variants on the nonlinearities-repo SW07
+  model and 138-quarter EA sample (1990Q1–2024Q2), with `smooth=false` and filtered
+  likelihood paths. Deterministic profiles use three repetitions (inversion uses 30); particle
+  diagnostics use 2,000 particles, four MH steps, 100 maximum stages, and target ratio 1.5.
+  The full comparison benchmark remains the separate 10,000-particle run in
+  `tasks/artifacts/sw07_second_order/benchmark_results_1990_2024.txt`.
+- The profile identifies the expensive parts as follows: inversion repeatedly assembles and
+  solves the per-period Lagrange–Newton shock system; pruned quadratic Kalman propagates the
+  446×446 augmented covariance and rebuilds the state-dependent noise covariance; both
+  Ivashchenko paths spend time in `ivashchenko_polynomial_moments!`, with the unpruned path
+  additionally showing coupled stationary initialization; bootstrap/auxiliary particle paths
+  spend their time in `propagate_cloud!`/`propagate_block!`, while tempered adds repeated
+  annealing/MH mutation and guided adds guided bridge, Mahalanobis, cloud-copy, and mutation
+  work. The profile report is `tasks/sw07_filter_profiles_1990_2024.txt`.
+- Saved and visually inspected no-smoothing plots: filtered `pinfobs`, filtered shocks for
+  pruned Ivashchenko, and an inversion historical shock decomposition. The plot script is
+  `tasks/plot_sw07_1990_2024_filtered_shocks_decomposition.jl`; artifacts are under
+  `tasks/artifacts/sw07_second_order/`. The decomposition intentionally uses inversion because
+  the Ivashchenko filtered-data dispatch currently returns a placeholder decomposition tensor,
+  although its filtered shock estimates are available and plotted separately.
+- The plots use `presample_periods=0` so the visible axis starts at 1990Q1; the likelihood
+  benchmark retains `presample_periods=4`. No smoother was invoked in profiling, extraction,
+  or plotting.
+
+## Particle and pruned-Kalman decompositions (2026-08-05)
+
+- Added no-smoothing historical shock decomposition plots for the four SW07 second-order
+  particle variants on the nonlinearities-repo EA sample, 1990Q1–2024Q2.
+- Added filtered shock and decomposition support for `:quadratic_kalman` and `:cubic_kalman`,
+  including public estimate/plot keyword forwarding and full-row filtered estimates. Their
+  shock paths use the Gaussian best-linear innovation projection; the residual column captures
+  the moment-closure remainder.
+- Verified the small-model decomposition reproduction, public QKF/CKF estimate dispatches,
+  `test/test_quadratic_kalman.jl` (34/34), and `test/test_cubic_kalman.jl` (31/31). Generated
+  artifacts are under `tasks/artifacts/sw07_second_order/` and
+  `tasks/artifacts/small_pruned_kalman_decomposition/`.
+
+## Marginal and smoothed decompositions (2026-08-05)
+
+- Extended the QKF estimate/decomposition path with an RTS pass on the lifted state. Because
+  the lifted covariance can be singular off the product manifold, the smoother uses Moore–Penrose
+  RTS gains; smoothed shocks are the best-linear regression of the transition residual onto the
+  QKF shock loading, including the centered shock-pair innovation remainder.
+- Kept inversion smoothing as an explicit no-op: its identified filtered path is already the
+  point-mass smoother. Cubic Kalman remains filtered-only and is normalized visibly.
+- Made the shared pruned marginal decomposition use the trajectory implied by the selected shock
+  path as its Aumann–Shapley efficiency reference. This makes `marginal_contribution=true` close
+  for filtered/smoothed QKF means as well as particle and inversion paths.
+- Added fifth-, sixth-, and seventh-order Gauss–Legendre rules so the adaptive Aumann–Shapley
+  refinement cannot fail at its documented maximum order.
+- Added algorithm/filter/smooth/marginal labels to StatsPlots estimate/decomposition titles.
+- Focused reproduction passes for inversion, QKF, bootstrap, auxiliary, tempered, and guided
+  particles with `marginal_contribution=true` and `smooth=true`; QKF and CKF regressions pass
+  34/34 and 31/31. Saved filtered sequential and smoothed marginal decomposition plots for all
+  four SW07 particle variants plus inversion on 1990Q1–2024Q2, and both modes for QKF on the
+  small nonlinear test model, under `tasks/artifacts/decomposition_modes/`.
+
+## Compact decomposition labels (2026-08-05)
+
+- Replaced verbose plot-title settings with compact labels of the form
+  `PS2 · boot · S · AS`: solution order, filter, filtered/smoothed mode, and
+  sequential/Aumann–Shapley attribution.
+- Regenerated all 12 decomposition plots and created filtered, smoothed, and QKF contact sheets
+  under `tasks/artifacts/decomposition_modes/`; all three contact sheets were visually inspected.
+
+## Selected-filter AS comparison (2026-08-05)
+
+- Replaced the prior broad plot set with inversion, tempered particle, guided particle, pruned
+  Ivashchenko, and quadratic Kalman. Auxiliary/bootstrap particle outputs are not in the new
+  comparison directory.
+- Generated all four modes—filtered/sequential, filtered/Aumann–Shapley, smoothed/sequential,
+  and smoothed/Aumann–Shapley—for the 138-quarter nonlinearities-repo SW07 EA sample
+  (1990Q1–2024Q2), plus all four modes for the small QKF decomposition check. The output is in
+  `tasks/artifacts/decomposition_selected/`, with three contact sheets.
+- Added the `Iva` compact title label and completed the pruned Ivashchenko historical
+  decomposition path for both attribution modes. Its RTS smoother now falls back from Cholesky
+  to a PSD generalized inverse with a relative eigenvalue cutoff when the full moment-closure
+  covariance is singular; this was required at the SW07 endpoint and avoids explosive initial
+  contributions.
+- Focused regressions pass: Ivashchenko 48/48, pruned Ivashchenko 32/32, and QKF 34/34. The full plot generator completed
+  all 20 selected plots, and the filtered/smoothed/QKF contact sheets were visually inspected.
+
+## Ivashchenko RTS correction and QKF SW07 estimates (2026-08-05)
+
+- Diagnosed the apparently off smoothed Ivashchenko SW07 series: the RTS pass formed the
+  cross-covariance as ``A P`` instead of the required ``P A'``. Filtered estimates were
+  therefore close to the data while smoothed estimates drifted materially.
+- Corrected the RTS cross-covariance orientation and added a non-commuting synthetic regression
+  test. The focused Ivashchenko suite now passes 49/49; the pruned Ivashchenko suite passes
+  32/32.
+- Re-ran the full selected-filter decomposition generator after the fix. SW07 now includes
+  inversion, tempered particle, guided particle, Ivashchenko, and QKF in filtered and smoothed
+  sequential/AS modes, covering 1990Q1–2024Q2. Direct estimate-only plots are saved beside the
+  decompositions, including QKF and both Ivashchenko modes.
+- The QKF SW07 path is stable and its filtered/smoothed estimate is close to the observed
+  `pinfobs`; its decomposition remains a Gaussian moment-matching attribution rather than an
+  exact shock history.
+
+## AS closure gap and post-sample decomposition forecast (2026-08-05)
+
+- Measured the Aumann–Shapley total against the posterior estimate on the 138-quarter SW07 EA
+  sample. After removing the constant steady-state plotting offset, the maximum path gaps were
+  `8.0e-15` for inversion, `0.776` for Ivashchenko, `1.254` for QKF, `2.312` for tempered PF,
+  and `2.879` for guided PF. This confirms that the discrepancy is the intended nonlinear
+  posterior-mean versus shock-implied-trajectory distinction, not a failed AS closure.
+- Added an explicit black `AS total` legend line to the StatsPlots decomposition plots. The navy
+  `Estimate` line remains the filtered/smoothed posterior mean, so the closure gap is visible and
+  labeled rather than mistaken for a bar-stack error.
+- Changed the selected SW07 decomposition task to add an 8-quarter unconditional forecast after
+  the last 2024Q2 observation, and regenerated all 24 selected-filter/QKF decomposition plots. Filtered and
+  smoothed AS contact sheets were visually inspected; the dotted forecast is visible after the
+  data endpoint.
+- The reproducible AS diagnostic is `tasks/diagnose_as_gap.jl`; generated forecast plots and
+  contact sheets are under `tasks/artifacts/decomposition_selected/`.

@@ -250,10 +250,12 @@ covariance. `𝐒₁`/`𝐒₂` are the solution matrices in the compressed symm
 quadratic basis as returned by
 `get_relevant_steady_state_and_state_update(Val(:pruned_second_order), …)`.
 """
-build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, oi::Vector{Int}) =
-    build_quadratic_kalman_system_from_constants(𝓂.constants, 𝐒₁, 𝐒₂, oi)
+build_quadratic_kalman_system(𝓂::ℳ, 𝐒₁, 𝐒₂, oi::Vector{Int}; keep_all_rows::Bool = false) =
+    build_quadratic_kalman_system_from_constants(𝓂.constants, 𝐒₁, 𝐒₂, oi;
+                                                 keep_all_rows = keep_all_rows)
 
-function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, observables_index::Vector{Int})
+function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, observables_index::Vector{Int};
+                                                      keep_all_rows::Bool = false)
     T = cons.post_model_macro
     nVars, nPast, nExo = T.nVars, T.nPast_not_future_and_mixed, T.nExo
     past = T.past_not_future_and_mixed_idx
@@ -267,7 +269,7 @@ function build_quadratic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, ob
     # by the measurement) are ever read out of the x₁/x₂ blocks, so carry just
     # those rows instead of all nVars. On Smets-Wouters that is 34 rows rather
     # than 67, and the covariance recursion is cubic in the total dimension.
-    oas = sort(union(past, observables_index))
+    oas = keep_all_rows ? collect(1:nVars) : sort(union(past, observables_index))
     nr  = length(oas)
     pos = Dict(v => i for (i, v) in enumerate(oas))
 
@@ -796,7 +798,7 @@ model with roots near unity.
 """
 function run_quadratic_kalman(sys,
                               data_in_deviations::AbstractMatrix{<:Real};
-                              measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
+                              measurement_error::Union{Nothing,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                               presample_periods::Int = 0,
                               on_failure_loglikelihood::Real = -Inf,
                               workspaces = nothing,
@@ -812,6 +814,8 @@ function run_quadratic_kalman(sys,
 
     Hm = if measurement_error === nothing
         zeros(Tv, n_obs, n_obs)
+    elseif measurement_error isa Real
+        Matrix{Tv}(measurement_error * ℒ.I(n_obs))
     elseif measurement_error isa AbstractMatrix
         Matrix{Tv}(measurement_error)
     else
@@ -837,6 +841,225 @@ function run_quadratic_kalman(sys,
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
                                       presample_periods, on_failure_loglikelihood)
 end
+
+function quadratic_kalman_filter_data_with_model(𝓂::ℳ,
+                                                data_in_deviations::KeyedArray{Float64};
+                                                initial_covariance = :theoretical,
+                                                measurement_error = nothing,
+                                                smooth::Bool = false,
+                                                marginal_contribution::Bool = false,
+                                                opts::CalculationOptions = merge_calculation_options())
+    constants = initialise_constants!(𝓂)
+    T = constants.post_model_macro
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    result = calculate_stochastic_steady_state(Val(:pruned_second_order),
+                                               𝓂.parameter_values, 𝓂; opts = opts)
+    sss, converged, SS_and_pars, solution_error = result[1:4]
+    nT = size(data_in_deviations, 2)
+    variables = zeros(Float64, T.nVars, nT)
+    shocks = zeros(Float64, T.nExo, nT)
+    standard_deviations = zeros(Float64, T.nVars, nT)
+    decomposition = zeros(Float64, T.nVars,
+                          marginal_contribution ? T.nExo + 2 : T.nExo + 3, nT)
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol || !isfinite(solution_error)
+        @error "Could not find pruned 2nd order stochastic steady state for the quadratic Kalman estimate path."
+        return variables, shocks, standard_deviations, decomposition
+    end
+
+    𝐒 = [result[7], result[8]]
+    all_SS = expand_steady_state(SS_and_pars, constants.post_complete_parameters)
+    initial_state = [zeros(Float64, T.nVars), collect(sss) - all_SS]
+    observables = get_and_check_observables(T, data_in_deviations)
+    observables_index = convert(Vector{Int}, indexin(observables,
+                                                      constants.post_complete_parameters.SS_and_pars_names))
+    sys = build_quadratic_kalman_system_from_constants(constants, 𝐒[1], 𝐒[2], observables_index;
+                                                       keep_all_rows = true)
+    n_obs = size(data_in_deviations, 1)
+    Hm = if measurement_error === nothing
+        zeros(Float64, n_obs, n_obs)
+    elseif measurement_error isa Real
+        Matrix{Float64}(measurement_error * ℒ.I(n_obs))
+    elseif measurement_error isa AbstractMatrix
+        Matrix{Float64}(measurement_error)
+    elseif measurement_error isa AbstractVector
+        Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
+    else
+        throw(ArgumentError("quadratic_kalman expects measurement_error to be nothing, a scalar, vector, or matrix."))
+    end
+
+    z = (Matrix{Float64}(ℒ.I(sys.nz)) - sys.𝒜) \ sys.c
+    initial_mean = copy(z)
+    g0, Λ = quadratic_kalman_affine_G(sys)
+    Pz = sys.P * [Matrix{Float64}(ℒ.I(sys.nr)) zeros(Float64, sys.nr, sys.nz - sys.nr)]
+    Σ, _ = quadratic_kalman_initial_covariance(sys, z, g0, Λ, Pz;
+                                               workspaces = 𝓂.workspaces,
+                                               lyapunov_algorithm = opts.lyapunov_algorithm)
+    if initial_covariance isa AbstractMatrix
+        size(initial_covariance) == (sys.nz, sys.nz) ||
+            throw(DimensionMismatch("quadratic_kalman initial_covariance must have size $(sys.nz)×$(sys.nz)."))
+        Σ .= initial_covariance
+    elseif initial_covariance === :diagonal
+        Σ .= Matrix{Float64}(ℒ.I(sys.nz))
+    elseif initial_covariance !== :theoretical
+        throw(ArgumentError("Unsupported quadratic_kalman initial_covariance: $initial_covariance"))
+    end
+
+    Pp = zeros(Float64, sys.nz, sys.nz)
+    Tm = similar(Pp)
+    Q = similar(Pp)
+    Pc = copy(Σ)
+    zp = zeros(Float64, sys.nz)
+    CP = zeros(Float64, n_obs, sys.nz)
+    F = zeros(Float64, n_obs, n_obs)
+    Fv = zeros(Float64, n_obs)
+    Kg = zeros(Float64, sys.nz, n_obs)
+    gv = zeros(Float64, length(g0))
+    x1p = zeros(Float64, sys.nPast)
+    PzPc = zeros(Float64, sys.nPast, sys.nz)
+    Pa = zeros(Float64, sys.nPast, sys.nPast)
+    LPaAll = zeros(Float64, sys.nz * sys.nExo, sys.nPast)
+    data = collect(data_in_deviations)
+
+    # The lifted transition is linear, so the same augmented-state RTS pass used
+    # by the Gaussian filters applies after the QKF moment-matched forward pass.
+    # Store only the objects needed by that backward pass; the default filtered
+    # path does not pay this memory cost.
+    filtered_means = smooth ? [zeros(Float64, sys.nz) for _ in 1:nT] : Vector{Vector{Float64}}()
+    filtered_covariances = smooth ? [zeros(Float64, sys.nz, sys.nz) for _ in 1:nT] : Vector{Matrix{Float64}}()
+    predicted_means = smooth ? [zeros(Float64, sys.nz) for _ in 1:nT] : Vector{Vector{Float64}}()
+    predicted_covariances = smooth ? [zeros(Float64, sys.nz, sys.nz) for _ in 1:nT] : Vector{Matrix{Float64}}()
+    innovation_loadings = smooth ? [zeros(Float64, sys.nz, sys.nExo) for _ in 1:nT] : Vector{Matrix{Float64}}()
+    noise_covariances = smooth ? [zeros(Float64, sys.nz, sys.nz) for _ in 1:nT] : Vector{Matrix{Float64}}()
+
+    for t in 1:nT
+        ℒ.mul!(x1p, Pz, z)
+        copyto!(gv, g0)
+        ℒ.mul!(gv, Λ, x1p, 1.0, 1.0)
+        G = reshape(gv, sys.nz, sys.nExo)
+        ℒ.mul!(Tm, sys.𝒜, Pc)
+        ℒ.mul!(Pp, Tm, sys.𝒜')
+        quadratic_kalman_noise_covariance!(Q, G, sys.QH, Λ, sys.P, Pc, PzPc, Pa;
+                                           past_positions = sys.past_positions,
+                                           LPaAll = LPaAll)
+        Pp .+= Q
+        for j in 1:sys.nz, i in 1:j
+            value = (Pp[i, j] + Pp[j, i]) / 2
+            Pp[i, j] = value
+            Pp[j, i] = value
+        end
+        ℒ.mul!(zp, sys.𝒜, z)
+        zp .+= sys.c
+        if smooth
+            copyto!(predicted_means[t], zp)
+            copyto!(predicted_covariances[t], Pp)
+            copyto!(innovation_loadings[t], G)
+            copyto!(noise_covariances[t], Q)
+        end
+        ℒ.mul!(CP, sys.𝒞, Pp)
+        ℒ.mul!(F, CP, sys.𝒞')
+        F .+= Hm
+        for j in 1:n_obs, i in 1:j-1
+            value = (F[i, j] + F[j, i]) / 2
+            F[i, j] = value
+            F[j, i] = value
+        end
+        v = view(data, :, t) .- sys.𝒞 * zp
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
+        ℒ.issuccess(Fc) || throw(ArgumentError("quadratic_kalman innovation covariance was not positive definite at period $t."))
+        copyto!(Fv, v)
+        ℒ.ldiv!(Fc, Fv)
+        copyto!(Kg, CP')
+        ℒ.rdiv!(Kg, Fc)
+        # Cov(ε, yₜ − E[yₜ|t−1]) = G'𝒞'. This is the filtered linear projection
+        # of the non-Gaussian innovation onto the current shocks.
+        shocks[:, t] .= G' * sys.𝒞' * Fv
+        copyto!(z, zp)
+        ℒ.mul!(z, Kg, v, 1.0, 1.0)
+        copyto!(Pc, Pp)
+        ℒ.mul!(Pc, Kg, CP, -1.0, 1.0)
+        for j in 1:sys.nz, i in 1:j
+            value = (Pc[i, j] + Pc[j, i]) / 2
+            Pc[i, j] = value
+            Pc[j, i] = value
+        end
+        if smooth
+            copyto!(filtered_means[t], z)
+            copyto!(filtered_covariances[t], Pc)
+        end
+        @inbounds for (j, row) in enumerate(sys.oas)
+            i1 = sys.r1.start + j - 1
+            i2 = sys.r2.start + j - 1
+            variables[row, t] = z[i1] + z[i2]
+            standard_deviations[row, t] = sqrt(max(Pc[i1, i1] + Pc[i2, i2] + 2Pc[i1, i2], 0.0))
+        end
+    end
+
+    if smooth
+        smoothed_means = [copy(filtered_means[t]) for t in 1:nT]
+        smoothed_covariances = [copy(filtered_covariances[t]) for t in 1:nT]
+        for t in nT-1:-1:1
+            predicted_covariance = (predicted_covariances[t + 1] + predicted_covariances[t + 1]') / 2
+            cross = filtered_covariances[t] * sys.𝒜' * ℒ.pinv(predicted_covariance)
+            delta = smoothed_means[t + 1] - predicted_means[t + 1]
+            smoothed_means[t] .+= cross * delta
+            smoothed_covariances[t] .= filtered_covariances[t] +
+                cross * (smoothed_covariances[t + 1] - predicted_covariances[t + 1]) * cross'
+            smoothed_covariances[t] .= (smoothed_covariances[t] + smoothed_covariances[t]') / 2
+        end
+
+        # A smoothed disturbance is the best linear projection of the smoothed
+        # transition residual onto the contemporaneous Gaussian shock loading.
+        # QKF's transition innovation also contains centred shock-pair terms, so
+        # a Moore–Penrose regression is used rather than pretending that the full
+        # non-Gaussian innovation is Gaussian.
+        initial_covariance_predicted = (predicted_covariances[1] + predicted_covariances[1]') / 2
+        initial_cross = Σ * sys.𝒜' * ℒ.pinv(initial_covariance_predicted)
+        smoothed_initial_mean = initial_mean + initial_cross * (smoothed_means[1] - predicted_means[1])
+        transition_residual = zeros(Float64, sys.nz)
+        for t in 1:nT
+            previous_mean = t == 1 ? smoothed_initial_mean : smoothed_means[t - 1]
+            ℒ.mul!(transition_residual, sys.𝒜, previous_mean)
+            transition_residual .= smoothed_means[t] .- transition_residual .- sys.c
+            noise_covariance = (noise_covariances[t] + noise_covariances[t]') / 2
+            shock_regression = innovation_loadings[t]' * ℒ.pinv(noise_covariance)
+            shocks[:, t] .= shock_regression * transition_residual
+        end
+
+        @inbounds for t in 1:nT, (j, row) in enumerate(sys.oas)
+            i1 = sys.r1.start + j - 1
+            i2 = sys.r2.start + j - 1
+            variables[row, t] = smoothed_means[t][i1] + smoothed_means[t][i2]
+            covariance = smoothed_covariances[t]
+            standard_deviations[row, t] = sqrt(max(covariance[i1, i1] + covariance[i2, i2] +
+                                                   2covariance[i1, i2], 0.0))
+        end
+    end
+
+    sequential_pruned_shock_decomposition!(decomposition, variables, shocks,
+                                           initial_state, 𝐒, T, T.nExo;
+                                           marginal_contribution = marginal_contribution,
+                                           verbose = opts.verbose)
+    return variables, shocks, standard_deviations, decomposition
+end
+
+@unstable function filter_data_with_model(𝓂::ℳ,
+                                          data_in_deviations::KeyedArray{Float64},
+                                          ::Val{:pruned_second_order},
+                                          ::Val{:quadratic_kalman};
+                                          warmup_iterations::Int = 0,
+                                          initial_covariance = :theoretical,
+                                          measurement_error = nothing,
+                                          smooth::Bool = false,
+                                          marginal_contribution::Bool = false,
+                                          opts::CalculationOptions = merge_calculation_options())
+    return quadratic_kalman_filter_data_with_model(𝓂, data_in_deviations;
+                                                   initial_covariance = initial_covariance,
+                                                   measurement_error = measurement_error,
+                                                   smooth = smooth,
+                                                   marginal_contribution = marginal_contribution,
+                                                   opts = opts)
+end
+
 # Discrete Lyapunov X = A X A' + Q.
 #
 # Float64 problems go through the package's workspace-backed doubling solver, which

@@ -359,13 +359,16 @@ And data, 4×2×40 Array{Float64, 3}:
                                       particle_max_stages, particle_mh_scale))
     elseif filter == :ivashchenko_kalman
         extra_kw = merge(extra_kw, (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)))
+    elseif filter == :quadratic_kalman || filter == :cubic_kalman
+        extra_kw = merge(extra_kw, (; measurement_error, initial_covariance))
     end
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
     end
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none, so only forward it where it means something.
-    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; initial_covariance))
     end
     ensure_name_display_constants!(𝓂)
@@ -534,7 +537,9 @@ And data, 1×40 Matrix{Float64}:
            particle_target_ratio, particle_mh_steps,
            particle_max_stages, particle_mh_scale) :
         filter == :ivashchenko_kalman ?
-        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
+        filter == :quadratic_kalman || filter == :cubic_kalman ?
+        (; measurement_error, initial_covariance) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -542,7 +547,8 @@ And data, 1×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -694,7 +700,9 @@ And data, 4×40 Matrix{Float64}:
            particle_target_ratio, particle_mh_steps,
            particle_max_stages, particle_mh_scale) :
         filter == :ivashchenko_kalman ?
-        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
+        filter == :quadratic_kalman || filter == :cubic_kalman ?
+        (; measurement_error, initial_covariance) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -702,7 +710,8 @@ And data, 4×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -998,7 +1007,9 @@ And data, 4×40 Matrix{Float64}:
            particle_target_ratio, particle_mh_steps,
            particle_max_stages, particle_mh_scale) :
         filter == :ivashchenko_kalman ?
-        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) : NamedTuple()
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
+        filter == :quadratic_kalman || filter == :cubic_kalman ?
+        (; measurement_error, initial_covariance) : NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
@@ -1006,7 +1017,8 @@ And data, 4×40 Matrix{Float64}:
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter == :ivashchenko_kalman || filter ∈ PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
@@ -4462,11 +4474,13 @@ end
 # does not take it: the Durbin-Koopman backward recursion would need H threaded
 # through the disturbance smoother as well, which is not implemented. So a
 # `measurement_error` supplied to the estimate entry points has an effect for
-# the particle and Ivashchenko Gaussian filters. Say so rather than silently
-# dropping it for the other filters.
+# the particle, Ivashchenko, and pruned higher-order Kalman estimate paths. Say
+# so rather than silently dropping it for the other filters.
 function warn_unused_measurement_error(filter::Symbol, measurement_error; maxlog::Int = DEFAULT_MAXLOG)
-    if filter ∉ PARTICLE_FILTERS && filter != :ivashchenko_kalman && measurement_error !== DEFAULT_MEASUREMENT_ERROR
-        @info "`measurement_error` is only used by the particle filters on this path; it is ignored for `filter = :$(filter)`. Use `get_loglikelihood` if you need measurement error in the Kalman likelihood." maxlog = maxlog
+    if filter ∉ PARTICLE_FILTERS && filter != :ivashchenko_kalman &&
+       filter != :quadratic_kalman && filter != :cubic_kalman &&
+       measurement_error !== DEFAULT_MEASUREMENT_ERROR
+        @info "`measurement_error` is ignored for `filter = :$(filter)` on this estimate path. Use a supported filter or `get_loglikelihood` if you need measurement error." maxlog = maxlog
     end
     return nothing
 end

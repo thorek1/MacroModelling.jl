@@ -30,8 +30,8 @@ Two inputs cut across all of them and are covered separately below: `measurement
 |---|---|---|---|---|---|---|---|
 | `:kalman` | linear (`:first_order`) | exact | yes | optional (incl. correlated) | yes (Durbin–Koopman) | linear-Gaussian state space | 1× |
 | `:inversion` | linear and nonlinear | exact only under its identification assumptions | yes | not available | n/a (filtered = smoothed) | zero measurement error; the clean exact change-of-variables case has a square, full-rank shock/observable map; rectangular pseudo-inverse cases impose a point-state approximation | ~1–10× |
-| `:quadratic_kalman` | pruned `:pruned_second_order` | Gaussian closure on a lifted state | forward- and reverse-mode | optional (incl. correlated) | yes (RTS) | pruning plus Gaussianising the lifted pair-product state | augmented covariance |
-| `:cubic_kalman` | pruned `:pruned_third_order` | Gaussian closure on a lifted state | forward- and reverse-mode | optional (incl. correlated) | yes (RTS) | pruning plus Gaussianising the lifted pair/triple-product state | larger augmented covariance |
+| `:quadratic_kalman` | pruned `:pruned_second_order` | Gaussian closure on a lifted state | forward- and reverse-mode | optional (incl. correlated) | yes (RTS on lifted state) | pruning plus Gaussianising the lifted pair-product state; RTS gains use a pseudoinverse off the product manifold | augmented covariance |
+| `:cubic_kalman` | pruned `:pruned_third_order` | Gaussian closure on a lifted state | forward- and reverse-mode | optional (incl. correlated) | no — filtered estimate path | pruning plus Gaussianising the lifted pair/triple-product state | larger augmented covariance |
 | `:ivashchenko_kalman` | unpruned `:second_order`, `:third_order` | Gaussian moment closure | forward- and reverse-mode | optional (incl. correlated) | yes (RTS) | Gaussian input closure on the physical state, with exact polynomial moments under that Gaussian input | polynomial moment contractions |
 | `:guided_particle` (`:particle`) | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | proposal is locally linearised in the shock | ~2× bootstrap |
 | `:bootstrap_particle` | linear and nonlinear | stochastic, unbiased | no | required (incl. correlated) | yes (genealogy) | none beyond the particle approximation | ~10³× |
@@ -637,6 +637,22 @@ closure supplies the filtering approximation. Enforcing the identity at every up
 make the filter nonlinear again and would require a non-Gaussian method such as a particle or
 sigma-point filter.
 
+The estimate and historical-decomposition interface supports both filtered and smoothed paths.
+With ``smooth = true``, an RTS pass is applied to the lifted Gaussian state. The smoothed shock
+path is the best linear projection of the smoothed transition residual onto the contemporaneous
+Gaussian shock loading; because the QKF innovation also contains centred shock-pair terms, a
+Moore–Penrose regression is used rather than treating the full innovation as Gaussian. The
+filtered shock path is instead ``\widehat{\varepsilon}_t = G_t'\mathcal{C}'F_t^{-1}v_t``. Neither is
+an exact conditional shock draw. The shared pruned decomposition then propagates the selected
+path and returns either a sequential split (individual shocks, interaction, residual, total) or
+an Aumann–Shapley split. For the latter, the trajectory implied by the selected shock path is
+used as the efficiency reference, so filtered and smoothed posterior means need not themselves
+lie on the decomposed nonlinear model path. The residual records the difference between the
+posterior mean and the model trajectory implied by the projected shocks.
+In the decomposition plots, the navy ``Estimate`` line is the filtered or smoothed posterior
+mean, while the black ``AS total`` line is the sum of the stacked contribution bars; their gap
+is therefore an informative closure gap, not a plotting error.
+
 Without pruning there is no such representation: ``x_t`` is quadratic in ``x_{t-1}``, so
 ``x_t\otimes x_t`` is quartic, needing ``x^{\otimes4}``, then ``x^{\otimes8}`` — the
 hierarchy never closes. Pruning truncates it at exactly one rung.
@@ -879,6 +895,14 @@ not an equivalent drop-in replacement and costs more. The reverse-mode rule diff
 moment contractions, measurement updates, and theoretical fixed-point initialization
 analytically; it does not use automatic differentiation internally.
 
+The smoother retains the Cholesky right-solve on positive-definite covariances. Moment closure
+can nevertheless leave the full predicted physical covariance numerically singular or slightly
+indefinite while the innovation covariance remains valid; in that case the RTS regression uses a
+positive-semidefinite generalized inverse with a relative eigenvalue cutoff. This is a numerical
+stabilization of the Gaussian smoother, not an additional distributional approximation. Pruned
+Ivashchenko estimates also support the same sequential and Aumann–Shapley historical
+decompositions as the other pruned filters.
+
 This is computationally different from `:quadratic_kalman` and `:cubic_kalman`: it avoids the
 large pruned augmented covariance. The physical covariance is only ``n_{past}\times n_{past}``,
 while the random polynomial input has dimension ``d=n_{past}+n_\varepsilon``. The third-order
@@ -962,6 +986,11 @@ trajectory satisfies algebraic product identities. The affine recursion is exact
 map, but the Kalman covariance is allowed to put mass off that product manifold. The cubic
 monomial moments below are exact for the polynomial innovation under Gaussian shocks; they do
 not make that lifted distribution Gaussian.
+
+The cubic estimate path has the same filtered-only contract. Its shock estimate is obtained from
+the exact monomial cross-moments, ``\operatorname{Cov}(f(z,\varepsilon),\varepsilon)``, rather
+than by pretending the cubic innovation is Gaussian. The resulting projected shock path is then
+decomposed by the same sequential or Aumann–Shapley pruned recursion; no smoother is invoked.
 
 Validated on an RBC model (2 shocks, 3 past states) against a converged bootstrap particle
 filter: **181.78 against 181.43 over 60 periods, a gap of 0.006 per period** — a small-model

@@ -293,7 +293,7 @@ The inversion filter has no guarantee to find the global minimum-norm shocks for
 
 ## Smooth
 
-The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing (only available for the Kalman filter and set to `true` by default for the Kalman filter) or filtering (available for both and set to `true` in case the inversion filter is used). If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.
+The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing or filtering. RTS smoothing is available for the linear Kalman, pruned quadratic Kalman, and Ivashchenko filters; particle filters use genealogy smoothing. The inversion filter is a point-mass path, so requesting smoothing is a documented no-op. If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.
 
 Smoothed estimates using the Kalman filter can be plotted as follows (this is the default behaviour and does not need to be specified explicitly):
 

@@ -702,6 +702,21 @@ simulation = simulate(RBC_CME)
 plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
+plot_algorithm_label(algorithm::Symbol) = algorithm === :first_order ? "FO" :
+    algorithm === :second_order ? "SO" :
+    algorithm === :third_order ? "TO" :
+    algorithm === :pruned_second_order ? "PS2" :
+    algorithm === :pruned_third_order ? "PS3" : string(algorithm)
+
+plot_filter_label(filter::Symbol) = filter === :inversion ? "inv" :
+    filter === :quadratic_kalman ? "QKF" :
+    filter === :cubic_kalman ? "CKF" :
+    filter === :ivashchenko_kalman ? "Iva" :
+    filter === :bootstrap_particle ? "boot" :
+    filter === :auxiliary_particle ? "aux" :
+    filter === :tempered_particle ? "temp" :
+    filter === :guided_particle ? "guide" : string(filter)
+
 function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray;
                                 parameters::ParameterType = nothing,
@@ -774,6 +789,13 @@ function plot_model_estimates(𝓂::ℳ,
     mc = marginal_contribution && shock_decomposition && pruning
     is_pruned = pruning
     pruning = pruning && !mc
+    # Compact title: solution order, filter, smoothing mode, attribution mode.
+    # `F/S` means filtered/smoothed and `seq/AS` means sequential/Aumann–Shapley.
+    smooth_label = smooth ? "S" : "F"
+    attribution_label = mc ? "AS" : "seq"
+    plot_method_label = string(plot_algorithm_label(algorithm), " · ",
+                               plot_filter_label(filter), " · ",
+                               smooth_label, " · ", attribution_label)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -822,7 +844,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0) + (mc ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -858,13 +880,19 @@ function plot_model_estimates(𝓂::ℳ,
                                       particle_resampling_threshold, particle_initial_state_scaling,
                                       particle_rng, particle_target_ratio, particle_mh_steps,
                                       particle_max_stages, particle_mh_scale))
+    elseif filter == :ivashchenko_kalman
+        extra_kw = merge(extra_kw, (; initial_covariance,
+                                      measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations)))
+    elseif filter == :quadratic_kalman || filter == :cubic_kalman
+        extra_kw = merge(extra_kw, (; initial_covariance, measurement_error))
     end
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
     end
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none, so only forward it where it means something.
-    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
         extra_kw = merge(extra_kw, (; initial_covariance))
     end
 
@@ -1144,6 +1172,13 @@ function plot_model_estimates(𝓂::ℳ,
                             label = "Estimate", 
                             color = shock_decomposition ? estimate_color : pal[1])
 
+            if mc
+                StatsPlots.plot!(pl,
+                                [NaN],
+                                label = "AS total",
+                                color = :black)
+            end
+
             if forecast_periods > 0
                 StatsPlots.plot!(pl,
                                 [NaN], 
@@ -1183,7 +1218,7 @@ function plot_model_estimates(𝓂::ℳ,
             # Legend
             p = StatsPlots.plot(ppp,pl, 
                                     layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    plot_title = "Model: "*𝓂.model_name*" ["*plot_method_label*"]  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")";
                                     attributes_redux...)
 
             push!(return_plots,p)
@@ -1214,6 +1249,13 @@ function plot_model_estimates(𝓂::ℳ,
                         [NaN], 
                         label = "Estimate", 
                         color = shock_decomposition ? estimate_color : pal[1])
+
+        if mc
+            StatsPlots.plot!(pl,
+                            [NaN],
+                            label = "AS total",
+                            color = :black)
+        end
 
         if forecast_periods > 0
             StatsPlots.plot!(pl,
@@ -1255,7 +1297,7 @@ function plot_model_estimates(𝓂::ℳ,
         # Legend
         p = StatsPlots.plot(ppp,pl, 
                                 layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                plot_title = "Model: "*𝓂.model_name*" ["*plot_method_label*"]  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")";
                                 attributes_redux...)
 
 
@@ -1526,7 +1568,13 @@ function plot_model_estimates!(𝓂::ℳ,
         (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
            particle_initial_state_scaling, particle_rng,
            particle_target_ratio, particle_mh_steps,
-           particle_max_stages, particle_mh_scale) : NamedTuple()
+           particle_max_stages, particle_mh_scale) :
+        filter == :ivashchenko_kalman ?
+        (; initial_covariance,
+           measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations)) :
+        filter == :quadratic_kalman || filter == :cubic_kalman ?
+        (; initial_covariance, measurement_error) :
+        NamedTuple()
 
     if filter == :inversion && initial_covariance !== :theoretical
         @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
@@ -1534,7 +1582,8 @@ function plot_model_estimates!(𝓂::ℳ,
     # The Kalman and particle filters take a prior on the initial state; the
     # inversion filter has none (it fixes x₀ and clamps the covariance), so the
     # argument is only forwarded where it means something.
-    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+    if filter == :kalman || filter == :ivashchenko_kalman || filter == :quadratic_kalman ||
+       filter == :cubic_kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
         particle_kw = merge(particle_kw, (; initial_covariance))
     end
 
