@@ -16,7 +16,17 @@ for source_file in source_files
 
     parameters = residual_module.PARAMETER_VALUES
     original_solution = residual_module.ORIGINAL_SOLUTION_VALUES
+    original_initial_solution = residual_module.ORIGINAL_INITIAL_SOLUTION_VALUES
     auxiliary_solution = residual_module.AUXILIARY_SOLUTION_VALUES
+    auxiliary_initial_solution = residual_module.AUXILIARY_INITIAL_SOLUTION_VALUES
+    all_auxiliary_initial_values = residual_module.ALL_AUXILIARY_VARIABLE_INITIAL_VALUES
+
+    @test length(original_initial_solution) == length(residual_module.ORIGINAL_SOLUTION_NAMES)
+    @test length(auxiliary_initial_solution) == length(residual_module.AUXILIARY_SOLUTION_NAMES)
+    @test length(all_auxiliary_initial_values) == length(residual_module.ALL_AUXILIARY_VARIABLE_NAMES)
+    @test all(isfinite, original_initial_solution)
+    @test all(isfinite, auxiliary_initial_solution)
+    @test all(isfinite, all_auxiliary_initial_values)
 
     original_residual = residual_module.residuals_original(parameters, original_solution)
     auxiliary_residual = residual_module.residuals_auxiliary(parameters, auxiliary_solution)
@@ -45,6 +55,15 @@ for source_file in source_files
         @test block.previous_solution_values == residual_module.BLOCK_PREVIOUS_SOLUTION_VALUES[block_index]
         @test block.external_solution_values == residual_module.BLOCK_EXTERNAL_SOLUTION_VALUES[block_index]
         @test block.solution_values == residual_module.BLOCK_SOLUTION_VALUES[block_index]
+        @test block.previous_solution_initial_values ==
+              residual_module.BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES[block_index]
+        @test block.external_solution_initial_values ==
+              residual_module.BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES[block_index]
+        @test block.solution_initial_values ==
+              residual_module.BLOCK_SOLUTION_INITIAL_VALUES[block_index]
+        @test all(isfinite, block.previous_solution_initial_values)
+        @test all(isfinite, block.external_solution_initial_values)
+        @test all(isfinite, block.solution_initial_values)
         @test isempty(intersect(block.previous_solution_names, block.solution_names))
         @test isempty(intersect(block.external_solution_names, block.solution_names))
         @test isempty(intersect(block.previous_solution_names, block.external_solution_names))

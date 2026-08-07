@@ -401,6 +401,59 @@ function solution_values_for_model(model, original_names, auxiliary_names, compl
            defaulted_names, solution_error, residual_norm
 end
 
+function fresh_initial_solution_for_model(model)
+    solver_constants = model.constants.nsss_solver
+    solver_functions = model.functions.nsss_solver
+    complete_constants = model.constants.post_complete_parameters
+    parameter_values = zeros(Float64, complete_constants.nsss_n_ext_params)
+    model.functions.nsss_param_prep!(parameter_values, model.parameter_values)
+    solution = zeros(Float64, complete_constants.nsss_n_sol)
+
+    for step in 1:solver_constants.n_steps
+        auxiliary_range = solver_constants.aux_write_ranges[step]
+        if !isempty(auxiliary_range)
+            auxiliary_values = zeros(Float64, length(auxiliary_range))
+            solver_functions.aux_funcs[step](auxiliary_values, solution, parameter_values)
+            for index in eachindex(auxiliary_values)
+                solution[solver_constants.aux_write_indices[auxiliary_range[index]]] = auxiliary_values[index]
+            end
+        end
+
+        write_range = solver_constants.write_ranges[step]
+        if solver_constants.step_types[step] == MacroModelling.ANALYTICAL_STEP
+            main_values = zeros(Float64, max(length(write_range), 1))
+            solver_functions.eval_funcs[step](main_values, solution, parameter_values)
+            bounds_range = solver_constants.bounds_ranges[step]
+            for index in eachindex(write_range)
+                value = main_values[index]
+                if !isfinite(value)
+                    value = solution[solver_constants.write_indices[write_range[index]]]
+                end
+                if !isempty(bounds_range) && solver_constants.has_bounds[bounds_range[index]]
+                    value = clamp(value,
+                                  solver_constants.lower_bounds[bounds_range[index]],
+                                  solver_constants.upper_bounds[bounds_range[index]])
+                end
+                solution[solver_constants.write_indices[write_range[index]]] = value
+            end
+        else
+            numerical_range = solver_constants.numerical_bounds_ranges[step]
+            guess_length = min(length(write_range), length(numerical_range))
+            for index in 1:guess_length
+                bound_index = numerical_range[index]
+                value = 0.5 * (solver_constants.numerical_lbs[bound_index] +
+                               solver_constants.numerical_ubs[bound_index])
+                solution[solver_constants.write_indices[write_range[index]]] =
+                    clamp(value,
+                          solver_constants.numerical_lbs[bound_index],
+                          solver_constants.numerical_ubs[bound_index])
+            end
+        end
+    end
+
+    return collect(complete_constants.nsss_sol_names), solution
+end
+
 function bounds_for_names(model, names, fixed_zero_names = Symbol[]; base_bounds = nothing)
     lower = fill(-Inf, length(names))
     upper = fill(Inf, length(names))
@@ -614,6 +667,7 @@ function write_model_file(model, output_path, source_file)
         complete_names,
         complete_values,
     )
+    initial_full_names, initial_full_values = fresh_initial_solution_for_model(model)
 
     blocks, equation_order = make_blocks(model, auxiliary_equations, calibration_equations)
     isolated_blocks, isolated_bounds, generated_auxiliary_names = make_isolated_blocks(
@@ -646,6 +700,26 @@ function write_model_file(model, output_path, source_file)
     all_auxiliary_names = unique(vcat(all_auxiliary_names, generated_auxiliary_names))
     all_auxiliary_values = [solution_value_map[name] for name in all_auxiliary_names]
 
+    initial_solution_value_map = Dict{Symbol, Float64}(
+        name => value for (name, value) in zip(initial_full_names, initial_full_values)
+    )
+    for name in union(original_solution_names, auxiliary_solution_names, all_auxiliary_names)
+        if !haskey(initial_solution_value_map, name)
+            initial_solution_value_map[name] = 0.0
+        end
+    end
+    for block in sort(isolated_blocks, by = block -> block.solve_order)
+        evaluate_auxiliary_equations!(
+            initial_solution_value_map,
+            block.domain_auxiliary_equations,
+            complete_values,
+            complete_names,
+        )
+    end
+    initial_original_values = [initial_solution_value_map[name] for name in original_solution_names]
+    initial_auxiliary_values = [initial_solution_value_map[name] for name in auxiliary_solution_names]
+    initial_all_auxiliary_values = [initial_solution_value_map[name] for name in all_auxiliary_names]
+
     isolated_blocks = [begin
         block_solution_names = vcat(block.variables, block.domain_auxiliary_names)
         block_lower, block_upper = bounds_for_names(model,
@@ -657,8 +731,14 @@ function write_model_file(model, output_path, source_file)
                                         for name in block.previous_solution_names],
             external_solution_values = [solution_value_map[name]
                                        for name in block.external_solution_names],
+            previous_solution_initial_values = [initial_solution_value_map[name]
+                                               for name in block.previous_solution_names],
+            external_solution_initial_values = [initial_solution_value_map[name]
+                                               for name in block.external_solution_names],
             solution_names = block_solution_names,
             solution_values = [solution_value_map[name] for name in block_solution_names],
+            solution_initial_values = [initial_solution_value_map[name]
+                                       for name in block_solution_names],
             box_lower_bounds = block_lower,
             box_upper_bounds = block_upper,
         ))
@@ -705,10 +785,13 @@ function write_model_file(model, output_path, source_file)
         write_float_vector(io, "COMPLETE_PARAMETER_VALUES", complete_values)
         write_string_vector(io, "ORIGINAL_SOLUTION_NAMES", original_solution_names)
         write_float_vector(io, "ORIGINAL_SOLUTION_VALUES", original_values)
+        write_float_vector(io, "ORIGINAL_INITIAL_SOLUTION_VALUES", initial_original_values)
         write_string_vector(io, "AUXILIARY_SOLUTION_NAMES", auxiliary_solution_names)
         write_float_vector(io, "AUXILIARY_SOLUTION_VALUES", auxiliary_values)
+        write_float_vector(io, "AUXILIARY_INITIAL_SOLUTION_VALUES", initial_auxiliary_values)
         write_string_vector(io, "ALL_AUXILIARY_VARIABLE_NAMES", all_auxiliary_names)
         write_float_vector(io, "ALL_AUXILIARY_VARIABLE_VALUES", all_auxiliary_values)
+        write_float_vector(io, "ALL_AUXILIARY_VARIABLE_INITIAL_VALUES", initial_all_auxiliary_values)
         write_string_vector(io, "DEFAULTED_NSSS_SOLUTION_NAMES", defaulted_names)
         write_string_vector(io, "CALIBRATION_PARAMETER_NAMES", model.equations.calibration_parameters)
         println(io, "")
@@ -766,6 +849,9 @@ function write_model_file(model, output_path, source_file)
             println(io, "        previous_solution_values = ", repr(Float64.(block.previous_solution_values)), ",")
             println(io, "        external_solution_values = ", repr(Float64.(block.external_solution_values)), ",")
             println(io, "        solution_values = ", repr(Float64.(block.solution_values)), ",")
+            println(io, "        previous_solution_initial_values = ", repr(Float64.(block.previous_solution_initial_values)), ",")
+            println(io, "        external_solution_initial_values = ", repr(Float64.(block.external_solution_initial_values)), ",")
+            println(io, "        solution_initial_values = ", repr(Float64.(block.solution_initial_values)), ",")
             println(io, "        box_lower_bounds = ", repr(Float64.(block.box_lower_bounds)), ",")
             println(io, "        box_upper_bounds = ", repr(Float64.(block.box_upper_bounds)), ",")
             println(io, "    ),")
@@ -785,6 +871,12 @@ function write_model_file(model, output_path, source_file)
                                    [block.solution_names for block in isolated_blocks])
         write_nested_float_vector(io, "BLOCK_SOLUTION_VALUES",
                                   [block.solution_values for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES",
+                                  [block.previous_solution_initial_values for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES",
+                                  [block.external_solution_initial_values for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_SOLUTION_INITIAL_VALUES",
+                                  [block.solution_initial_values for block in isolated_blocks])
         println(io, "")
 
         println(io, "function complete_parameter_values(parameters::AbstractVector)")
@@ -836,15 +928,17 @@ function write_model_file(model, output_path, source_file)
         println(io, "")
         println(io, "export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM")
         println(io, "export PARAMETER_NAMES, PARAMETER_VALUES, COMPLETE_PARAMETER_NAMES, COMPLETE_PARAMETER_VALUES")
-        println(io, "export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES")
-        println(io, "export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES")
-        println(io, "export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES")
+        println(io, "export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES, ORIGINAL_INITIAL_SOLUTION_VALUES")
+        println(io, "export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES, AUXILIARY_INITIAL_SOLUTION_VALUES")
+        println(io, "export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES, ALL_AUXILIARY_VARIABLE_INITIAL_VALUES")
         println(io, "export DEFAULTED_NSSS_SOLUTION_NAMES")
         println(io, "export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS")
         println(io, "export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER")
         println(io, "export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES")
+        println(io, "export BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES")
         println(io, "export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES")
-        println(io, "export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES")
+        println(io, "export BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES")
+        println(io, "export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES, BLOCK_SOLUTION_INITIAL_VALUES")
         println(io, "export residuals_original, residuals_auxiliary, residuals_blocks")
         if !isempty(isolated_blocks)
             println(io, "export ", join(["residuals_block_$(block.index)" for block in isolated_blocks], ", "))

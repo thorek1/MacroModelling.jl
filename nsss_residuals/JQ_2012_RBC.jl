@@ -16,8 +16,8 @@ const Min = min
 
 const MODEL_NAME = "JQ_2012_RBC"
 const SOURCE_MODEL_FILE = "models/JQ_2012_RBC.jl"
-const NSSS_SOLUTION_ERROR = 4.965075882581763e-16
-const NSSS_RESIDUAL_NORM = 1.024172425028079e-15
+const NSSS_SOLUTION_ERROR = 2.220462989844635e-16
+const NSSS_RESIDUAL_NORM = 5.09868547704787e-16
 
 const PARAMETER_NAMES = [
     "BY_ratio",
@@ -107,21 +107,39 @@ const ORIGINAL_SOLUTION_NAMES = [
 ]
 const ORIGINAL_SOLUTION_VALUES = Float64[
     1.0115776081424936,
-    3.635825991661807,
-    0.8111657946199856,
-    0.114800543085266,
-    0.25198868062040874,
-    10.079547224816348,
+    3.6358259916618088,
+    0.8111657946199858,
+    0.11480054308526577,
+    0.2519886806204091,
+    10.079547224816363,
     0.3,
     0.017811704834605608,
-    6.560031033443786,
-    2.1825095165016277,
-    1.0631544752403943,
+    6.5600310334437735,
+    2.1825095165016286,
+    1.063154475240395,
     1.0,
-    0.03772089598850494,
-    0.16337753022030022,
-    0.16337753022030022,
-    1.883408634441818,
+    0.03772089598850499,
+    0.16337753022029997,
+    0.16337753022029997,
+    1.8834086344418184,
+]
+const ORIGINAL_INITIAL_SOLUTION_VALUES = Float64[
+    1.0115776081424936,
+    0.0,
+    -1.25e10,
+    -1.25e10,
+    1.25e10,
+    5.0e11,
+    0.3,
+    0.017811704834605608,
+    -7.14285714285716e11,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
 ]
 const AUXILIARY_SOLUTION_NAMES = [
     "R",
@@ -147,25 +165,47 @@ const AUXILIARY_SOLUTION_NAMES = [
 ]
 const AUXILIARY_SOLUTION_VALUES = Float64[
     1.0115776081424936,
-    3.635825991661807,
-    0.8111657946199856,
-    0.114800543085266,
-    0.25198868062040874,
-    10.079547224816348,
+    3.6358259916618088,
+    0.8111657946199858,
+    0.11480054308526577,
+    0.2519886806204091,
+    10.079547224816363,
     0.3,
     0.017811704834605608,
-    6.560031033443786,
-    2.1825095165016277,
-    1.0631544752403943,
+    6.5600310334437735,
+    2.1825095165016286,
+    1.063154475240395,
     1.0,
-    0.03772089598850494,
-    0.16337753022030022,
-    1.0,
-    1.0,
+    0.03772089598850499,
+    0.16337753022029997,
     1.0,
     1.0,
-    0.16337753022030022,
-    1.883408634441818,
+    1.0,
+    1.0,
+    0.16337753022029997,
+    1.8834086344418184,
+]
+const AUXILIARY_INITIAL_SOLUTION_VALUES = Float64[
+    1.0115776081424936,
+    0.0,
+    -1.25e10,
+    -1.25e10,
+    1.25e10,
+    5.0e11,
+    0.3,
+    0.017811704834605608,
+    -7.14285714285716e11,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    5.0e11,
+    5.0e11,
+    5.0e11,
+    5.0e11,
+    0.0,
+    0.0,
 ]
 const ALL_AUXILIARY_VARIABLE_NAMES = [
     "➕₁",
@@ -185,11 +225,23 @@ const ALL_AUXILIARY_VARIABLE_VALUES = Float64[
     1.0,
     1.0,
     0.3,
-    10.079547224816348,
+    10.079547224816363,
     0.3,
-    0.8111657946199856,
+    0.8111657946199858,
     0.3,
-    0.8111657946199856,
+    0.8111657946199858,
+]
+const ALL_AUXILIARY_VARIABLE_INITIAL_VALUES = Float64[
+    5.0e11,
+    5.0e11,
+    5.0e11,
+    5.0e11,
+    0.3,
+    5.0e11,
+    0.3,
+    2.220446049250313e-16,
+    0.3,
+    2.220446049250313e-16,
 ]
 const DEFAULTED_NSSS_SOLUTION_NAMES = [
 ]
@@ -510,9 +562,12 @@ const BLOCKS = [
             :(abs(➕₁₀ - c)),
         ],
         solution_names = ["α", "➕₁₀"],
-        previous_solution_values = [0.8111657946199856, 0.3, 2.1825095165016277],
+        previous_solution_values = [0.8111657946199858, 0.3, 2.1825095165016286],
         external_solution_values = Float64[],
-        solution_values = [1.883408634441818, 0.8111657946199856],
+        solution_values = [1.8834086344418184, 0.8111657946199858],
+        previous_solution_initial_values = [-1.25e10, 0.3, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0, 2.220446049250313e-16],
         box_lower_bounds = [-Inf, 2.220446049250313e-16],
         box_upper_bounds = [Inf, 1.0e12],
     ),
@@ -532,9 +587,12 @@ const BLOCKS = [
         domain_auxiliary_error_equations = Expr[
         ],
         solution_names = ["v"],
-        previous_solution_values = [0.114800543085266],
+        previous_solution_values = [0.11480054308526577],
         external_solution_values = Float64[],
-        solution_values = [6.560031033443786],
+        solution_values = [6.5600310334437735],
+        previous_solution_initial_values = [-1.25e10],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [-7.14285714285716e11],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -554,9 +612,12 @@ const BLOCKS = [
         domain_auxiliary_error_equations = Expr[
         ],
         solution_names = ["i"],
-        previous_solution_values = [10.079547224816348],
+        previous_solution_values = [10.079547224816363],
         external_solution_values = Float64[],
-        solution_values = [0.25198868062040874],
+        solution_values = [0.2519886806204091],
+        previous_solution_initial_values = [5.0e11],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [1.25e10],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -595,7 +656,10 @@ const BLOCKS = [
         solution_names = ["R", "b", "c", "d", "k", "r", "w", "y", "z", "μ", "ξ", "ξ̄", "➕₁", "➕₂", "➕₃", "➕₄", "➕₉"],
         previous_solution_values = [0.3],
         external_solution_values = Float64[],
-        solution_values = [1.0115776081424936, 3.635825991661807, 0.8111657946199856, 0.114800543085266, 10.079547224816348, 0.017811704834605608, 2.1825095165016277, 1.0631544752403943, 1.0, 0.03772089598850494, 0.16337753022030022, 0.16337753022030022, 1.0, 1.0, 1.0, 1.0, 0.3],
+        solution_values = [1.0115776081424936, 3.6358259916618088, 0.8111657946199858, 0.11480054308526577, 10.079547224816363, 0.017811704834605608, 2.1825095165016286, 1.063154475240395, 1.0, 0.03772089598850499, 0.16337753022029997, 0.16337753022029997, 1.0, 1.0, 1.0, 1.0, 0.3],
+        previous_solution_initial_values = [0.3],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [1.0115776081424936, 0.0, -1.25e10, -1.25e10, 5.0e11, 0.017811704834605608, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0e11, 5.0e11, 5.0e11, 5.0e11, 0.3],
         box_lower_bounds = [-Inf, -1.0e12, 2.220446049250313e-16, -Inf, 2.220446049250313e-16, -Inf, -Inf, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16],
         box_upper_bounds = [Inf, 1.0e12, 1.0e12, Inf, 1.0e12, Inf, Inf, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12],
     ),
@@ -618,6 +682,9 @@ const BLOCKS = [
         previous_solution_values = Float64[],
         external_solution_values = Float64[],
         solution_values = [0.3],
+        previous_solution_initial_values = Float64[],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.3],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -632,9 +699,9 @@ const BLOCK_PREVIOUS_SOLUTION_NAMES = [
     String[],
 ]
 const BLOCK_PREVIOUS_SOLUTION_VALUES = [
-    [0.8111657946199856, 0.3, 2.1825095165016277],
-    [0.114800543085266],
-    [10.079547224816348],
+    [0.8111657946199858, 0.3, 2.1825095165016286],
+    [0.11480054308526577],
+    [10.079547224816363],
     [0.3],
     Float64[],
 ]
@@ -660,10 +727,31 @@ const BLOCK_SOLUTION_NAMES = [
     ["n"],
 ]
 const BLOCK_SOLUTION_VALUES = [
-    [1.883408634441818, 0.8111657946199856],
-    [6.560031033443786],
-    [0.25198868062040874],
-    [1.0115776081424936, 3.635825991661807, 0.8111657946199856, 0.114800543085266, 10.079547224816348, 0.017811704834605608, 2.1825095165016277, 1.0631544752403943, 1.0, 0.03772089598850494, 0.16337753022030022, 0.16337753022030022, 1.0, 1.0, 1.0, 1.0, 0.3],
+    [1.8834086344418184, 0.8111657946199858],
+    [6.5600310334437735],
+    [0.2519886806204091],
+    [1.0115776081424936, 3.6358259916618088, 0.8111657946199858, 0.11480054308526577, 10.079547224816363, 0.017811704834605608, 2.1825095165016286, 1.063154475240395, 1.0, 0.03772089598850499, 0.16337753022029997, 0.16337753022029997, 1.0, 1.0, 1.0, 1.0, 0.3],
+    [0.3],
+]
+const BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES = [
+    [-1.25e10, 0.3, 0.0],
+    [-1.25e10],
+    [5.0e11],
+    [0.3],
+    Float64[],
+]
+const BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES = [
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+]
+const BLOCK_SOLUTION_INITIAL_VALUES = [
+    [0.0, 2.220446049250313e-16],
+    [-7.14285714285716e11],
+    [1.25e10],
+    [1.0115776081424936, 0.0, -1.25e10, -1.25e10, 5.0e11, 0.017811704834605608, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0e11, 5.0e11, 5.0e11, 5.0e11, 0.3],
     [0.3],
 ]
 
@@ -827,15 +915,17 @@ end
 
 export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM
 export PARAMETER_NAMES, PARAMETER_VALUES, COMPLETE_PARAMETER_NAMES, COMPLETE_PARAMETER_VALUES
-export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES
-export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES
-export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES
+export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES, ORIGINAL_INITIAL_SOLUTION_VALUES
+export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES, AUXILIARY_INITIAL_SOLUTION_VALUES
+export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES, ALL_AUXILIARY_VARIABLE_INITIAL_VALUES
 export DEFAULTED_NSSS_SOLUTION_NAMES
 export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS
 export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER
 export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES
+export BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES
 export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES
-export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES
+export BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES
+export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES, BLOCK_SOLUTION_INITIAL_VALUES
 export residuals_original, residuals_auxiliary, residuals_blocks
 export residuals_block_1, residuals_block_2, residuals_block_3, residuals_block_4, residuals_block_5
 end

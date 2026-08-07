@@ -12,6 +12,11 @@ equal to zero in the corresponding NSSS problem.
   box constraints, and stored values.
 - `CALIBRATION_EQUATIONS` is included in both residual systems.
 - `ALL_AUXILIARY_VARIABLE_*` also includes domain-safety variables created while setting up the solver.
+- `*_INITIAL_SOLUTION_VALUES` contain fresh-start values produced by the
+  MacroModelling NSSS step initialization. Analytical steps are evaluated in
+  solver order; numerical blocks use the midpoint of their box bounds when no
+  cached solution is supplied. These are starting values, not solved values,
+  and may not satisfy every box constraint before optimization.
 
 The functions `residuals_original` and `residuals_auxiliary` take
 `(parameters, solution)`. Each `residuals_block_N` takes

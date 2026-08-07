@@ -117,6 +117,23 @@ const ORIGINAL_SOLUTION_VALUES = Float64[
     0.0,
     0.0,
 ]
+const ORIGINAL_INITIAL_SOLUTION_VALUES = Float64[
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+]
 const AUXILIARY_SOLUTION_NAMES = [
     "a",
     "c",
@@ -151,9 +168,28 @@ const AUXILIARY_SOLUTION_VALUES = Float64[
     0.0,
     0.0,
 ]
+const AUXILIARY_INITIAL_SOLUTION_VALUES = Float64[
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+]
 const ALL_AUXILIARY_VARIABLE_NAMES = [
 ]
 const ALL_AUXILIARY_VARIABLE_VALUES = Float64[
+]
+const ALL_AUXILIARY_VARIABLE_INITIAL_VALUES = Float64[
 ]
 const DEFAULTED_NSSS_SOLUTION_NAMES = [
 ]
@@ -416,6 +452,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -438,6 +477,9 @@ const BLOCKS = [
         previous_solution_values = [0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -460,6 +502,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -482,6 +527,9 @@ const BLOCKS = [
         previous_solution_values = [0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -504,6 +552,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -526,6 +577,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -548,6 +602,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -570,6 +627,9 @@ const BLOCKS = [
         previous_solution_values = [0.0, 0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0, 0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -592,6 +652,9 @@ const BLOCKS = [
         previous_solution_values = Float64[],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = Float64[],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -614,6 +677,9 @@ const BLOCKS = [
         previous_solution_values = [0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -638,6 +704,9 @@ const BLOCKS = [
         previous_solution_values = [0.0],
         external_solution_values = Float64[],
         solution_values = [0.0, 0.0, 0.0],
+        previous_solution_initial_values = [0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0, 0.0, 0.0],
         box_lower_bounds = [-1.0e12, -1.0e12, -1.0e12],
         box_upper_bounds = [1.0e12, 1.0e12, 1.0e12],
     ),
@@ -660,6 +729,9 @@ const BLOCKS = [
         previous_solution_values = [0.0],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = [0.0],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -682,6 +754,9 @@ const BLOCKS = [
         previous_solution_values = Float64[],
         external_solution_values = Float64[],
         solution_values = [0.0],
+        previous_solution_initial_values = Float64[],
+        external_solution_initial_values = Float64[],
+        solution_initial_values = [0.0],
         box_lower_bounds = [-Inf],
         box_upper_bounds = [Inf],
     ),
@@ -764,6 +839,51 @@ const BLOCK_SOLUTION_NAMES = [
     ["a"],
 ]
 const BLOCK_SOLUTION_VALUES = [
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0, 0.0, 0.0],
+    [0.0],
+    [0.0],
+]
+const BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES = [
+    [0.0, 0.0],
+    [0.0],
+    [0.0, 0.0],
+    [0.0],
+    [0.0, 0.0],
+    [0.0, 0.0],
+    [0.0, 0.0],
+    [0.0, 0.0],
+    Float64[],
+    [0.0],
+    [0.0],
+    [0.0],
+    Float64[],
+]
+const BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES = [
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+]
+const BLOCK_SOLUTION_INITIAL_VALUES = [
     [0.0],
     [0.0],
     [0.0],
@@ -1017,15 +1137,17 @@ end
 
 export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM
 export PARAMETER_NAMES, PARAMETER_VALUES, COMPLETE_PARAMETER_NAMES, COMPLETE_PARAMETER_VALUES
-export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES
-export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES
-export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES
+export ORIGINAL_SOLUTION_NAMES, ORIGINAL_SOLUTION_VALUES, ORIGINAL_INITIAL_SOLUTION_VALUES
+export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES, AUXILIARY_INITIAL_SOLUTION_VALUES
+export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES, ALL_AUXILIARY_VARIABLE_INITIAL_VALUES
 export DEFAULTED_NSSS_SOLUTION_NAMES
 export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS
 export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER
 export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES
+export BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES
 export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES
-export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES
+export BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES
+export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES, BLOCK_SOLUTION_INITIAL_VALUES
 export residuals_original, residuals_auxiliary, residuals_blocks
 export residuals_block_1, residuals_block_2, residuals_block_3, residuals_block_4, residuals_block_5, residuals_block_6, residuals_block_7, residuals_block_8, residuals_block_9, residuals_block_10, residuals_block_11, residuals_block_12, residuals_block_13
 end
