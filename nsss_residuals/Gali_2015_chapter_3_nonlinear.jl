@@ -16,8 +16,8 @@ const Min = min
 
 const MODEL_NAME = "Gali_2015_chapter_3_nonlinear"
 const SOURCE_MODEL_FILE = "models/Gali_2015_chapter_3_nonlinear.jl"
-const NSSS_SOLUTION_ERROR = 9.153786615810231e-16
-const NSSS_RESIDUAL_NORM = 7.28021923224409e-16
+const NSSS_SOLUTION_ERROR = 1.144265111876272e-15
+const NSSS_RESIDUAL_NORM = 7.691850745534255e-16
 
 const PARAMETER_NAMES = [
     "σ",
@@ -119,7 +119,7 @@ const ORIGINAL_SOLUTION_NAMES = [
 const ORIGINAL_SOLUTION_VALUES = Float64[
     1.0,
     0.9505798249541406,
-    0.8888888888888883,
+    0.8888888888888884,
     0.9152363832868922,
     0.934655265184067,
     0.9999999999999996,
@@ -127,12 +127,12 @@ const ORIGINAL_SOLUTION_VALUES = Float64[
     0.9900000000000004,
     1.0101010101010095,
     1.0,
-    0.6780252644037243,
+    0.6780252644037245,
     0.9505798249541407,
     1.0,
     0.04020134341400339,
     -0.06757751801802749,
-    -0.38857072860365793,
+    -0.38857072860365777,
     -0.05068313851352055,
     0.0,
     -1.776356839400251e-15,
@@ -170,7 +170,7 @@ const AUXILIARY_SOLUTION_NAMES = [
 const AUXILIARY_SOLUTION_VALUES = Float64[
     1.0,
     0.9505798249541407,
-    0.8888888888888885,
+    0.8888888888888886,
     0.9152363832868914,
     0.934655265184067,
     0.9999999999999996,
@@ -178,12 +178,12 @@ const AUXILIARY_SOLUTION_VALUES = Float64[
     0.9900000000000004,
     1.0101010101010097,
     1.0,
-    0.6780252644037243,
+    0.6780252644037245,
     0.9505798249541407,
     1.0,
     0.04020134341400426,
     -0.06757751801802749,
-    -0.38857072860365793,
+    -0.38857072860365777,
     -0.05068313851352055,
     0.0,
     -1.776356839400251e-15,
@@ -205,19 +205,45 @@ const ALL_AUXILIARY_VARIABLE_NAMES = [
     "➕₉",
     "➕₁₀",
     "➕₁₁",
+    "➕₁₂",
+    "➕₁₃",
+    "➕₁₄",
+    "➕₁₅",
+    "➕₁₆",
+    "➕₁₇",
+    "➕₁₈",
+    "➕₁₉",
+    "➕₂₀",
+    "➕₂₁",
+    "➕₂₂",
+    "➕₂₃",
+    "➕₂₄",
 ]
 const ALL_AUXILIARY_VARIABLE_VALUES = Float64[
     0.934655265184067,
     0.9999999999999996,
     1.0000000000000107,
     0.9999999999999987,
+    0.9999999999999996,
+    0.9999999999999987,
+    0.934655265184067,
+    1.01010101010101,
+    0.6780252644037245,
+    1.0101010101010095,
+    0.9505798249541407,
+    0.0,
+    0.9999999999999996,
+    0.9999999999999996,
     0.9999999999999987,
     0.9999999999999996,
-    0.9505798249541407,
-    0.6780252644037243,
-    1.01010101010101,
+    0.9999999999999987,
+    1.0101010101010097,
+    1.0101010101010097,
     0.934655265184067,
-    1.0101010101010095,
+    0.6780252644037245,
+    0.9505798249541407,
+    0.9999999999999996,
+    1.01010101010101,
 ]
 const DEFAULTED_NSSS_SOLUTION_NAMES = [
 ]
@@ -552,8 +578,34 @@ const ALL_AUXILIARY_BOX_CONSTRAINT_NAMES = [
     "➕₉",
     "➕₁₀",
     "➕₁₁",
+    "➕₁₂",
+    "➕₁₃",
+    "➕₁₄",
+    "➕₁₅",
+    "➕₁₆",
+    "➕₁₇",
+    "➕₁₈",
+    "➕₁₉",
+    "➕₂₀",
+    "➕₂₁",
+    "➕₂₂",
+    "➕₂₃",
+    "➕₂₄",
 ]
 const ALL_AUXILIARY_BOX_LOWER_BOUNDS = Float64[
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    2.220446049250313e-16,
+    -1.0e12,
+    2.220446049250313e-16,
     2.220446049250313e-16,
     2.220446049250313e-16,
     2.220446049250313e-16,
@@ -578,140 +630,492 @@ const ALL_AUXILIARY_BOX_UPPER_BOUNDS = Float64[
     1.0e12,
     1.0e12,
     1.0e12,
+    600.0,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
+    1.0e12,
 ]
 
 const BLOCKS = [
     (
         index = 1,
+        solve_order = 15,
         variables = ["r_real_ann"],
+        previous_solution_names = ["realinterest"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₂₄"],
         equation_indices = [23],
         equations = Expr[
-            :(r_real_ann - 4 * log(realinterest)),
+            :(r_real_ann - log(➕₂₄) * 4),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₂₄ = min(1.0e12, max(eps(), realinterest))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₂₄ - realinterest)),
+        ],
+        solution_names = ["r_real_ann", "➕₂₄"],
+        previous_solution_values = [1.01010101010101],
+        external_solution_values = Float64[],
+        solution_values = [0.04020134341400514, 1.01010101010101],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 2,
+        solve_order = 14,
         variables = ["realinterest"],
+        previous_solution_names = ["Pi", "R"],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [6],
         equations = Expr[
             :(-Pi * realinterest + R),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["realinterest"],
+        previous_solution_values = [0.9999999999999996, 1.0101010101010097],
+        external_solution_values = Float64[],
+        solution_values = [1.01010101010101],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
     (
         index = 3,
+        solve_order = 13,
         variables = ["pi_ann"],
+        previous_solution_names = ["Pi"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₂₃"],
         equation_indices = [21],
         equations = Expr[
-            :(pi_ann - 4 * log(Pi)),
+            :(pi_ann - log(➕₂₃) * 4),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₂₃ = min(1.0e12, max(eps(), Pi))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₂₃ - Pi)),
+        ],
+        solution_names = ["pi_ann", "➕₂₃"],
+        previous_solution_values = [0.9999999999999996],
+        external_solution_values = Float64[],
+        solution_values = [-1.776356839400251e-15, 0.9999999999999996],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 4,
+        solve_order = 12,
         variables = ["log_y"],
+        previous_solution_names = ["Y"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₂₂"],
         equation_indices = [18],
         equations = Expr[
-            :(log_y - log(Y)),
+            :(log_y - log(➕₂₂)),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₂₂ = min(1.0e12, max(eps(), Y))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₂₂ - Y)),
+        ],
+        solution_names = ["log_y", "➕₂₂"],
+        previous_solution_values = [0.9505798249541407],
+        external_solution_values = Float64[],
+        solution_values = [-0.05068313851352055, 0.9505798249541407],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 5,
+        solve_order = 11,
         variables = ["log_W_real"],
+        previous_solution_names = ["W_real"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₂₁"],
         equation_indices = [19],
         equations = Expr[
-            :(log_W_real - log(W_real)),
+            :(log_W_real - log(➕₂₁)),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₂₁ = min(1.0e12, max(eps(), W_real))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₂₁ - W_real)),
+        ],
+        solution_names = ["log_W_real", "➕₂₁"],
+        previous_solution_values = [0.6780252644037245],
+        external_solution_values = Float64[],
+        solution_values = [-0.38857072860365777, 0.6780252644037245],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 6,
+        solve_order = 10,
         variables = ["log_N"],
+        previous_solution_names = ["N"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₂₀"],
         equation_indices = [20],
         equations = Expr[
-            :(log_N - log(N)),
+            :(log_N - log(➕₂₀)),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₂₀ = min(1.0e12, max(eps(), N))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₂₀ - N)),
+        ],
+        solution_names = ["log_N", "➕₂₀"],
+        previous_solution_values = [0.934655265184067],
+        external_solution_values = Float64[],
+        solution_values = [-0.06757751801802749, 0.934655265184067],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 7,
+        solve_order = 9,
         variables = ["i_ann"],
+        previous_solution_names = ["R"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₉"],
         equation_indices = [22],
         equations = Expr[
-            :(i_ann - 4 * log(R)),
+            :(i_ann - log(➕₁₉) * 4),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₉ = min(1.0e12, max(eps(), R))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₉ - R)),
+        ],
+        solution_names = ["i_ann", "➕₁₉"],
+        previous_solution_values = [1.0101010101010097],
+        external_solution_values = Float64[],
+        solution_values = [0.04020134341400426, 1.0101010101010097],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 8,
+        solve_order = 8,
         variables = ["M_real"],
+        previous_solution_names = ["R", "Y"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₈"],
         equation_indices = [24],
         equations = Expr[
-            :(M_real - Y / R ^ η),
+            :(M_real - Y / ➕₁₈ ^ η),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₈ = min(1.0e12, max(eps(), R))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₈ - R)),
+        ],
+        solution_names = ["M_real", "➕₁₈"],
+        previous_solution_values = [1.0101010101010097, 0.9505798249541407],
+        external_solution_values = Float64[],
+        solution_values = [0.9152363832868914, 1.0101010101010097],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12],
     ),
     (
         index = 9,
+        solve_order = 7,
         variables = ["C", "MC", "N", "W_real", "Y", "x_aux_1", "x_aux_2", "➕₁"],
+        previous_solution_names = ["A", "Pi", "Pi_star", "S", "Z"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₆", "➕₁₇"],
         equation_indices = [16, 12, 4, 1, 8, 15, 17, 5],
         equations = Expr[
-            :((-(Pi ^ ((α * ϵ) / (1 - α) + ϵ)) * x_aux_1 * β * θ + x_aux_1) - (MC * Y * Z) / C ^ σ),
+            :((-(➕₁₆ ^ ((α * ϵ) / (1 - α) + ϵ)) * x_aux_1 * β * θ + x_aux_1) - (MC * Y * Z) / C ^ σ),
             :(MC - (N * W_real) / (S * Y * (1 - α))),
             :(➕₁ - N / S),
             :(-(C ^ σ) * N ^ φ + W_real),
             :(C - Y),
-            :(Pi_star ^ ((α * ϵ) / (1 - α) + 1) - (x_aux_1 * ϵ * (1 - τ)) / (x_aux_2 * (ϵ - 1))),
-            :((-(Pi ^ (ϵ - 1)) * x_aux_2 * β * θ + x_aux_2) - (Y * Z) / C ^ σ),
+            :(➕₁₇ ^ ((α * ϵ) / (1 - α) + 1) - (x_aux_1 * ϵ * (1 - τ)) / (x_aux_2 * (ϵ - 1))),
+            :((-(➕₁₆ ^ (ϵ - 1)) * x_aux_2 * β * θ + x_aux_2) - (Y * Z) / C ^ σ),
             :(-A * ➕₁ ^ (1 - α) + Y),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₆ = min(1.0e12, max(eps(), Pi))),
+            :(➕₁₇ = min(1.0e12, max(eps(), Pi_star))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₆ - Pi)),
+            :(abs(➕₁₇ - Pi_star)),
+        ],
+        solution_names = ["C", "MC", "N", "W_real", "Y", "x_aux_1", "x_aux_2", "➕₁", "➕₁₆", "➕₁₇"],
+        previous_solution_values = [1.0, 0.9999999999999996, 0.9999999999999987, 1.0, 1.0],
+        external_solution_values = Float64[],
+        solution_values = [0.9505798249541407, 0.8888888888888886, 0.934655265184067, 0.6780252644037245, 0.9505798249541407, 3.4519956850053406, 3.8834951456310276, 0.934655265184067, 0.9999999999999996, 0.9999999999999987],
+        box_lower_bounds = [2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16],
+        box_upper_bounds = [1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12],
     ),
     (
         index = 10,
+        solve_order = 6,
         variables = ["Z"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [10],
         equations = Expr[
             :(-ρ_z * log(Z) + log(Z)),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["Z"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [1.0],
+        box_lower_bounds = [2.220446049250313e-16],
+        box_upper_bounds = [1.0e12],
     ),
     (
         index = 11,
+        solve_order = 5,
         variables = ["S"],
+        previous_solution_names = ["Pi", "Pi_star"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₄", "➕₁₅"],
         equation_indices = [14],
         equations = Expr[
-            :((-(Pi ^ (ϵ / (1 - α))) * S * θ + S) - (1 - θ) / Pi_star ^ (ϵ / (1 - α))),
+            :((-(➕₁₄ ^ (ϵ / (1 - α))) * S * θ + S) - (1 - θ) / ➕₁₅ ^ (ϵ / (1 - α))),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₄ = min(1.0e12, max(eps(), Pi))),
+            :(➕₁₅ = min(1.0e12, max(eps(), Pi_star))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₄ - Pi)),
+            :(abs(➕₁₅ - Pi_star)),
+        ],
+        solution_names = ["S", "➕₁₄", "➕₁₅"],
+        previous_solution_values = [0.9999999999999996, 0.9999999999999987],
+        external_solution_values = Float64[],
+        solution_values = [1.0, 0.9999999999999996, 0.9999999999999987],
+        box_lower_bounds = [-Inf, 2.220446049250313e-16, 2.220446049250313e-16],
+        box_upper_bounds = [Inf, 1.0e12, 1.0e12],
     ),
     (
         index = 12,
+        solve_order = 4,
         variables = ["Pi_star"],
+        previous_solution_names = ["Pi"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₃"],
         equation_indices = [13],
         equations = Expr[
-            :((-(Pi ^ (ϵ - 1)) * θ - Pi_star ^ (1 - ϵ) * (1 - θ)) + 1),
+            :((-(➕₁₃ ^ (ϵ - 1)) * θ - Pi_star ^ (1 - ϵ) * (1 - θ)) + 1),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₃ = min(1.0e12, max(eps(), Pi))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₃ - Pi)),
+        ],
+        solution_names = ["Pi_star", "➕₁₃"],
+        previous_solution_values = [0.9999999999999996],
+        external_solution_values = Float64[],
+        solution_values = [0.9999999999999987, 0.9999999999999996],
+        box_lower_bounds = [2.220446049250313e-16, 2.220446049250313e-16],
+        box_upper_bounds = [1.0e12, 1.0e12],
     ),
     (
         index = 13,
+        solve_order = 3,
         variables = ["Pi", "Q", "R"],
+        previous_solution_names = ["nu"],
+        external_solution_names = String[],
+        domain_auxiliary_names = ["➕₁₂"],
         equation_indices = [7, 2, 3],
         equations = Expr[
-            :((-(Pi ^ ϕᵖⁱ) * exp(nu)) / β + R),
+            :((-(Pi ^ ϕᵖⁱ) * exp(➕₁₂)) / β + R),
             :(Q - β / Pi),
             :(R - 1 / Q),
         ],
+        domain_auxiliary_equations = Expr[
+            :(➕₁₂ = min(600, max(-1.0e12, nu))),
+        ],
+        domain_auxiliary_error_equations = Expr[
+            :(abs(➕₁₂ - nu)),
+        ],
+        solution_names = ["Pi", "Q", "R", "➕₁₂"],
+        previous_solution_values = [0.0],
+        external_solution_values = Float64[],
+        solution_values = [0.9999999999999996, 0.9900000000000004, 1.0101010101010097, 0.0],
+        box_lower_bounds = [2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12],
+        box_upper_bounds = [1.0e12, 1.0e12, 1.0e12, 600.0],
     ),
     (
         index = 14,
+        solve_order = 2,
         variables = ["nu"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [11],
         equations = Expr[
             :(-nu * ρ_ν + nu),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["nu"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [0.0],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
     (
         index = 15,
+        solve_order = 1,
         variables = ["A"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [9],
         equations = Expr[
             :(-ρ_a * log(A) + log(A)),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["A"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [1.0],
+        box_lower_bounds = [2.220446049250313e-16],
+        box_upper_bounds = [1.0e12],
     ),
 ]
 const BLOCK_EQUATION_ORDER = [23, 6, 21, 18, 19, 20, 22, 24, 16, 12, 4, 1, 8, 15, 17, 5, 10, 14, 13, 7, 2, 3, 11, 9]
+const BLOCK_SOLVE_ORDER = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+const BLOCK_PREVIOUS_SOLUTION_NAMES = [
+    ["realinterest"],
+    ["Pi", "R"],
+    ["Pi"],
+    ["Y"],
+    ["W_real"],
+    ["N"],
+    ["R"],
+    ["R", "Y"],
+    ["A", "Pi", "Pi_star", "S", "Z"],
+    String[],
+    ["Pi", "Pi_star"],
+    ["Pi"],
+    ["nu"],
+    String[],
+    String[],
+]
+const BLOCK_PREVIOUS_SOLUTION_VALUES = [
+    [1.01010101010101],
+    [0.9999999999999996, 1.0101010101010097],
+    [0.9999999999999996],
+    [0.9505798249541407],
+    [0.6780252644037245],
+    [0.934655265184067],
+    [1.0101010101010097],
+    [1.0101010101010097, 0.9505798249541407],
+    [1.0, 0.9999999999999996, 0.9999999999999987, 1.0, 1.0],
+    Float64[],
+    [0.9999999999999996, 0.9999999999999987],
+    [0.9999999999999996],
+    [0.0],
+    Float64[],
+    Float64[],
+]
+const BLOCK_EXTERNAL_SOLUTION_NAMES = [
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+]
+const BLOCK_EXTERNAL_SOLUTION_VALUES = [
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+]
+const BLOCK_SOLUTION_NAMES = [
+    ["r_real_ann", "➕₂₄"],
+    ["realinterest"],
+    ["pi_ann", "➕₂₃"],
+    ["log_y", "➕₂₂"],
+    ["log_W_real", "➕₂₁"],
+    ["log_N", "➕₂₀"],
+    ["i_ann", "➕₁₉"],
+    ["M_real", "➕₁₈"],
+    ["C", "MC", "N", "W_real", "Y", "x_aux_1", "x_aux_2", "➕₁", "➕₁₆", "➕₁₇"],
+    ["Z"],
+    ["S", "➕₁₄", "➕₁₅"],
+    ["Pi_star", "➕₁₃"],
+    ["Pi", "Q", "R", "➕₁₂"],
+    ["nu"],
+    ["A"],
+]
+const BLOCK_SOLUTION_VALUES = [
+    [0.04020134341400514, 1.01010101010101],
+    [1.01010101010101],
+    [-1.776356839400251e-15, 0.9999999999999996],
+    [-0.05068313851352055, 0.9505798249541407],
+    [-0.38857072860365777, 0.6780252644037245],
+    [-0.06757751801802749, 0.934655265184067],
+    [0.04020134341400426, 1.0101010101010097],
+    [0.9152363832868914, 1.0101010101010097],
+    [0.9505798249541407, 0.8888888888888886, 0.934655265184067, 0.6780252644037245, 0.9505798249541407, 3.4519956850053406, 3.8834951456310276, 0.934655265184067, 0.9999999999999996, 0.9999999999999987],
+    [1.0],
+    [1.0, 0.9999999999999996, 0.9999999999999987],
+    [0.9999999999999987, 0.9999999999999996],
+    [0.9999999999999996, 0.9900000000000004, 1.0101010101010097, 0.0],
+    [0.0],
+    [1.0],
+]
 
 function complete_parameter_values(parameters::AbstractVector)
     @assert length(parameters) == length(PARAMETER_NAMES)
@@ -798,8 +1202,214 @@ function residuals_auxiliary(parameters::AbstractVector, solution::AbstractVecto
     ]
 end
 
-function residuals_blocks(parameters::AbstractVector, solution::AbstractVector)
-    return residuals_auxiliary(parameters, solution)[BLOCK_EQUATION_ORDER]
+function residuals_block_1(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]) * 4,
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_2(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 2
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(previous_solution[1]) * solution[1] + previous_solution[2],
+    ]
+end
+
+function residuals_block_3(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]) * 4,
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_4(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]),
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_5(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]),
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_6(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]),
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_7(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - log(solution[2]) * 4,
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_8(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 2
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - previous_solution[2] / solution[2] ^ complete_parameters[10],
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_9(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 5
+    @assert length(external_solution) == 0
+    @assert length(solution) == 10
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        (-(solution[9] ^ ((complete_parameters[11] * complete_parameters[12]) / (1 - complete_parameters[11]) + complete_parameters[12])) * solution[6] * complete_parameters[9] * complete_parameters[5] + solution[6]) - (solution[2] * solution[5] * previous_solution[5]) / solution[1] ^ complete_parameters[1],
+        solution[2] - (solution[3] * solution[4]) / (previous_solution[4] * solution[5] * (1 - complete_parameters[11])),
+        solution[8] - solution[3] / previous_solution[4],
+        -(solution[1] ^ complete_parameters[1]) * solution[3] ^ complete_parameters[2] + solution[4],
+        solution[1] - solution[5],
+        solution[10] ^ ((complete_parameters[11] * complete_parameters[12]) / (1 - complete_parameters[11]) + 1) - (solution[6] * complete_parameters[12] * (1 - complete_parameters[13])) / (solution[7] * (complete_parameters[12] - 1)),
+        (-(solution[9] ^ (complete_parameters[12] - 1)) * solution[7] * complete_parameters[9] * complete_parameters[5] + solution[7]) - (solution[5] * previous_solution[5]) / solution[1] ^ complete_parameters[1],
+        -(previous_solution[1]) * solution[8] ^ (1 - complete_parameters[11]) + solution[5],
+        solution[9] - min(1.0e12, max(eps(), previous_solution[2])),
+        solution[10] - min(1.0e12, max(eps(), previous_solution[3])),
+    ]
+end
+
+function residuals_block_10(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(complete_parameters[7]) * log(solution[1]) + log(solution[1]),
+    ]
+end
+
+function residuals_block_11(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 2
+    @assert length(external_solution) == 0
+    @assert length(solution) == 3
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        (-(solution[2] ^ (complete_parameters[12] / (1 - complete_parameters[11]))) * solution[1] * complete_parameters[5] + solution[1]) - (1 - complete_parameters[5]) / solution[3] ^ (complete_parameters[12] / (1 - complete_parameters[11])),
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+        solution[3] - min(1.0e12, max(eps(), previous_solution[2])),
+    ]
+end
+
+function residuals_block_12(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 2
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        (-(solution[2] ^ (complete_parameters[12] - 1)) * complete_parameters[5] - solution[1] ^ (1 - complete_parameters[12]) * (1 - complete_parameters[5])) + 1,
+        solution[2] - min(1.0e12, max(eps(), previous_solution[1])),
+    ]
+end
+
+function residuals_block_13(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 1
+    @assert length(external_solution) == 0
+    @assert length(solution) == 4
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        (-(solution[1] ^ complete_parameters[3]) * exp(solution[4])) / complete_parameters[9] + solution[3],
+        solution[2] - complete_parameters[9] / solution[1],
+        solution[3] - 1 / solution[2],
+        solution[4] - min(600, max(-1.0e12, previous_solution[1])),
+    ]
+end
+
+function residuals_block_14(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(solution[1]) * complete_parameters[6] + solution[1],
+    ]
+end
+
+function residuals_block_15(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(complete_parameters[8]) * log(solution[1]) + log(solution[1]),
+    ]
+end
+
+function residuals_blocks(parameters::AbstractVector, previous_solutions::AbstractVector, external_solutions::AbstractVector, solutions::AbstractVector)
+    @assert length(previous_solutions) == length(BLOCKS)
+    @assert length(external_solutions) == length(BLOCKS)
+    @assert length(solutions) == length(BLOCKS)
+    return vcat(
+        residuals_block_1(parameters, previous_solutions[1], external_solutions[1], solutions[1]),
+        residuals_block_2(parameters, previous_solutions[2], external_solutions[2], solutions[2]),
+        residuals_block_3(parameters, previous_solutions[3], external_solutions[3], solutions[3]),
+        residuals_block_4(parameters, previous_solutions[4], external_solutions[4], solutions[4]),
+        residuals_block_5(parameters, previous_solutions[5], external_solutions[5], solutions[5]),
+        residuals_block_6(parameters, previous_solutions[6], external_solutions[6], solutions[6]),
+        residuals_block_7(parameters, previous_solutions[7], external_solutions[7], solutions[7]),
+        residuals_block_8(parameters, previous_solutions[8], external_solutions[8], solutions[8]),
+        residuals_block_9(parameters, previous_solutions[9], external_solutions[9], solutions[9]),
+        residuals_block_10(parameters, previous_solutions[10], external_solutions[10], solutions[10]),
+        residuals_block_11(parameters, previous_solutions[11], external_solutions[11], solutions[11]),
+        residuals_block_12(parameters, previous_solutions[12], external_solutions[12], solutions[12]),
+        residuals_block_13(parameters, previous_solutions[13], external_solutions[13], solutions[13]),
+        residuals_block_14(parameters, previous_solutions[14], external_solutions[14], solutions[14]),
+        residuals_block_15(parameters, previous_solutions[15], external_solutions[15], solutions[15]),
+    )
 end
 
 export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM
@@ -809,5 +1419,10 @@ export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES
 export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES
 export DEFAULTED_NSSS_SOLUTION_NAMES
 export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS
-export BLOCKS, BLOCK_EQUATION_ORDER, residuals_original, residuals_auxiliary, residuals_blocks
+export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER
+export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES
+export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES
+export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES
+export residuals_original, residuals_auxiliary, residuals_blocks
+export residuals_block_1, residuals_block_2, residuals_block_3, residuals_block_4, residuals_block_5, residuals_block_6, residuals_block_7, residuals_block_8, residuals_block_9, residuals_block_10, residuals_block_11, residuals_block_12, residuals_block_13, residuals_block_14, residuals_block_15
 end

@@ -163,6 +163,108 @@ function make_blocks(model, auxiliary_equations, calibration_equations)
     return blocks, equation_order
 end
 
+function equation_lhs(equation)
+    equation isa Expr && equation.head == :(=) ? equation.args[1] : nothing
+end
+
+function equation_residual(equation)
+    equation isa Expr && equation.head == :(=) ?
+        Expr(:call, :-, equation.args[1], equation.args[2]) : equation
+end
+
+function make_isolated_blocks(model, blocks, auxiliary_equations, calibration_equations,
+                              auxiliary_solution_names, all_auxiliary_names, complete_names)
+    equations = vcat(auxiliary_equations, calibration_equations)
+    working_plus_vars = Symbol.(collect(model.constants.post_model_macro.➕_vars))
+    working_bounds = Dict{Symbol, Tuple{Float64, Float64}}(
+        Symbol(name) => (Float64(bounds[1]), Float64(bounds[2]))
+        for (name, bounds) in model.constants.post_parameters_macro.bounds
+    )
+    parameter_names = Set(Symbol.(complete_names))
+    base_solution_names = Set(Symbol.(vcat(
+        auxiliary_solution_names,
+        all_auxiliary_names,
+        model.constants.post_model_macro.var,
+        model.constants.post_model_macro.➕_vars,
+        model.equations.calibration_parameters,
+    )))
+    solved_before = Set{Symbol}()
+    isolated_by_index = Dict{Int, Any}()
+    generated_auxiliary_names = Symbol[]
+    block_count = maximum((block.index for block in blocks); init = 0)
+
+    # The NSSS solver processes BTF blocks in reverse exported order.
+    if any(block.index == 0 for block in blocks)
+        unmatched_block = blocks[end]
+        blocks[end] = merge(unmatched_block, (index = block_count + 1,))
+    end
+
+    for (solve_order, block) in enumerate(reverse(blocks))
+        block_variables = sort(Symbol.(block.variables), by = string)
+        block_equations = equations[block.equation_indices]
+        parsed_block_equations = Meta.parse.(string.(block_equations))
+        if any(MacroModelling.expression_has_domain_hazards, parsed_block_equations)
+            unique_auxiliary_equations = Dict{Union{Expr, Symbol}, Symbol}()
+            vars_to_exclude = [vcat(block_variables, working_plus_vars), Symbol[]]
+            rewritten_equations, auxiliary_equations_local, auxiliary_equations_dependent,
+            auxiliary_error_equations, auxiliary_error_equations_dependent =
+                MacroModelling.make_equation_robust_to_domain_errors(
+                    parsed_block_equations,
+                    vars_to_exclude,
+                    working_bounds,
+                    working_plus_vars,
+                    unique_auxiliary_equations,
+                    precompile = true,
+                )
+        else
+            rewritten_equations = Union{Expr, Symbol}[parsed_block_equations...]
+            auxiliary_equations_local = Expr[]
+            auxiliary_equations_dependent = Expr[]
+            auxiliary_error_equations = Expr[]
+            auxiliary_error_equations_dependent = Expr[]
+        end
+
+        domain_equations = vcat(auxiliary_equations_local, auxiliary_equations_dependent)
+        domain_error_equations = vcat(auxiliary_error_equations, auxiliary_error_equations_dependent)
+        domain_names = unique(Symbol[equation_lhs(equation) for equation in domain_equations
+                                     if equation_lhs(equation) isa Symbol])
+        append!(generated_auxiliary_names, setdiff(domain_names, generated_auxiliary_names))
+        current_solution_names = unique(vcat(block_variables, domain_names))
+
+        candidate_solution_names = union(base_solution_names, Set(working_plus_vars))
+        dependencies = Set{Symbol}()
+        for equation in vcat(rewritten_equations, domain_equations)
+            union!(dependencies, intersect(expression_symbols(equation), candidate_solution_names))
+        end
+        setdiff!(dependencies, current_solution_names)
+        setdiff!(dependencies, parameter_names)
+        previous_solution_names = sort(collect(intersect(dependencies, solved_before)), by = string)
+        external_solution_names = sort(collect(setdiff(dependencies, solved_before)), by = string)
+
+        if block.variables != Symbol[] && length(rewritten_equations) != length(block_variables)
+            error("NSSS block $(block.index) in $(model.model_name) has " *
+                  "$(length(rewritten_equations)) equations for $(length(block_variables)) variables")
+        end
+
+        isolated_by_index[block.index] = (
+            index = block.index,
+            solve_order = solve_order,
+            variables = block_variables,
+            previous_solution_names = previous_solution_names,
+            external_solution_names = external_solution_names,
+            domain_auxiliary_names = domain_names,
+            equation_indices = block.equation_indices,
+            equations = collect(rewritten_equations),
+            domain_auxiliary_equations = domain_equations,
+            domain_auxiliary_error_equations = domain_error_equations,
+        )
+        union!(solved_before, current_solution_names, external_solution_names)
+    end
+
+    isolated_blocks = [isolated_by_index[block.index] for block in blocks]
+    return isolated_blocks, working_bounds, generated_auxiliary_names
+end
+
 function parameter_values_for_model(model, complete_names)
     parameter_values = model.parameter_values
     values = Dict{Symbol, Float64}()
@@ -299,12 +401,13 @@ function solution_values_for_model(model, original_names, auxiliary_names, compl
            defaulted_names, solution_error, residual_norm
 end
 
-function bounds_for_names(model, names, fixed_zero_names = Symbol[])
+function bounds_for_names(model, names, fixed_zero_names = Symbol[]; base_bounds = nothing)
     lower = fill(-Inf, length(names))
     upper = fill(Inf, length(names))
     indices = Dict(name => index for (index, name) in enumerate(names))
+    bounds_source = isnothing(base_bounds) ? model.constants.post_parameters_macro.bounds : base_bounds
 
-    for (name, bounds) in model.constants.post_parameters_macro.bounds
+    for (name, bounds) in bounds_source
         if haskey(indices, name)
             index = indices[name]
             lower[index] = max(lower[index], Float64(bounds[1]))
@@ -384,6 +487,22 @@ function write_expression_vector(io, constant_name, equations)
     println(io, "]")
 end
 
+function write_nested_string_vector(io, constant_name, values)
+    println(io, "const $(constant_name) = [")
+    for value in values
+        println(io, "    ", repr(display_symbols(value)), ",")
+    end
+    println(io, "]")
+end
+
+function write_nested_float_vector(io, constant_name, values)
+    println(io, "const $(constant_name) = [")
+    for value in values
+        println(io, "    ", repr(Float64.(value)), ",")
+    end
+    println(io, "]")
+end
+
 function write_residual_function(io, function_name, solution_constant, solution, equations, parameter_map)
     println(io, "function $(function_name)(parameters::AbstractVector, solution::AbstractVector)")
     println(io, "    @assert length(parameters) == length(PARAMETER_NAMES)")
@@ -398,6 +517,73 @@ function write_residual_function(io, function_name, solution_constant, solution,
     end
     println(io, "    ]")
     println(io, "end")
+end
+
+function write_isolated_block_function(io, function_name, block, parameter_map)
+    println(io, "function $(function_name)(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)")
+    println(io, "    @assert length(parameters) == length(PARAMETER_NAMES)")
+    println(io, "    @assert length(previous_solution) == ", length(block.previous_solution_names))
+    println(io, "    @assert length(external_solution) == ", length(block.external_solution_names))
+    println(io, "    @assert length(solution) == ", length(block.variables) + length(block.domain_auxiliary_names))
+    println(io, "    complete_parameters = complete_parameter_values(parameters)")
+    previous_map = Dict{Symbol, Any}(
+        name => :(previous_solution[$index])
+        for (index, name) in enumerate(block.previous_solution_names)
+    )
+    external_map = Dict{Symbol, Any}(
+        name => :(external_solution[$index])
+        for (index, name) in enumerate(block.external_solution_names)
+    )
+    current_names = vcat(block.variables, block.domain_auxiliary_names)
+    current_map = Dict{Symbol, Any}(
+        name => :(solution[$index])
+        for (index, name) in enumerate(current_names)
+    )
+    replacements = copy(parameter_map)
+    merge!(replacements, previous_map)
+    merge!(replacements, external_map)
+    merge!(replacements, current_map)
+    println(io, "    return [")
+    for equation in block.equations
+        println(io, "        ", expression_source(replace_expression(equation, replacements)), ",")
+    end
+    for equation in block.domain_auxiliary_equations
+        println(io, "        ", expression_source(replace_expression(equation_residual(equation), replacements)), ",")
+    end
+    println(io, "    ]")
+    println(io, "end")
+end
+
+function evaluate_auxiliary_equations!(values, equations, complete_values, complete_names)
+    parameter_replacements = Dict{Symbol, Any}(
+        name => complete_values[index] for (index, name) in enumerate(complete_names)
+    )
+    for _ in 1:max(length(equations), 1)
+        changed = false
+        for equation in equations
+            lhs = equation_lhs(equation)
+            lhs isa Symbol || continue
+            rhs = equation.args[2]
+            replacements = copy(parameter_replacements)
+            merge!(replacements, values)
+            available_names = union(Set(keys(parameter_replacements)), Set(keys(values)))
+            dependencies = intersect(expression_symbols(rhs), available_names)
+            all(haskey(replacements, dependency) for dependency in dependencies) || continue
+            new_value = Float64(Core.eval(@__MODULE__, replace_expression(rhs, replacements)))
+            if !haskey(values, lhs) || values[lhs] != new_value
+                values[lhs] = new_value
+                changed = true
+            end
+        end
+        !changed && break
+    end
+    for equation in equations
+        lhs = equation_lhs(equation)
+        if lhs isa Symbol && !haskey(values, lhs)
+            error("Could not evaluate generated domain auxiliary $(lhs)")
+        end
+    end
+    return values
 end
 
 function write_model_file(model, output_path, source_file)
@@ -430,9 +616,57 @@ function write_model_file(model, output_path, source_file)
     )
 
     blocks, equation_order = make_blocks(model, auxiliary_equations, calibration_equations)
+    isolated_blocks, isolated_bounds, generated_auxiliary_names = make_isolated_blocks(
+        model,
+        blocks,
+        auxiliary_equations,
+        calibration_equations,
+        auxiliary_solution_names,
+        all_auxiliary_names,
+        complete_names,
+    )
+    solution_value_map = Dict{Symbol, Float64}()
+    for (name, value) in zip(original_solution_names, original_values)
+        solution_value_map[name] = value
+    end
+    for (name, value) in zip(auxiliary_solution_names, auxiliary_values)
+        solution_value_map[name] = value
+    end
+    for (name, value) in zip(all_auxiliary_names, all_auxiliary_values)
+        solution_value_map[name] = value
+    end
+    for block in isolated_blocks
+        evaluate_auxiliary_equations!(
+            solution_value_map,
+            block.domain_auxiliary_equations,
+            complete_values,
+            complete_names,
+        )
+    end
+    all_auxiliary_names = unique(vcat(all_auxiliary_names, generated_auxiliary_names))
+    all_auxiliary_values = [solution_value_map[name] for name in all_auxiliary_names]
+
+    isolated_blocks = [begin
+        block_solution_names = vcat(block.variables, block.domain_auxiliary_names)
+        block_lower, block_upper = bounds_for_names(model,
+                                                    block_solution_names,
+                                                    defaulted_names;
+                                                    base_bounds = isolated_bounds)
+        merge(block, (
+            previous_solution_values = [solution_value_map[name]
+                                        for name in block.previous_solution_names],
+            external_solution_values = [solution_value_map[name]
+                                       for name in block.external_solution_names],
+            solution_names = block_solution_names,
+            solution_values = [solution_value_map[name] for name in block_solution_names],
+            box_lower_bounds = block_lower,
+            box_upper_bounds = block_upper,
+        ))
+    end for block in isolated_blocks]
     original_lower, original_upper = bounds_for_names(model, original_solution_names, defaulted_names)
     auxiliary_lower, auxiliary_upper = bounds_for_names(model, auxiliary_solution_names, defaulted_names)
-    all_auxiliary_lower, all_auxiliary_upper = bounds_for_names(model, all_auxiliary_names, defaulted_names)
+    all_auxiliary_lower, all_auxiliary_upper = bounds_for_names(model, all_auxiliary_names, defaulted_names;
+                                                                base_bounds = isolated_bounds)
     parameter_lower, parameter_upper = bounds_for_names(model, free_parameter_names)
 
     parameter_map = Dict{Symbol, Any}(
@@ -504,20 +738,53 @@ function write_model_file(model, output_path, source_file)
         println(io, "")
 
         println(io, "const BLOCKS = [")
-        for block in blocks
+        for block in isolated_blocks
             println(io, "    (")
             println(io, "        index = ", block.index, ",")
+            println(io, "        solve_order = ", block.solve_order, ",")
             println(io, "        variables = ", repr(display_symbols(block.variables)), ",")
+            println(io, "        previous_solution_names = ", repr(display_symbols(block.previous_solution_names)), ",")
+            println(io, "        external_solution_names = ", repr(display_symbols(block.external_solution_names)), ",")
+            println(io, "        domain_auxiliary_names = ", repr(display_symbols(block.domain_auxiliary_names)), ",")
             println(io, "        equation_indices = ", repr(block.equation_indices), ",")
             println(io, "        equations = Expr[")
-            for equation_index in block.equation_indices
-                println(io, "            ", repr(auxiliary_residual_equations[equation_index]), ",")
+            for equation in block.equations
+                println(io, "            ", repr(equation), ",")
             end
             println(io, "        ],")
+            println(io, "        domain_auxiliary_equations = Expr[")
+            for equation in block.domain_auxiliary_equations
+                println(io, "            ", repr(equation), ",")
+            end
+            println(io, "        ],")
+            println(io, "        domain_auxiliary_error_equations = Expr[")
+            for equation in block.domain_auxiliary_error_equations
+                println(io, "            ", repr(equation), ",")
+            end
+            println(io, "        ],")
+            println(io, "        solution_names = ", repr(display_symbols(block.solution_names)), ",")
+            println(io, "        previous_solution_values = ", repr(Float64.(block.previous_solution_values)), ",")
+            println(io, "        external_solution_values = ", repr(Float64.(block.external_solution_values)), ",")
+            println(io, "        solution_values = ", repr(Float64.(block.solution_values)), ",")
+            println(io, "        box_lower_bounds = ", repr(Float64.(block.box_lower_bounds)), ",")
+            println(io, "        box_upper_bounds = ", repr(Float64.(block.box_upper_bounds)), ",")
             println(io, "    ),")
         end
         println(io, "]")
         println(io, "const BLOCK_EQUATION_ORDER = ", repr(equation_order))
+        println(io, "const BLOCK_SOLVE_ORDER = ", repr([block.index for block in sort(isolated_blocks, by = block -> block.solve_order)]))
+        write_nested_string_vector(io, "BLOCK_PREVIOUS_SOLUTION_NAMES",
+                                   [block.previous_solution_names for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_PREVIOUS_SOLUTION_VALUES",
+                                  [block.previous_solution_values for block in isolated_blocks])
+        write_nested_string_vector(io, "BLOCK_EXTERNAL_SOLUTION_NAMES",
+                                   [block.external_solution_names for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_EXTERNAL_SOLUTION_VALUES",
+                                  [block.external_solution_values for block in isolated_blocks])
+        write_nested_string_vector(io, "BLOCK_SOLUTION_NAMES",
+                                   [block.solution_names for block in isolated_blocks])
+        write_nested_float_vector(io, "BLOCK_SOLUTION_VALUES",
+                                  [block.solution_values for block in isolated_blocks])
         println(io, "")
 
         println(io, "function complete_parameter_values(parameters::AbstractVector)")
@@ -545,8 +812,26 @@ function write_model_file(model, output_path, source_file)
         write_residual_function(io, "residuals_auxiliary", "AUXILIARY_SOLUTION_NAMES", auxiliary_solution_names,
                                 auxiliary_residual_equations, parameter_map)
         println(io, "")
-        println(io, "function residuals_blocks(parameters::AbstractVector, solution::AbstractVector)")
-        println(io, "    return residuals_auxiliary(parameters, solution)[BLOCK_EQUATION_ORDER]")
+        for block in isolated_blocks
+            write_isolated_block_function(io,
+                                          "residuals_block_$(block.index)",
+                                          block,
+                                          parameter_map)
+            println(io, "")
+        end
+        println(io, "function residuals_blocks(parameters::AbstractVector, previous_solutions::AbstractVector, external_solutions::AbstractVector, solutions::AbstractVector)")
+        println(io, "    @assert length(previous_solutions) == length(BLOCKS)")
+        println(io, "    @assert length(external_solutions) == length(BLOCKS)")
+        println(io, "    @assert length(solutions) == length(BLOCKS)")
+        if !isempty(isolated_blocks)
+            println(io, "    return vcat(")
+            for block in isolated_blocks
+                println(io, "        residuals_block_$(block.index)(parameters, previous_solutions[$(block.index)], external_solutions[$(block.index)], solutions[$(block.index)]),")
+            end
+            println(io, "    )")
+        else
+            println(io, "    return Float64[]")
+        end
         println(io, "end")
         println(io, "")
         println(io, "export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM")
@@ -556,7 +841,14 @@ function write_model_file(model, output_path, source_file)
         println(io, "export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES")
         println(io, "export DEFAULTED_NSSS_SOLUTION_NAMES")
         println(io, "export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS")
-        println(io, "export BLOCKS, BLOCK_EQUATION_ORDER, residuals_original, residuals_auxiliary, residuals_blocks")
+        println(io, "export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER")
+        println(io, "export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES")
+        println(io, "export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES")
+        println(io, "export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES")
+        println(io, "export residuals_original, residuals_auxiliary, residuals_blocks")
+        if !isempty(isolated_blocks)
+            println(io, "export ", join(["residuals_block_$(block.index)" for block in isolated_blocks], ", "))
+        end
         println(io, "end")
     end
     return output_path

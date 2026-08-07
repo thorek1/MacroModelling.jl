@@ -20,15 +20,50 @@ for source_file in source_files
 
     original_residual = residual_module.residuals_original(parameters, original_solution)
     auxiliary_residual = residual_module.residuals_auxiliary(parameters, auxiliary_solution)
-    block_residual = residual_module.residuals_blocks(parameters, auxiliary_solution)
+    previous_solutions = residual_module.BLOCK_PREVIOUS_SOLUTION_VALUES
+    external_solutions = residual_module.BLOCK_EXTERNAL_SOLUTION_VALUES
+    block_solutions = residual_module.BLOCK_SOLUTION_VALUES
+    block_residual = residual_module.residuals_blocks(parameters, previous_solutions, external_solutions, block_solutions)
 
     @test all(isfinite, original_residual)
     @test all(isfinite, auxiliary_residual)
     @test all(isfinite, block_residual)
     @test maximum(abs, original_residual; init = 0.0) < 1e-7
     @test maximum(abs, auxiliary_residual; init = 0.0) < 1e-7
-    @test block_residual == auxiliary_residual[residual_module.BLOCK_EQUATION_ORDER]
     @test length(residual_module.BLOCK_EQUATION_ORDER) == length(auxiliary_residual)
+    @test length(residual_module.BLOCKS) == length(residual_module.BLOCK_SOLVE_ORDER)
+    @test residual_module.BLOCK_SOLVE_ORDER == [
+        block.index for block in sort(residual_module.BLOCKS, by = block -> block.solve_order)
+    ]
+
+    expected_block_residual = Float64[]
+    for (block_index, block) in enumerate(residual_module.BLOCKS)
+        @test block.index == block_index
+        @test block.previous_solution_names == residual_module.BLOCK_PREVIOUS_SOLUTION_NAMES[block_index]
+        @test block.external_solution_names == residual_module.BLOCK_EXTERNAL_SOLUTION_NAMES[block_index]
+        @test block.solution_names == residual_module.BLOCK_SOLUTION_NAMES[block_index]
+        @test block.previous_solution_values == residual_module.BLOCK_PREVIOUS_SOLUTION_VALUES[block_index]
+        @test block.external_solution_values == residual_module.BLOCK_EXTERNAL_SOLUTION_VALUES[block_index]
+        @test block.solution_values == residual_module.BLOCK_SOLUTION_VALUES[block_index]
+        @test isempty(intersect(block.previous_solution_names, block.solution_names))
+        @test isempty(intersect(block.external_solution_names, block.solution_names))
+        @test isempty(intersect(block.previous_solution_names, block.external_solution_names))
+        @test all(name -> name in block.solution_names, block.domain_auxiliary_names)
+        block_function = getfield(residual_module, Symbol("residuals_block_", block_index))
+        block_residual_i = block_function(
+            parameters,
+            residual_module.BLOCK_PREVIOUS_SOLUTION_VALUES[block_index],
+            residual_module.BLOCK_EXTERNAL_SOLUTION_VALUES[block_index],
+            residual_module.BLOCK_SOLUTION_VALUES[block_index],
+        )
+        @test all(isfinite, block_residual_i)
+        @test length(block_residual_i) == length(block.equations) + length(block.domain_auxiliary_equations)
+        @test maximum(abs, block_residual_i; init = 0.0) < 1e-7
+        append!(expected_block_residual, block_residual_i)
+        @test all((block.box_lower_bounds .- 1e-12) .<= block.solution_values .<=
+                  (block.box_upper_bounds .+ 1e-12))
+    end
+    @test block_residual == expected_block_residual
 
     original_lower = residual_module.ORIGINAL_BOX_LOWER_BOUNDS
     original_upper = residual_module.ORIGINAL_BOX_UPPER_BOUNDS

@@ -573,7 +573,11 @@ const ALL_AUXILIARY_BOX_UPPER_BOUNDS = Float64[
 const BLOCKS = [
     (
         index = 1,
+        solve_order = 5,
         variables = ["K̂", "R̂", "X̂", "b2̂", "b̂", "c1̂", "c2̂", "h2̂", "pî", "q̂", "Î", "ĉ", "ĥ", "Ŷ"],
+        previous_solution_names = ["rr̂", "Â", "û", "ĵ"],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [3, 15, 10, 8, 7, 1, 5, 6, 14, 4, 11, 12, 9, 13],
         equations = Expr[
             :(((-K̂ + Î) - γ * (-K̂ + Î)) - ((-γ * (1 - δ) + 1) * ((-K̂ - X̂) + Ŷ)) / ψ),
@@ -591,41 +595,150 @@ const BLOCKS = [
             :((Ŷ - (η * (K̂ * my + Â + ĥ * υ)) / ((my + η + υ) - 1)) + ((X̂ + c1̂ * α + c2̂ * (1 - α)) * ((-my - υ) + 1)) / ((my + η + υ) - 1)),
             :(((-R * b2toY * ((R̂ + b2̂) - pî) + b2toY * b2̂) - c2toY * c2̂) + s2 * (-X̂ + Ŷ)),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["K̂", "R̂", "X̂", "b2̂", "b̂", "c1̂", "c2̂", "h2̂", "pî", "q̂", "Î", "ĉ", "ĥ", "Ŷ"],
+        previous_solution_values = [0.0, 0.0, 0.0, 0.0],
+        external_solution_values = Float64[],
+        solution_values = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        box_lower_bounds = [-1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12],
+        box_upper_bounds = [1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12],
     ),
     (
         index = 2,
+        solve_order = 4,
         variables = ["û"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [17],
         equations = Expr[
             :(-û * ρu + û),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["û"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [0.0],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
     (
         index = 3,
+        solve_order = 3,
         variables = ["ĵ"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [16],
         equations = Expr[
             :(-ĵ * ρj + ĵ),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["ĵ"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [0.0],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
     (
         index = 4,
+        solve_order = 2,
         variables = ["Â"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [18],
         equations = Expr[
             :(-Â * ρA + Â),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["Â"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [0.0],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
     (
         index = 5,
+        solve_order = 1,
         variables = ["rr̂"],
+        previous_solution_names = String[],
+        external_solution_names = String[],
+        domain_auxiliary_names = String[],
         equation_indices = [2],
         equations = Expr[
             :(rr̂ - 0),
         ],
+        domain_auxiliary_equations = Expr[
+        ],
+        domain_auxiliary_error_equations = Expr[
+        ],
+        solution_names = ["rr̂"],
+        previous_solution_values = Float64[],
+        external_solution_values = Float64[],
+        solution_values = [0.0],
+        box_lower_bounds = [-Inf],
+        box_upper_bounds = [Inf],
     ),
 ]
 const BLOCK_EQUATION_ORDER = [3, 15, 10, 8, 7, 1, 5, 6, 14, 4, 11, 12, 9, 13, 17, 16, 18, 2]
+const BLOCK_SOLVE_ORDER = [5, 4, 3, 2, 1]
+const BLOCK_PREVIOUS_SOLUTION_NAMES = [
+    ["rr̂", "Â", "û", "ĵ"],
+    String[],
+    String[],
+    String[],
+    String[],
+]
+const BLOCK_PREVIOUS_SOLUTION_VALUES = [
+    [0.0, 0.0, 0.0, 0.0],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+]
+const BLOCK_EXTERNAL_SOLUTION_NAMES = [
+    String[],
+    String[],
+    String[],
+    String[],
+    String[],
+]
+const BLOCK_EXTERNAL_SOLUTION_VALUES = [
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+    Float64[],
+]
+const BLOCK_SOLUTION_NAMES = [
+    ["K̂", "R̂", "X̂", "b2̂", "b̂", "c1̂", "c2̂", "h2̂", "pî", "q̂", "Î", "ĉ", "ĥ", "Ŷ"],
+    ["û"],
+    ["ĵ"],
+    ["Â"],
+    ["rr̂"],
+]
+const BLOCK_SOLUTION_VALUES = [
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0],
+]
 
 function complete_parameter_values(parameters::AbstractVector)
     @assert length(parameters) == length(PARAMETER_NAMES)
@@ -727,8 +840,85 @@ function residuals_auxiliary(parameters::AbstractVector, solution::AbstractVecto
     ]
 end
 
-function residuals_blocks(parameters::AbstractVector, solution::AbstractVector)
-    return residuals_auxiliary(parameters, solution)[BLOCK_EQUATION_ORDER]
+function residuals_block_1(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 4
+    @assert length(external_solution) == 0
+    @assert length(solution) == 14
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        ((-(solution[1]) + solution[11]) - complete_parameters[3] * (-(solution[1]) + solution[11])) - ((-(complete_parameters[3]) * (1 - complete_parameters[9]) + 1) * ((-(solution[1]) - solution[3]) + solution[14])) / complete_parameters[8],
+        -(solution[2]) + solution[9] + previous_solution[1],
+        ((solution[3] * complete_parameters[40] - solution[9] * complete_parameters[1]) + solution[9]) - previous_solution[3],
+        ((solution[4] - solution[8]) - solution[10]) + previous_solution[1],
+        ((solution[5] - solution[10]) + previous_solution[1]) - solution[13],
+        (((-(complete_parameters[23]) * solution[11] - complete_parameters[27] * solution[6]) - complete_parameters[28] * solution[7]) - complete_parameters[29] * solution[12]) + solution[14],
+        (((complete_parameters[16] * previous_solution[1] * complete_parameters[1] - solution[10] * complete_parameters[37]) + solution[10]) - (1 - complete_parameters[37]) * (-(solution[8]) + previous_solution[4])) - (-(solution[7]) * complete_parameters[41] + solution[7]) * (-(complete_parameters[16]) * complete_parameters[1] + 1),
+        (((((solution[6] * complete_parameters[1] - solution[6]) - solution[8] * complete_parameters[39]) - solution[10] * complete_parameters[1]) + solution[10]) - solution[13] * complete_parameters[38]) - previous_solution[4] * (1 - complete_parameters[1]),
+        ((-(solution[2]) * complete_parameters[20] + solution[2]) - solution[9] * (1 - complete_parameters[20]) * (complete_parameters[21] + 1)) - complete_parameters[22] * solution[14] * (1 - complete_parameters[20]),
+        ((complete_parameters[15] * previous_solution[1] * complete_parameters[1] - solution[10] * complete_parameters[36]) + solution[10]) - (1 - complete_parameters[36]) * ((-(solution[3]) - solution[13]) + solution[14]),
+        (-(solution[1]) * (1 - complete_parameters[9]) + solution[1]) - solution[11] * complete_parameters[9],
+        (((-(complete_parameters[23]) * solution[11] - complete_parameters[24] * complete_parameters[26] * ((solution[2] + solution[5]) - solution[9])) + complete_parameters[26] * solution[5]) - complete_parameters[29] * solution[12]) + (-(solution[3]) + solution[14]) * ((-(complete_parameters[34]) - complete_parameters[35]) + 1),
+        (solution[14] - (complete_parameters[5] * (solution[1] * complete_parameters[6] + previous_solution[2] + solution[13] * complete_parameters[7])) / ((complete_parameters[6] + complete_parameters[5] + complete_parameters[7]) - 1)) + ((solution[3] + solution[6] * complete_parameters[14] + solution[7] * (1 - complete_parameters[14])) * ((-(complete_parameters[6]) - complete_parameters[7]) + 1)) / ((complete_parameters[6] + complete_parameters[5] + complete_parameters[7]) - 1),
+        ((-(complete_parameters[24]) * complete_parameters[25] * ((solution[2] + solution[4]) - solution[9]) + complete_parameters[25] * solution[4]) - complete_parameters[28] * solution[7]) + complete_parameters[35] * (-(solution[3]) + solution[14]),
+    ]
+end
+
+function residuals_block_2(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(solution[1]) * complete_parameters[17] + solution[1],
+    ]
+end
+
+function residuals_block_3(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(solution[1]) * complete_parameters[18] + solution[1],
+    ]
+end
+
+function residuals_block_4(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        -(solution[1]) * complete_parameters[19] + solution[1],
+    ]
+end
+
+function residuals_block_5(parameters::AbstractVector, previous_solution::AbstractVector, external_solution::AbstractVector, solution::AbstractVector)
+    @assert length(parameters) == length(PARAMETER_NAMES)
+    @assert length(previous_solution) == 0
+    @assert length(external_solution) == 0
+    @assert length(solution) == 1
+    complete_parameters = complete_parameter_values(parameters)
+    return [
+        solution[1] - 0,
+    ]
+end
+
+function residuals_blocks(parameters::AbstractVector, previous_solutions::AbstractVector, external_solutions::AbstractVector, solutions::AbstractVector)
+    @assert length(previous_solutions) == length(BLOCKS)
+    @assert length(external_solutions) == length(BLOCKS)
+    @assert length(solutions) == length(BLOCKS)
+    return vcat(
+        residuals_block_1(parameters, previous_solutions[1], external_solutions[1], solutions[1]),
+        residuals_block_2(parameters, previous_solutions[2], external_solutions[2], solutions[2]),
+        residuals_block_3(parameters, previous_solutions[3], external_solutions[3], solutions[3]),
+        residuals_block_4(parameters, previous_solutions[4], external_solutions[4], solutions[4]),
+        residuals_block_5(parameters, previous_solutions[5], external_solutions[5], solutions[5]),
+    )
 end
 
 export MODEL_NAME, SOURCE_MODEL_FILE, NSSS_SOLUTION_ERROR, NSSS_RESIDUAL_NORM
@@ -738,5 +928,10 @@ export AUXILIARY_SOLUTION_NAMES, AUXILIARY_SOLUTION_VALUES
 export ALL_AUXILIARY_VARIABLE_NAMES, ALL_AUXILIARY_VARIABLE_VALUES
 export DEFAULTED_NSSS_SOLUTION_NAMES
 export ORIGINAL_NSSS_EQUATIONS, AUXILIARY_NSSS_EQUATIONS, CALIBRATION_EQUATIONS
-export BLOCKS, BLOCK_EQUATION_ORDER, residuals_original, residuals_auxiliary, residuals_blocks
+export BLOCKS, BLOCK_EQUATION_ORDER, BLOCK_SOLVE_ORDER
+export BLOCK_PREVIOUS_SOLUTION_NAMES, BLOCK_PREVIOUS_SOLUTION_VALUES
+export BLOCK_EXTERNAL_SOLUTION_NAMES, BLOCK_EXTERNAL_SOLUTION_VALUES
+export BLOCK_SOLUTION_NAMES, BLOCK_SOLUTION_VALUES
+export residuals_original, residuals_auxiliary, residuals_blocks
+export residuals_block_1, residuals_block_2, residuals_block_3, residuals_block_4, residuals_block_5
 end
