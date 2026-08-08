@@ -12,11 +12,12 @@ equal to zero in the corresponding NSSS problem.
   box constraints, and stored values.
 - `CALIBRATION_EQUATIONS` is included in both residual systems.
 - `ALL_AUXILIARY_VARIABLE_*` also includes domain-safety variables created while setting up the solver.
-- `*_INITIAL_SOLUTION_VALUES` contain fresh-start values produced by the
-  MacroModelling NSSS step initialization. Analytical steps are evaluated in
-  solver order; numerical blocks use the midpoint of their box bounds when no
-  cached solution is supplied. These are starting values, not solved values,
-  and may not satisfy every box constraint before optimization.
+- `*_INITIAL_SOLUTION_VALUES` are replayed from MacroModelling's internal NSSS
+  dispatcher. The numerical entries are copied from the package workspace
+  `guess_buffer` after the package applies its closest cached block solution
+  and box clamping; analytical and auxiliary entries are taken from the same
+  solver state. These values are the actual starts handed to the internal
+  numerical blocks, assembled into the exported vectors.
 
 The functions `residuals_original` and `residuals_auxiliary` take
 `(parameters, solution)`. Each `residuals_block_N` takes
@@ -42,4 +43,5 @@ residuals_block_1(PARAMETER_VALUES,
 
 `scripts/generate_nsss_residual_models.jl` regenerates the exports from the
 current model files. `scripts/verify_nsss_residual_models.jl` loads every export
-and checks all three residual variants at their stored NSSS values.
+and checks all three residual variants at both their stored NSSS values and
+their package-derived initial values.

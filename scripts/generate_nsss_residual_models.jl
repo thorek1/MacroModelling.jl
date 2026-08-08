@@ -401,57 +401,71 @@ function solution_values_for_model(model, original_names, auxiliary_names, compl
            defaulted_names, solution_error, residual_norm
 end
 
-function fresh_initial_solution_for_model(model)
+function macro_modelling_initial_solution_for_model(model)
     solver_constants = model.constants.nsss_solver
-    solver_functions = model.functions.nsss_solver
     complete_constants = model.constants.post_complete_parameters
     parameter_values = zeros(Float64, complete_constants.nsss_n_ext_params)
     model.functions.nsss_param_prep!(parameter_values, model.parameter_values)
     solution = zeros(Float64, complete_constants.nsss_n_sol)
+    initial_solution = zeros(Float64, complete_constants.nsss_n_sol)
+    numerical_initial_indices = falses(length(initial_solution))
 
+    numerical_steps = count(==(MacroModelling.NUMERICAL_STEP), solver_constants.step_types)
+    expected_cache_length = 2 * numerical_steps + 1
+    _, closest_solution = MacroModelling.find_closest_solution(
+        model.caches.solver,
+        Float64.(model.parameter_values),
+        expected_cache_length,
+    )
+    options = MacroModelling.merge_calculation_options(verbose = false)
+    preferred_solver_parameter_index = complete_constants.nsss_fastest_solver_parameter_idx
+    preferred_solver_parameter_index = clamp(
+        preferred_solver_parameter_index,
+        1,
+        length(MacroModelling.DEFAULT_SOLVER_PARAMETERS),
+    )
+
+    # The dispatcher uses one shared guess buffer.  Recording it immediately
+    # after each numerical step avoids confusing the final block guess with
+    # the starts of earlier blocks.
+    full_names = collect(complete_constants.nsss_sol_names)
+    fill!(solution, 0.0)
     for step in 1:solver_constants.n_steps
-        auxiliary_range = solver_constants.aux_write_ranges[step]
-        if !isempty(auxiliary_range)
-            auxiliary_values = zeros(Float64, length(auxiliary_range))
-            solver_functions.aux_funcs[step](auxiliary_values, solution, parameter_values)
-            for index in eachindex(auxiliary_values)
-                solution[solver_constants.aux_write_indices[auxiliary_range[index]]] = auxiliary_values[index]
-            end
+        step_error, _, _ = MacroModelling.execute_step!(
+            step,
+            solution,
+            parameter_values,
+            closest_solution,
+            model,
+            options.tol,
+            false,
+            false,
+            MacroModelling.DEFAULT_SOLVER_PARAMETERS,
+            preferred_solver_parameter_index,
+            false,
+        )
+        if !isfinite(step_error) || step_error > options.tol.nsss.acceptance_tol
+            error("MacroModelling initial NSSS replay failed at step $(step) for $(model.model_name) with error $(step_error)")
         end
-
+        solver_constants.step_types[step] == MacroModelling.NUMERICAL_STEP || continue
         write_range = solver_constants.write_ranges[step]
-        if solver_constants.step_types[step] == MacroModelling.ANALYTICAL_STEP
-            main_values = zeros(Float64, max(length(write_range), 1))
-            solver_functions.eval_funcs[step](main_values, solution, parameter_values)
-            bounds_range = solver_constants.bounds_ranges[step]
-            for index in eachindex(write_range)
-                value = main_values[index]
-                if !isfinite(value)
-                    value = solution[solver_constants.write_indices[write_range[index]]]
-                end
-                if !isempty(bounds_range) && solver_constants.has_bounds[bounds_range[index]]
-                    value = clamp(value,
-                                  solver_constants.lower_bounds[bounds_range[index]],
-                                  solver_constants.upper_bounds[bounds_range[index]])
-                end
-                solution[solver_constants.write_indices[write_range[index]]] = value
-            end
-        else
-            numerical_range = solver_constants.numerical_bounds_ranges[step]
-            guess_length = min(length(write_range), length(numerical_range))
-            for index in 1:guess_length
-                bound_index = numerical_range[index]
-                value = 0.5 * (solver_constants.numerical_lbs[bound_index] +
-                               solver_constants.numerical_ubs[bound_index])
-                solution[solver_constants.write_indices[write_range[index]]] =
-                    clamp(value,
-                          solver_constants.numerical_lbs[bound_index],
-                          solver_constants.numerical_ubs[bound_index])
-            end
+        numerical_range = solver_constants.numerical_bounds_ranges[step]
+        guess_length = min(length(write_range), length(numerical_range))
+        guess = model.workspaces.nsss_solver.guess_buffer
+        for index in 1:guess_length
+            solution_index = solver_constants.write_indices[write_range[index]]
+            initial_solution[solution_index] = guess[index]
+            numerical_initial_indices[solution_index] = true
         end
     end
 
-    return collect(complete_constants.nsss_sol_names), solution
+    for index in eachindex(initial_solution)
+        numerical_initial_indices[index] || (initial_solution[index] = solution[index])
+    end
+
+    all(isfinite, initial_solution) ||
+        error("MacroModelling initial NSSS values are nonfinite for $(model.model_name)")
+    return full_names, collect(initial_solution)
 end
 
 function bounds_for_names(model, names, fixed_zero_names = Symbol[]; base_bounds = nothing)
@@ -667,7 +681,7 @@ function write_model_file(model, output_path, source_file)
         complete_names,
         complete_values,
     )
-    initial_full_names, initial_full_values = fresh_initial_solution_for_model(model)
+    initial_full_names, initial_full_values = macro_modelling_initial_solution_for_model(model)
 
     blocks, equation_order = make_blocks(model, auxiliary_equations, calibration_equations)
     isolated_blocks, isolated_bounds, generated_auxiliary_names = make_isolated_blocks(

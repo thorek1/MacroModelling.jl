@@ -28,6 +28,11 @@ for source_file in source_files
     @test all(isfinite, auxiliary_initial_solution)
     @test all(isfinite, all_auxiliary_initial_values)
 
+    original_initial_residual = residual_module.residuals_original(parameters, original_initial_solution)
+    auxiliary_initial_residual = residual_module.residuals_auxiliary(parameters, auxiliary_initial_solution)
+    @test all(isfinite, original_initial_residual)
+    @test all(isfinite, auxiliary_initial_residual)
+
     original_residual = residual_module.residuals_original(parameters, original_solution)
     auxiliary_residual = residual_module.residuals_auxiliary(parameters, auxiliary_solution)
     previous_solutions = residual_module.BLOCK_PREVIOUS_SOLUTION_VALUES
@@ -78,6 +83,13 @@ for source_file in source_files
         @test all(isfinite, block_residual_i)
         @test length(block_residual_i) == length(block.equations) + length(block.domain_auxiliary_equations)
         @test maximum(abs, block_residual_i; init = 0.0) < 1e-7
+        block_initial_residual_i = block_function(
+            parameters,
+            residual_module.BLOCK_PREVIOUS_SOLUTION_INITIAL_VALUES[block_index],
+            residual_module.BLOCK_EXTERNAL_SOLUTION_INITIAL_VALUES[block_index],
+            residual_module.BLOCK_SOLUTION_INITIAL_VALUES[block_index],
+        )
+        @test all(isfinite, block_initial_residual_i)
         append!(expected_block_residual, block_residual_i)
         @test all((block.box_lower_bounds .- 1e-12) .<= block.solution_values .<=
                   (block.box_upper_bounds .+ 1e-12))
