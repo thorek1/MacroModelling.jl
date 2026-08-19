@@ -1,3 +1,7 @@
+# Ghironi, F. and Melitz, M.J. (2005). International trade and macroeconomic dynamics with
+# heterogeneous firms. Quarterly Journal of Economics, 120(3), 865–915.
+# https://doi.org/10.1093/qje/120.3.865
+
 @model Ghironi_Melitz_2005 begin
 	1 = Nd[0] * ρ̃d[0] ^ (1 - θ) + Nx̄[0] * ρ̃x̄[0] ^ (1 - θ)
 

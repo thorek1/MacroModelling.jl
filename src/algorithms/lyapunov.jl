@@ -1,6 +1,6 @@
 @stable default_mode = "disable" begin
 
-# Available algorithms: 
+# Available algorithms:
 # :doubling     - fast and precise
 # :bartels_stewart     - fast for small matrices and precise, dense matrices only
 # :bicgstab     - less precise
@@ -113,7 +113,7 @@ end
             denom = max(ℒ.norm(guess), ℒ.norm(C))
             reached_tol = denom == 0 ? 0.0 : ℒ.norm(res_buf) / denom
             if reached_tol < initial_guess_acceptance_tol
-                if verbose println("Lyapunov equation - initial guess achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
+                if verbose println("Lyapunov equation - initial guess achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol) [A: $(typeof(A)), C: $(typeof(C))]") end
                 return choose_matrix_format(guess), true
             end
         end
@@ -133,7 +133,7 @@ end
                                                                         verbose = verbose)
         if deflation_solved
             if verbose
-                println("Lyapunov equation - solved via Schur deflation (unit roots pre-detected)")
+                println("Lyapunov equation - solved via Schur deflation (unit roots pre-detected) [A: $(typeof(A_dense)), C: $(typeof(C_dense))]")
             end
             return X_deflated, true
         end
@@ -143,7 +143,7 @@ end
     X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), workspace; tol = tol) # timer = timer)
 
     if verbose
-        println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
+        println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm [A: $(typeof(A)), C: $(typeof(C))]")
     end
     
     if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :doubling
@@ -152,7 +152,7 @@ end
         X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), workspace; tol = tol) # timer = timer)
 
         if verbose
-            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling [A: $(typeof(A)), C: $(typeof(C))]")
         end
     end
 
@@ -162,7 +162,7 @@ end
         X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), workspace; tol = tol) # timer = timer)
 
         if verbose
-            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bicgstab [A: $(typeof(A)), C: $(typeof(C))]")
         end
     end
 
@@ -174,7 +174,7 @@ end
         X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), workspace; tol = tol) # timer = timer)
 
         if verbose
-            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart [A: $(typeof(A)), C: $(typeof(C))]")
         end
     end
 
@@ -191,7 +191,7 @@ end
             X = X_deflated
             reached_tol = zero(T) # signal success
             if verbose
-                println("Lyapunov equation - solved via Schur deflation (unit-root subspace set to NaN)")
+                println("Lyapunov equation - solved via Schur deflation (unit-root subspace set to NaN) [A: $(typeof(A_dense)), C: $(typeof(C_dense))]")
             end
         end
     end
@@ -917,7 +917,7 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 
     if sub_tol > tol.acceptance_tol
         if verbose
-            println("Schur deflation: stable sub-block Lyapunov failed (tol=$sub_tol)")
+            println("Schur deflation: stable sub-block Lyapunov failed (tol=$sub_tol) [T_ss: $(typeof(T_ss)), C_ss: $(typeof(C_ss))]")
         end
         return Matrix{T}(undef, 0, 0), false
     end
@@ -946,7 +946,8 @@ function solve_lyapunov_schur_deflation(A::DenseMatrix{T},
 
     if verbose
         println("Schur deflation: $n_unstable unstable eigenvalue(s), ",
-                "$n_stable stable, $(count(unit_root_vars)) variable(s) set to NaN")
+                "$n_stable stable, $(count(unit_root_vars)) variable(s) set to NaN ",
+                "[T_ss: $(typeof(T_ss)), C_ss: $(typeof(C_ss))]")
     end
 
     return Σ, true

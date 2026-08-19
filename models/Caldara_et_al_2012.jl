@@ -1,3 +1,7 @@
+# Caldara, D., Fernández-Villaverde, J., Rubio-Ramírez, J.F., and Yao, W. (2012). Computing
+# DSGE models with recursive preferences and stochastic volatility.
+# Review of Economic Dynamics, 15(2), 188–206. https://doi.org/10.1016/j.red.2011.10.001
+
 @model Caldara_et_al_2012 begin
 	V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
 

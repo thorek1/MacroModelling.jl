@@ -257,6 +257,7 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                             bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
+                                !(x.args[2] isa Expr) ? x :
                                 x.args[2].head == :ref ?
                                     x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                         begin
@@ -305,6 +306,7 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                     x
                                 end :
+                            !(x.args[2] isa Expr) ? x :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
@@ -393,6 +395,7 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x
                                 end :
+                            !(x.args[2] isa Expr) ? x : # exp of a constant (e.g. after shock → 0 substitution)
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
@@ -849,7 +852,10 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
     par_defined_more_than_once = Set()
     
     bounded_vars = []
-    parameter_definitions = replace_indices(parameter_block_in)
+    parameter_definitions = parse_for_loops(parameter_block_in)
+    parameter_definitions = resolve_if_expr(parameter_definitions)
+    parameter_definitions = remove_nothing(parameter_definitions)
+    parameter_definitions = replace_indices(parameter_definitions)
 
     # parse parameter inputs
     # label all variables parameters and exogenous variables and timings across all equations
@@ -910,7 +916,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                             end :
                             x :
                         x :
-                x.args[2].head == :block ?
+                x.args[2] isa Expr && x.args[2].head == :block ?
                     x.args[1].args[1] == :| ?
                         x :
                     x.args[2].args[2].args[1] == :| ?
@@ -923,7 +929,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                         @warn "Invalid parameter input ignored: " * repr(x)
                         x
                     end :
-                x.args[2].head == :call ?
+                x.args[2] isa Expr && x.args[2].head == :call ?
                     x.args[1].args[1] == :| ?
                             x :
                     begin # this is calibration by targeting SS values (conditional parameter at the end)
@@ -978,7 +984,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                     x :
                     begin
                         diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
-                        if !isempty(diffed)
+                        if !isempty(diffed) && diffed[1] ∉ SYMPYWORKSPACE_RESERVED_NAMES
                             push!(par_tmp,diffed[1])
                         end
                     end :
@@ -1034,7 +1040,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                 x :
                 begin
                     diffed = setdiff([x],ss_tmp)
-                    if !isempty(diffed)
+                    if !isempty(diffed) && diffed[1] ∉ SYMPYWORKSPACE_RESERVED_NAMES
                         push!(par_tmp,diffed[1])
                     end
                 end :

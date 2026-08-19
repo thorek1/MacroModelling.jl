@@ -1,3 +1,7 @@
+# European Central Bank. (2008). The New Area-Wide Model of the euro area: A micro-founded
+# open-economy model for forecasting and policy analysis. ECB Working Paper No. 944.
+# https://www.ecb.europa.eu/pub/pdf/scpwps/ecbwp944.pdf
+
 @model NAWM_EAUS_2008 begin
 	EA_R[0] ^ 4 - 1 = EA_PHIRR * (EA_R[-1] ^ 4 - 1) + (1 - EA_PHIRR) * (EA_RRSTAR ^ 4 * EA_PI4TARGET - 1 + EA_PHIRPI * (EA_PIC4[0] - EA_PI4TARGET)) + EA_PHIRGY * (EA_Y[0] / EA_Y[-1] - 1) + σ_EA_R * EA_EPSR[x]
 

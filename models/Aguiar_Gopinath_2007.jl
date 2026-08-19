@@ -1,3 +1,6 @@
+# Aguiar, M. and Gopinath, G. (2007). Emerging market business cycles: The cycle is the trend.
+# Journal of Political Economy, 115(1), 69–102. https://doi.org/10.1086/511283
+
 @model Aguiar_Gopinath_2007 begin
 	y[0] = (exp(g[0]) * l[0]) ^ alpha * exp(z[0]) * k[-1] ^ (1 - alpha)
 
