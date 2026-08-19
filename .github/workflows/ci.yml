@@ -173,6 +173,10 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "system_prior_estimation"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "particle_filter"
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2

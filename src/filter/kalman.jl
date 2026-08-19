@@ -16,6 +16,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
+                                                measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
@@ -60,8 +61,8 @@ function calculate_loglikelihood(::Val{:kalman},
     # initial_state at the get_loglikelihood level.
     u₀ = state[1][observables_and_states]
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, u₀, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
-    # timer = timer, 
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, kalman_ws, u₀, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood, measurement_error = measurement_error)
+    # timer = timer,
 end
 
 
@@ -80,6 +81,7 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                                 filter_algorithm::Symbol = :LagrangeNewton,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
+                                                measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
     T = constants.post_model_macro
@@ -110,7 +112,8 @@ function calculate_loglikelihood_with_missing(::Val{:kalman},
                                           obs_idx_per_t, kalman_ws, u₀,
                                           presample_periods = presample_periods,
                                           verbose = opts.verbose,
-                                          on_failure_loglikelihood = on_failure_loglikelihood)
+                                          on_failure_loglikelihood = on_failure_loglikelihood,
+                                          measurement_error = measurement_error)
 end
 
 # Specialization for :theoretical
@@ -141,6 +144,11 @@ function get_initial_covariance(::Val{:diagonal},
 end
 
 
+# `measurement_error` is the covariance H of the Gaussian measurement error in
+# yₜ = C xₜ + ηₜ, ηₜ ~ N(0, H). It is *not* a standard deviation: a vector is read
+# as the per-observable variances (the diagonal of H), a matrix as the full
+# covariance H. `nothing` means no measurement error. It enters the filter only
+# through the innovation covariance, F = C P C' + H.
 function run_kalman_iterations(A::Matrix{S},
                                 𝐁::Matrix{S},
                                 C::AbstractMatrix{R},
@@ -150,6 +158,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 u₀::AbstractVector{V};
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false) where {S <: Real, R <: Real, V <: Real, U <: AbstractFloat}
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
@@ -206,6 +215,22 @@ function run_kalman_iterations(A::Matrix{S},
 
         ℒ.mul!(Ctmp, C, Pwork)                                  # Ctmp = C * P
         ℒ.mul!(F, Ctmp, C')                                     # F = C * P * C'
+
+        # Add the measurement-error covariance H: F = C P C' + H. `H` may be a
+        # vector of per-observable variances (diagonal H, the common case) or a
+        # full covariance matrix; both are in the innovation (data-row) order,
+        # which matches F's rows and columns.
+        if measurement_error !== nothing
+            if measurement_error isa AbstractMatrix
+                @inbounds for j in 1:n_obs, i in 1:n_obs
+                    F[i, j] += measurement_error[i, j]
+                end
+            else
+                @inbounds for i in 1:n_obs
+                    F[i, i] += measurement_error[i]
+                end
+            end
+        end
 
         if T === Float64
             ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:FastLapack), F,
@@ -289,6 +314,9 @@ end
 # Uses the same workspace buffers but takes per-period sub-views of size m_t
 # (= number of observed variables in period t). Periods with m_t == 0 become
 # pure predict steps (no update, no likelihood contribution).
+# `measurement_error` carries the same meaning as in `run_kalman_iterations`: the
+# covariance H (vector ⇒ per-observable variances, matrix ⇒ full covariance), not
+# a standard deviation. Here it is subset to the observed rows of period t.
 function run_kalman_iterations_missing(A::Matrix{S}, 
                                 𝐁::Matrix{S},
                                 C::AbstractMatrix{R}, 
@@ -296,9 +324,10 @@ function run_kalman_iterations_missing(A::Matrix{S},
                                 data_in_deviations::Matrix{S},
                                 obs_idx_per_t::Vector{Vector{Int}},
                                 ws::kalman_workspace,
-                                u₀::AbstractVector{<:Real}; 
+                                u₀::AbstractVector{<:Real};
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
+                                measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                                 verbose::Bool = false)::S where {S <: Float64, R <: Real, U <: AbstractFloat}
 
     n_obs   = size(C, 1)
@@ -359,6 +388,20 @@ function run_kalman_iterations_missing(A::Matrix{S},
 
         ℒ.mul!(Ctv, Cv, P)        # Ctv = C[idx,:] * P
         ℒ.mul!(Fv, Ctv, Cv')      # Fv = C[idx,:] * P * C[idx,:]'
+
+        # Add the measurement-error covariance restricted to the observed rows
+        # (the conditional block H[idx, idx] of a full covariance matrix).
+        if measurement_error !== nothing
+            if measurement_error isa AbstractMatrix
+                @inbounds for j in 1:m, i in 1:m
+                    Fv[i, j] += measurement_error[idx[i], idx[j]]
+                end
+            else
+                @inbounds for i in 1:m
+                    Fv[i, i] += measurement_error[idx[i]]
+                end
+            end
+        end
 
         ws.fast_lu_ws_f, ws.fast_lu_dims_f, solved_F, luF = factorize_lu!(Val(:Julia), Fv,
                                                                             ws.fast_lu_ws_f,
@@ -421,13 +464,14 @@ end
     ::Val{:kalman}; # filter,
     warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
+    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
     smooth::Bool = true)
 
     obs_axis = collect(axiskeys(data_in_deviations,1))
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts, initial_covariance = initial_covariance)
 
     variables           = filtered_and_smoothed[smooth ? 1 : 5]
     standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
@@ -442,6 +486,7 @@ end
 function filter_and_smooth(𝓂::ℳ, 
                             data_in_deviations::AbstractArray, 
                             observables::Vector{Symbol};
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             opts::CalculationOptions = merge_calculation_options())
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
@@ -483,7 +528,17 @@ function filter_and_smooth(𝓂::ℳ,
 
     𝐁 = B * B'
 
-    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)[1]
+    # Prior on the state at the start of the sample. `:theoretical` is the ergodic
+    # covariance (the historical behaviour and the default); `:diagonal` starts
+    # diffuse; a matrix is used as given. Supplying B B' reproduces the inversion
+    # filter's implicit prior — see the Filters page.
+    P̄ = if initial_covariance isa AbstractMatrix
+        Matrix{Float64}(initial_covariance)
+    elseif initial_covariance == :diagonal
+        Matrix{Float64}(10.0 * ℒ.I(size(A, 1)))
+    else
+        calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)[1]
+    end
 
     n_obs = size(data_in_deviations,2)
 

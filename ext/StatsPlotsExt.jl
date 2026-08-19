@@ -5,6 +5,7 @@ using MacroModelling
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
 import MacroModelling: DEFAULT_CACHING, DEFAULT_USE_WORKSPACES, DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
+import Random
 import LaTeXStrings
 
 const irf_active_plot_container = Dict[]
@@ -639,6 +640,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$MacroModelling.PARTICLE_FILTER_KEYWORDS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
@@ -705,7 +707,18 @@ function plot_model_estimates(𝓂::ℳ,
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
-                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
+                                n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                                particle_target_ratio::Real = MacroModelling.DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = MacroModelling.DEFAULT_TEMPERED_MH_STEPS,
+                                particle_max_stages::Int = MacroModelling.DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = MacroModelling.DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -840,6 +853,21 @@ function plot_model_estimates(𝓂::ℳ,
     x_axis = x_axis[periods]
     
     extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
+    if filter ∈ MacroModelling.PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
+                                      particle_resampling_threshold, particle_initial_state_scaling,
+                                      particle_rng, particle_target_ratio, particle_mh_steps,
+                                      particle_max_stages, particle_mh_scale))
+    end
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none, so only forward it where it means something.
+    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; initial_covariance))
+    end
+
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
 
     if is_pruned
@@ -1276,6 +1304,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$MacroModelling.PARTICLE_FILTER_KEYWORDS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial retained-sample periods omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod. Values above the retained sample length are clamped down automatically with an informational message.
@@ -1360,6 +1389,17 @@ function plot_model_estimates!(𝓂::ℳ,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = MacroModelling.DEFAULT_MEASUREMENT_ERROR,
+                                n_particles::Int = MacroModelling.DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = MacroModelling.DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = MacroModelling.DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = MacroModelling.DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                particle_target_ratio::Real = MacroModelling.DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = MacroModelling.DEFAULT_TEMPERED_MH_STEPS,
+                                particle_max_stages::Int = MacroModelling.DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = MacroModelling.DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
@@ -1482,7 +1522,23 @@ function plot_model_estimates!(𝓂::ℳ,
 
     x_axis = x_axis[periods]
     
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    particle_kw = filter ∈ MacroModelling.PARTICLE_FILTERS ?
+        (; measurement_error = MacroModelling.resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng,
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = MacroModelling.DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ MacroModelling.PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
+
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; particle_kw...)
     
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta

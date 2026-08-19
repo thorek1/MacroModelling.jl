@@ -2,7 +2,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths", "particle_filter"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 
@@ -56,6 +56,7 @@ elseif test_set == "higher_order_2"
 elseif test_set == "higher_order_3"
     include("test_higher_order_3.jl")
 elseif test_set == "basic"
+    include("test_compressed_kron.jl")
     include("test_basic.jl")
 elseif test_set == "system_prior_estimation"
     include("test_system_prior_estimation.jl")
@@ -63,12 +64,16 @@ elseif test_set == "gradient_checks"
     include("test_missing_data.jl")
     include("test_rrule_robustness.jl")
     include("test_inversion_filter_gradients.jl")
+    include("test_inversion_filter_likelihood.jl")
     include("test_filter_free_gradients.jl")
     include("test_initial_state.jl")
 elseif test_set == "update_equations"
     include("test_update_equations.jl")
 elseif test_set == "jet_hot_paths"
     include("test_jet_hot_paths.jl")
+elseif test_set == "particle_filter"
+    include("test_particle_filter.jl")
+    include("test_particle_filter_sw07.jl")
 elseif test_set == "dynare_comparison"
     # Dynare comparison runs as a standalone 3-phase pipeline (see CI workflow).
     # If output/ exists with results, run the comparison script directly.

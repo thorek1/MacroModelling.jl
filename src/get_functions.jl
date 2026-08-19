@@ -225,6 +225,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
@@ -297,6 +298,17 @@ And data, 4×2×40 Array{Float64, 3}:
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                                n_particles::Int = DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -339,6 +351,21 @@ And data, 4×2×40 Array{Float64, 3}:
     data_in_deviations = prepare_trimmed_data_in_deviations(data, 𝓂, NSSS; data_in_levels = data_in_levels)
 
     extra_kw = marginal_contribution ? (; marginal_contribution = true) : NamedTuple()
+    warn_unused_measurement_error(filter, measurement_error)
+    if filter ∈ PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling,
+                                      particle_resampling_threshold, particle_initial_state_scaling,
+                                      particle_rng, particle_target_ratio, particle_mh_steps,
+                                      particle_max_stages, particle_mh_scale))
+    end
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none, so only forward it where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        extra_kw = merge(extra_kw, (; initial_covariance))
+    end
     ensure_name_display_constants!(𝓂)
     axis1 = 𝓂.constants.post_complete_parameters.var_axis
     exo_axis = 𝓂.constants.post_complete_parameters.exo_axis_with_subscript
@@ -392,6 +419,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
 - $QME®
@@ -441,7 +469,18 @@ And data, 1×40 Matrix{Float64}:
                             parameters::ParameterType = nothing,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
-                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                            initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                            measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                            particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                            particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                            particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                             smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -485,10 +524,29 @@ And data, 1×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Shocks = axis1, Periods = 1:0)
     end
 
+    warn_unused_measurement_error(filter, measurement_error)
+
+    particle_kw = filter ∈ PARTICLE_FILTERS ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng,
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
+
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
-                                                                                    smooth = smooth)
+                                                                                    smooth = smooth;
+                                                                                    particle_kw...)
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
@@ -514,6 +572,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
 - $SMOOTH®
@@ -567,7 +626,18 @@ And data, 4×40 Matrix{Float64}:
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
-                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                                measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                                n_particles::Int = DEFAULT_N_PARTICLES,
+                                particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                                particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                particle_rng::Random.AbstractRNG = Random.default_rng(), 
+                                particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 levels::Bool = DEFAULT_LEVELS,
@@ -612,10 +682,29 @@ And data, 4×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Variables = axis1, Periods = 1:0)
     end
 
+    warn_unused_measurement_error(filter, measurement_error)
+
+    particle_kw = filter ∈ PARTICLE_FILTERS ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations), n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng,
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
+
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
                                                                                     opts = opts,
-                                                                                    smooth = smooth)
+                                                                                    smooth = smooth;
+                                                                                    particle_kw...)
 
     result = KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.constants.post_model_macro.var)] : variables;  Variables = axis1, Periods = 1:size(data_in_deviations,2))
 
@@ -643,6 +732,7 @@ docstrings of `get_estimated_variables` and `get_estimated_shocks` for details.
 - $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
+$PARTICLE_FILTER_KEYWORDS®
 - $DATA_IN_LEVELS®
 - `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
 - $SMOOTH®
@@ -698,6 +788,17 @@ And data, 5×40 Matrix{Float64}:
                              steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                             measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                             n_particles::Int = DEFAULT_N_PARTICLES,
+                             particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                             particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                             particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                             particle_rng::Random.AbstractRNG = Random.default_rng(),
+                             particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                             particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                             particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                             particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                              data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                              levels::Bool = DEFAULT_LEVELS,
@@ -754,9 +855,13 @@ end
 
 """
 $(SIGNATURES)
-Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. For the default settings this function relies on the Kalman filter and therefore keeps smoothing enabled. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the standard deviations of the smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data. For the default settings this function relies on the Kalman filter and therefore keeps smoothing enabled. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
-If occasionally binding constraints are present in the model, they are not taken into account here. 
+The Kalman filter reports the square root of the diagonal of its state covariance, which is exact for a first order solution. The particle filters (`filter = :bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`) instead report the weighted spread of the particle cloud, which is a Monte-Carlo estimate of the same quantity but valid at every perturbation order — so this is the way to get estimation uncertainty for a nonlinear solution. The inversion filter identifies the state exactly and therefore has no dispersion to report.
+
+Note that the *smoothed* particle spread (`smooth = true`) understates uncertainty in the early part of the sample: the smoother traces the filter's genealogy, and repeated resampling means the surviving ancestral lines coalesce, so few distinct trajectories remain that far back. Raise `n_particles`, or read the filtered spread (`smooth = false`), if the early periods matter.
+
+If occasionally binding constraints are present in the model, they are not taken into account here.
 
 # Arguments
 - $MODEL®
@@ -764,8 +869,11 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
+- $ALGORITHM®
+- $FILTER®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
+$PARTICLE_FILTER_KEYWORDS®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -814,6 +922,19 @@ And data, 4×40 Matrix{Float64}:
                                                     data::KeyedArray{D};
                                                     parameters::ParameterType = nothing,
                                                     steady_state_function::SteadyStateFunctionType = missing,
+                                                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                                                    filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                                    initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
+                                                    measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                                                    n_particles::Int = DEFAULT_N_PARTICLES,
+                                                    particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                                                    particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                                                    particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                                                    particle_rng::Random.AbstractRNG = Random.default_rng(),
+                                                    particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                                                    particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                                                    particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                                                    particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                                     smooth::Bool = DEFAULT_SMOOTH_FLAG,
                                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -832,13 +953,24 @@ And data, 4×40 Matrix{Float64}:
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    algorithm = :first_order
+    # The inversion filter recovers the state exactly, so it has no dispersion to
+    # report. Everything else (Kalman, particle) does.
+    if filter == :inversion || (algorithm != :first_order && filter ∉ PARTICLE_FILTERS && filter != :kalman)
+        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty. The inversion filter identifies the state exactly and has none. Use `filter = :kalman` (first order) or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`), which report the spread of the particle cloud and work at every perturbation order.")
+    end
+
+    filter, smooth, algorithm, _, _, _ = normalize_filtering_options(filter, smooth, algorithm, false, 0)
+
+    if filter == :inversion
+        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty; `algorithm = :$(algorithm)` fell back to the inversion filter, which identifies the state exactly. Select a particle filter explicitly.")
+    end
 
     solve!(𝓂, 
             parameters = parameters,
             steady_state_function = steady_state_function, 
             opts = opts,
-            dynamics = true)
+            dynamics = true,
+            algorithm = algorithm)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -852,9 +984,27 @@ And data, 4×40 Matrix{Float64}:
         return KeyedArray(zeros(eltype(NSSS), length(axis1), 0); Standard_deviations = axis1, Periods = 1:0)
     end
 
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
+    warn_unused_measurement_error(filter, measurement_error)
+    particle_kw = filter ∈ PARTICLE_FILTERS ?
+        (; measurement_error = resolve_measurement_error(filter, measurement_error, data_in_deviations),
+           n_particles, particle_resampling, particle_resampling_threshold,
+           particle_initial_state_scaling, particle_rng,
+           particle_target_ratio, particle_mh_steps,
+           particle_max_stages, particle_mh_scale) : NamedTuple()
+
+    if filter == :inversion && initial_covariance !== :theoretical
+        @info "`initial_covariance` is not used by the inversion filter, which fixes the initial state and carries no state covariance. Ignoring input." maxlog = DEFAULT_MAXLOG
+    end
+    # The Kalman and particle filters take a prior on the initial state; the
+    # inversion filter has none (it fixes x₀ and clamps the covariance), so the
+    # argument is only forwarded where it means something.
+    if filter == :kalman || filter ∈ PARTICLE_FILTERS
+        particle_kw = merge(particle_kw, (; initial_covariance))
+    end
+
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     smooth = smooth, 
-                                                                                    opts = opts)
+                                                                                    opts = opts; particle_kw...)
 
     if !use_workspaces; 𝓂.workspaces = orig_ws; end
 
@@ -1091,12 +1241,12 @@ The same can be achieved with the other input formats:
 
         S₂ = nothing
         if size(𝓂.caches.second_order_solution, 2) > 0
-            S₂ = 𝓂.caches.second_order_solution * 𝓂.constants.second_order.𝐔₂
+            S₂ = 𝓂.caches.second_order_solution
         end
 
         S₃ = nothing
         if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.caches.third_order_solution, 2) > 0
-            S₃ = 𝓂.caches.third_order_solution * 𝓂.constants.third_order.𝐔₃
+            S₃ = 𝓂.caches.third_order_solution
         end
 
         ensure_conditional_forecast_constants!(𝓂.constants; third_order = !isnothing(S₃))
@@ -1410,7 +1560,7 @@ function irf_forward_simulate!(::Val{:second_order},
             shocks_store[si, t] = shock_hist[:, t]
             prev = states_store[si, t]
             aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            y_t = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / 2
+            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2
             states_store[si, t+1] = y_t
             Y_all[:, t, si] = y_t
         end
@@ -1434,8 +1584,7 @@ function irf_forward_simulate!(::Val{:third_order},
             shocks_store[si, t] = shock_hist[:, t]
             prev = states_store[si, t]
             aug = [prev[past_idx]; one(S); shocks_store[si, t]]
-            kaug = ℒ.kron(aug, aug)
-            y_t = 𝐒₁ * aug + 𝐒₂ * kaug / 2 + 𝐒₃ * ℒ.kron(kaug, aug) / 6
+            y_t = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / 2 + 𝐒₃ * compressed_kron³_power(aug) / 6
             states_store[si, t+1] = y_t
             Y_all[:, t, si] = y_t
         end
@@ -4299,11 +4448,105 @@ function get_statistics(𝓂::ℳ,
     return ret
 end
 
+# The Kalman *likelihood* takes measurement error (H enters F = C P C' + H; see
+# the header of filter/particle.jl for why that is worth having at all — it is
+# what makes an over-identified observation set non-singular, absorbs
+# misspecification, and lets the particle filters be validated against an exact
+# likelihood under the same H). The Kalman *smoother* path (`filter_and_smooth`)
+# does not take it: the Durbin-Koopman backward recursion would need H threaded
+# through the disturbance smoother as well, which is not implemented. So a
+# `measurement_error` supplied to the estimate entry points only has an effect for
+# the particle filters. Say so rather than silently dropping it.
+function warn_unused_measurement_error(filter::Symbol, measurement_error; maxlog::Int = DEFAULT_MAXLOG)
+    if filter ∉ PARTICLE_FILTERS && measurement_error !== DEFAULT_MEASUREMENT_ERROR
+        @info "`measurement_error` is only used by the particle filters on this path; it is ignored for `filter = :$(filter)`. Use `get_loglikelihood` if you need measurement error in the Kalman likelihood." maxlog = maxlog
+    end
+    return nothing
+end
+
+# `:auto` measurement error: a fraction of each observable's sample standard
+# deviation, returned as variances. The particle filters are degenerate without
+# measurement error — every particle would have to reproduce the observation
+# exactly — so they need *some* positive default to be usable out of the box, and
+# a data-driven one is the only choice that works across models whose observables
+# differ in scale by orders of magnitude. This is a convenience only: the
+# likelihood level depends on H, so set (or estimate) it explicitly for real work.
+function auto_measurement_error_variances(data_in_deviations::AbstractMatrix)
+    n_obs = size(data_in_deviations, 1)
+    variances = Vector{Float64}(undef, n_obs)
+
+    @inbounds for i in 1:n_obs
+        # sample standard deviation over the finite (observed) entries of row i
+        n = 0
+        μ = 0.0
+        for v in @view data_in_deviations[i, :]
+            if isfinite(v); n += 1; μ += v; end
+        end
+        s = 0.0
+        if n > 1
+            μ /= n
+            acc = 0.0
+            for v in @view data_in_deviations[i, :]
+                if isfinite(v); acc += (v - μ)^2; end
+            end
+            s = sqrt(acc / (n - 1))
+        end
+        # fall back to a unit scale for a (near) constant or unobserved series
+        variances[i] = (DEFAULT_PARTICLE_MEASUREMENT_ERROR_FRACTION * (isfinite(s) && s > 0 ? s : 1.0))^2
+    end
+
+    return variances
+end
+
+# Resolve the user-facing `measurement_error` into what the filter kernels take:
+# `nothing` (no measurement error), a `Vector{Float64}` of per-observable
+# variances, or a `Matrix{Float64}` covariance. The `:auto` convention lives here
+# rather than in the kernels, so that every kernel receives a concrete H.
+#
+# `measurement_error` is the covariance H, never a standard deviation: a scalar is
+# the common variance of all observables, a vector the per-observable variances,
+# and a matrix the full covariance.
+function resolve_measurement_error(filter::Symbol, measurement_error, data_in_deviations::AbstractMatrix)
+    n_obs = size(data_in_deviations, 1)
+
+    if measurement_error === :auto
+        # The deterministic filters keep their historical behaviour (none).
+        filter ∈ PARTICLE_FILTERS || return nothing
+        return auto_measurement_error_variances(data_in_deviations)
+    end
+
+    @assert !(measurement_error isa Symbol) "`measurement_error` must be `:auto`, a scalar variance, a vector of per-observable variances, or a covariance matrix; got `:$(measurement_error)`."
+
+    if measurement_error isa AbstractMatrix
+        @assert size(measurement_error) == (n_obs, n_obs) "`measurement_error` given as a covariance matrix must be square with one row/column per observable ($n_obs); got $(size(measurement_error)). (A time-varying, per-period measurement error is not supported on the filter-based path.)"
+        H = Matrix{Float64}(measurement_error)
+        @assert all(isfinite, H) "`measurement_error` must contain only finite entries."
+        @assert isapprox(H, H', rtol = 1e-10) "`measurement_error` given as a covariance matrix must be symmetric."
+        H = (H + H') / 2   # symmetrise away round-off
+        @assert ℒ.isposdef(H) "`measurement_error` given as a covariance matrix must be positive definite."
+        # A diagonal covariance is just a variance vector; hand the kernels the
+        # cheaper representation so they take their elementwise fast path.
+        return ℒ.isdiag(H) ? collect(ℒ.diag(H)) : H
+    end
+
+    variances = measurement_error isa AbstractVector ? collect(float.(measurement_error)) : fill(float(measurement_error), n_obs)
+
+    @assert length(variances) == n_obs || length(variances) == 1 "`measurement_error` vector must have one entry per observable (got $(length(variances)), expected $n_obs) or a single entry that is broadcast to all observables."
+
+    if length(variances) == 1 && n_obs > 1
+        variances = fill(variances[1], n_obs)
+    end
+
+    @assert all(v -> isfinite(v) && v >= 0, variances) "`measurement_error` entries are variances and must be finite and non-negative. (If you have standard deviations, square them.)"
+
+    return any(v -> v > 0, variances) ? variances : nothing
+end
+
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, the inversion filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-This function is differentiable and supports both the Kalman and inversion likelihoods.
+The Kalman and inversion likelihoods are differentiable. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4317,9 +4560,10 @@ If occasionally binding constraints are present in the model, they are not taken
 - $FILTER®
 - $WARMUP_ITERATIONS®
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the retained data sample for which the loglikelihood is discarded. Values above the retained sample length are clamped down automatically with an informational message.
-- `initial_covariance` [Default: `:theoretical`, Type: `Union{Symbol,AbstractMatrix{<:Real}}`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix of appropriate size (number of observables and states).
+- $INITIAL_COVARIANCE®
 - $INITIAL_STATE®
-- `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
+- $ON_FAILURE_LOGLIKELIHOOD®
+$PARTICLE_FILTER_KEYWORDS®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -4327,7 +4571,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `<:AbstractFloat` loglikelihood 
+- `<:AbstractFloat` loglikelihood
 
 # Examples
 ```jldoctest
@@ -4363,14 +4607,24 @@ function get_loglikelihood(𝓂::ℳ,
                             steady_state_function::SteadyStateFunctionType = missing, 
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
-                            on_failure_loglikelihood::U = -Inf,
-                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
+                            on_failure_loglikelihood::U = DEFAULT_ON_FAILURE_LOGLIKELIHOOD_SELECTOR(filter),
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
-                            tol::Tolerances = Tolerances(), 
-                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂), 
-                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                            measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                            particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                            particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                            particle_rng::Random.AbstractRNG = Random.default_rng(),
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
+                            tol::Tolerances = Tolerances(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
                             caching::Bool = DEFAULT_CACHING,
@@ -4387,6 +4641,16 @@ function get_loglikelihood(𝓂::ℳ,
                              presample_periods = presample_periods,
                              initial_covariance = initial_covariance,
                              filter_algorithm = filter_algorithm,
+                             measurement_error = measurement_error,
+                             n_particles = n_particles,
+                             particle_resampling = particle_resampling,
+                             particle_resampling_threshold = particle_resampling_threshold,
+                             particle_initial_state_scaling = particle_initial_state_scaling,
+                             particle_rng = particle_rng,
+                             particle_target_ratio = particle_target_ratio,
+                             particle_mh_steps = particle_mh_steps,
+                             particle_max_stages = particle_max_stages,
+                             particle_mh_scale = particle_mh_scale,
                              tol = tol,
                              quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                              lyapunov_algorithm = lyapunov_algorithm,
@@ -4403,11 +4667,21 @@ function get_loglikelihood(𝓂::ℳ,
                             steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM,
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
-                            on_failure_loglikelihood::U = -Inf,
+                            on_failure_loglikelihood::U = DEFAULT_ON_FAILURE_LOGLIKELIHOOD_SELECTOR(filter),
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                             presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                             initial_covariance::Union{Symbol,AbstractMatrix{<:Real}} = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
+                            measurement_error::Union{Symbol,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = DEFAULT_MEASUREMENT_ERROR,
+                            n_particles::Int = DEFAULT_N_PARTICLES,
+                            particle_resampling::Symbol = DEFAULT_PARTICLE_RESAMPLING,
+                            particle_resampling_threshold::Real = DEFAULT_PARTICLE_RESAMPLING_THRESHOLD,
+                            particle_initial_state_scaling::Real = DEFAULT_PARTICLE_INITIAL_STATE_SCALING,
+                            particle_rng::Random.AbstractRNG = Random.default_rng(),
+                            particle_target_ratio::Real = DEFAULT_PARTICLE_TARGET_RATIO,
+                            particle_mh_steps::Int = DEFAULT_PARTICLE_MH_STEPS_SELECTOR(filter),
+                            particle_max_stages::Int = DEFAULT_PARTICLE_MAX_STAGES,
+                            particle_mh_scale::Real = DEFAULT_PARTICLE_MH_SCALE,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
@@ -4542,9 +4816,97 @@ function get_loglikelihood(𝓂::ℳ,
         return zero(S)
     end
 
+    is_particle_filter = filter ∈ PARTICLE_FILTERS
+
+    # Gaussian measurement-error covariance H: `nothing` when no measurement error
+    # is active, a vector of per-observable variances (in data-row order) when H is
+    # diagonal, or a full covariance matrix. Supported by the Kalman and particle
+    # filters; the inversion filter recovers shocks exactly and does not admit
+    # measurement error. `:auto` resolves per filter.
+    measurement_error_H = resolve_measurement_error(filter, measurement_error, data_in_deviations)
+
+    if filter == :inversion && measurement_error_H !== nothing
+        error("`measurement_error` is not supported by the inversion filter (`filter = :inversion`). Use `filter = :kalman` (linear) or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`).")
+    end
+    if is_particle_filter
+        if measurement_error_H === nothing
+            error("The particle filters require measurement error (they are degenerate without it); set `measurement_error` to a positive variance (scalar, per-observable vector, or covariance matrix), or leave it at `:auto`.")
+        end
+        # The particle filter evaluates in Float64 and is not differentiable; a
+        # forward-mode `Dual` parameter type would silently yield a zero gradient.
+        if !(S <: AbstractFloat)
+            error("The particle filters are not differentiable and cannot be used with automatic differentiation. Use a gradient-free sampler (e.g. Pigeons slice sampling or nested sampling).")
+        end
+    end
+
     # @timeit_debug timer "Filter" begin
 
-    llh = if has_missing
+    llh = if is_particle_filter
+        run_particle_filter(Val(algorithm),
+                            Val(PARTICLE_FILTER_VARIANT[filter]),
+                            obs_indices,
+                            𝐒,
+                            data_in_deviations,
+                            constants_obj,
+                            state,
+                            𝓂,
+                            # Narrowed here rather than into a local above: the
+                            # `nothing` case is already rejected in the guard
+                            # block, but that guard is a separate `if` and JET
+                            # cannot correlate the two, so a local binding reads
+                            # as possibly undefined.
+                            measurement_error_H::Union{AbstractVector{<:Real},AbstractMatrix{<:Real}},
+                            obs_idx_per_t,
+                            has_missing;
+                            n_particles = n_particles,
+                            particle_resampling = particle_resampling,
+                            particle_resampling_threshold = particle_resampling_threshold,
+                            particle_initial_state_scaling = particle_initial_state_scaling,
+                            particle_rng = particle_rng,
+                            presample_periods = presample_periods,
+                            initial_covariance = initial_covariance,
+                            on_failure_loglikelihood = on_failure_loglikelihood,
+                            particle_target_ratio = particle_target_ratio,
+                            particle_mh_steps = particle_mh_steps,
+                            particle_max_stages = particle_max_stages,
+                            particle_mh_scale = particle_mh_scale,
+                            opts = opts)
+    elseif filter == :kalman
+        if has_missing
+            calculate_loglikelihood_with_missing(Val(:kalman),
+                                        Val(algorithm),
+                                        obs_indices,
+                                        𝐒,
+                                        data_in_deviations,
+                                        constants_obj,
+                                        state,
+                                        𝓂.workspaces,
+                                        obs_idx_per_t,
+                                        warmup_iterations = warmup_iterations,
+                                        presample_periods = presample_periods,
+                                        initial_covariance = initial_covariance,
+                                        filter_algorithm = filter_algorithm,
+                                        measurement_error = measurement_error_H,
+                                        opts = opts,
+                                        on_failure_loglikelihood = on_failure_loglikelihood)
+        else
+            calculate_loglikelihood(Val(:kalman),
+                                    Val(algorithm),
+                                    obs_indices,
+                                    𝐒,
+                                    data_in_deviations,
+                                    constants_obj,
+                                    state,
+                                    𝓂.workspaces,
+                                    warmup_iterations = warmup_iterations,
+                                    presample_periods = presample_periods,
+                                    initial_covariance = initial_covariance,
+                                    filter_algorithm = filter_algorithm,
+                                    measurement_error = measurement_error_H,
+                                    opts = opts,
+                                    on_failure_loglikelihood = on_failure_loglikelihood)
+        end
+    elseif has_missing
         calculate_loglikelihood_with_missing(Val(filter),
                                     Val(algorithm),
                                     obs_indices,
@@ -4982,13 +5344,13 @@ function filter_free_loglikelihood_loop(::Val{:second_order},
     for t in 1:n_warm
         ϵ = view(shocks, :, t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        cur_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2)
     end
 
     for t in 1:nT
         ϵ = view(shocks, :, n_warm + t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        new_state = 𝐒₁ * aug + 𝐒₂ * ℒ.kron(aug, aug) / R(2)
+        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2)
         idx = obs_idx_per_t[t]
         if !isempty(idx)
             obs_dev = new_state[obs_indices[idx]]
@@ -5024,15 +5386,13 @@ function filter_free_loglikelihood_loop(::Val{:third_order},
     for t in 1:n_warm
         ϵ = view(shocks, :, t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        kaug = ℒ.kron(aug, aug)
-        cur_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+        cur_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2) + 𝐒₃ * compressed_kron³_power(aug) / R(6)
     end
 
     for t in 1:nT
         ϵ = view(shocks, :, n_warm + t)
         aug = vcat(cur_state[past_idx], one(R), ϵ)
-        kaug = ℒ.kron(aug, aug)
-        new_state = 𝐒₁ * aug + 𝐒₂ * kaug / R(2) + 𝐒₃ * ℒ.kron(kaug, aug) / R(6)
+        new_state = 𝐒₁ * aug + 𝐒₂ * compressed_kron²_power(aug) / R(2) + 𝐒₃ * compressed_kron³_power(aug) / R(6)
         idx = obs_idx_per_t[t]
         if !isempty(idx)
             obs_dev = new_state[obs_indices[idx]]
