@@ -109,6 +109,8 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
+    :filter_free_shocks => "Filter-free shocks",
+    :measurement_error_std => "Obs. error std",
 )
 
 # Turing distribution wrapper defaults

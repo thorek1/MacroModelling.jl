@@ -516,6 +516,251 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             forecast_periods = forecast_periods)
                 end
             end
+
+        # filter-free positional shocks — zero shocks, data (deviations), no std
+        nExo = length(m.constants.post_model_macro.exo)
+        nT = size(data, 2)
+        zero_shocks = zeros(nExo, nT)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = false,
+                             presample_periods = 0)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = false,
+                             presample_periods = 3)
+
+        # filter-free positional shocks — zero shocks, data_in_levels, no std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, zero_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        # filter-free positional shocks — zero shocks, forecast
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = false,
+                             forecast_periods = 6)
+
+        # filter-free positional shocks — zero shocks, plot_model_estimates!
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = false,
+                              presample_periods = 0)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = false,
+                              presample_periods = 3)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, zero_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # filter-free positional shocks — zero shocks, scalar std
+        obs_axis = collect(axiskeys(data_in_levels, 1))
+        n_obs = length(obs_axis)
+        scalar_std = 0.01
+        vector_std = fill(scalar_std, n_obs)
+        matrix_std = fill(scalar_std, n_obs, nT)
+        matrix_std[:, 2:2:end] .= 0.02
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks, scalar_std;
+                             algorithm = algorithm,
+                             data_in_levels = false)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks, scalar_std;
+                              algorithm = algorithm,
+                              data_in_levels = false)
+
+        # filter-free positional shocks — zero shocks, vector std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks, vector_std;
+                             algorithm = algorithm,
+                             data_in_levels = false)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks, vector_std;
+                              algorithm = algorithm,
+                              data_in_levels = false)
+
+        # filter-free positional shocks — zero shocks, matrix std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = false)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks, matrix_std;
+                              algorithm = algorithm,
+                              data_in_levels = false)
+
+        # filter-free positional shocks — zero shocks, std, data_in_levels
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, zero_shocks, scalar_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, zero_shocks, vector_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, zero_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        # filter-free positional shocks — zero shocks, matrix std, forecast
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data, zero_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = false,
+                             forecast_periods = 6)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data, zero_shocks, matrix_std;
+                              algorithm = algorithm,
+                              data_in_levels = false,
+                              forecast_periods = 6)
+
+        # Kalman-filtered shocks — smoothed, no std
+        clear_solution_caches!(m, algorithm)
+        smoothed_shocks = Matrix(get_estimated_shocks(m, data_in_levels,
+                                                       algorithm = algorithm,
+                                                       filter = :kalman,
+                                                       smooth = true,
+                                                       data_in_levels = true))
+
+        clear_solution_caches!(m, algorithm)
+        filtered_shocks = Matrix(get_estimated_shocks(m, data_in_levels,
+                                                       algorithm = algorithm,
+                                                       filter = :kalman,
+                                                       smooth = false,
+                                                       data_in_levels = true))
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman smoothed — forecast
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = true,
+                             forecast_periods = 6)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = true,
+                              forecast_periods = 6)
+
+        # Kalman filtered — no std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, filtered_shocks;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, filtered_shocks;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman smoothed — scalar std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks, scalar_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks, scalar_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman smoothed — vector std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks, vector_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks, vector_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman smoothed — matrix std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks, matrix_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman filtered — scalar std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, filtered_shocks, scalar_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, filtered_shocks, scalar_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman filtered — vector std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, filtered_shocks, vector_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, filtered_shocks, vector_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman filtered — matrix std
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, filtered_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = true)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, filtered_shocks, matrix_std;
+                              algorithm = algorithm,
+                              data_in_levels = true)
+
+        # Kalman smoothed — matrix std, forecast
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates(m, data_in_levels, smoothed_shocks, matrix_std;
+                             algorithm = algorithm,
+                             data_in_levels = true,
+                             forecast_periods = 6)
+
+        clear_solution_caches!(m, algorithm)
+        plot_model_estimates!(m, data_in_levels, smoothed_shocks, matrix_std;
+                              algorithm = algorithm,
+                              data_in_levels = true,
+                              forecast_periods = 6)
         end
 
         @testset "plot_solution" begin

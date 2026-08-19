@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, NsssTolerances, SolverTolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, filter_free_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, normalize_presample_periods, trim_informative_sample, adjust_initial_state, SteadyStateFunctionType
 import MacroModelling: DEFAULT_CACHING, DEFAULT_USE_WORKSPACES, DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -364,6 +364,24 @@ function build_extended_palette(attributes_redux::Dict; total_pal_len::Int = 100
     mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 end
 
+function plot_observation_std_band!(p,
+                                    xvals,
+                                    observations::AbstractVector,
+                                    std_values::AbstractVector,
+                                    color;
+                                    alpha::Float64 = 0.18)
+    StatsPlots.plot!(p,
+                     xvals,
+                     observations,
+                     ribbon = std_values,
+                     fillalpha = alpha,
+                     linealpha = 0,
+                     linewidth = 0,
+                     label = "",
+                     color = color)
+    return p
+end
+
 function process_rename_dictionary(rename_dictionary::AbstractDict, 𝓂::ℳ)
     relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.exo)] |> sort
     processed = Any[]
@@ -634,6 +652,8 @@ If occasionally binding constraints are present in the model, they are not taken
 # Arguments
 - $MODEL®
 - $DATA®
+- `filter_free_shocks` [optional positional, Type: `AbstractMatrix{<:Real}`]: latent structural shock path from filter-free estimation. The matrix must have one row per exogenous shock and one column per data period, plus `max(warmup_iterations - 1, 0)` leading warmup columns when warmup is used. When supplied, the model-implied endogenous path is forward-simulated from these shocks.
+- `measurement_error_std` [optional positional, Type: `Real`, `AbstractVector`, or `AbstractMatrix`]: standard deviation(s) for a transparent [+σ,-σ] band around observations. Vectors must have one entry per observable; matrices must have dimensions `(n_observables, n_periods)`.
 # Keyword Arguments
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
@@ -701,6 +721,21 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
+                              data::KeyedArray,
+                              filter_free_shocks::AbstractMatrix{<:Real};
+                              kwargs...)
+    return plot_model_estimates(𝓂, data; filter_free_shocks = filter_free_shocks, kwargs...)
+end
+
+function plot_model_estimates(𝓂::ℳ,
+                              data::KeyedArray,
+                              filter_free_shocks::AbstractMatrix{<:Real},
+                              measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}};
+                              kwargs...)
+    return plot_model_estimates(𝓂, data; filter_free_shocks = filter_free_shocks, measurement_error_std = measurement_error_std, kwargs...)
+end
+
+function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
@@ -733,7 +768,10 @@ function plot_model_estimates(𝓂::ℳ,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                 caching::Bool = DEFAULT_CACHING,
-                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES,
+                                filter_free_shocks::Union{Nothing,AbstractMatrix{<:Real}} = nothing,
+                                measurement_error_std::Union{Nothing,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
+                                initial_state = DEFAULT_INITIAL_STATE)
     # @nospecialize # reduce compile time                            
 
     if !caching invalidate_cache_validity!(𝓂) end
@@ -745,14 +783,26 @@ function plot_model_estimates(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
-    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = isnothing(filter_free_shocks) && filter == :kalman)
 
     gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
+    filter_free_plot = !isnothing(filter_free_shocks)
+    if filter_free_plot
+        @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`plot_model_estimates` with positional shocks only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+        if shock_decomposition
+            @info "Shock decomposition is not available when plotting a positional filter-free shock path. Setting `shock_decomposition = false`." maxlog = 3
+            shock_decomposition = false
+        end
+        smooth = false
+        pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
+        filter = :filter_free
+    else
+        filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
+    end
 
     if marginal_contribution && shock_decomposition && !pruning
         @info "`marginal_contribution = true` is only meaningful for pruned higher-order solutions (`:pruned_second_order`, `:pruned_third_order`). Setting `marginal_contribution = false` for `algorithm = $(algorithm)`." maxlog = 3
@@ -809,7 +859,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0) + (filter_free_plot && !isnothing(measurement_error_std) ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -827,8 +877,22 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
-    data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
-                                                                            require_informative_periods = true)
+    measurement_error_std_to_plot = nothing
+    if filter_free_plot
+        filter_free_output = filter_free_data_with_model(𝓂,
+                                                         data_in_deviations,
+                                                         filter_free_shocks,
+                                                         measurement_error_std,
+                                                         initial_state;
+                                                         algorithm = algorithm,
+                                                         warmup_iterations = warmup_iterations,
+                                                         opts = opts)
+        data_in_deviations = filter_free_output.data_in_deviations
+        informative_periods = filter_free_output.period_range
+    else
+        data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
+                                                                                require_informative_periods = true)
+    end
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
 
     x_axis = axiskeys(data,2)[informative_periods]
@@ -839,10 +903,18 @@ function plot_model_estimates(𝓂::ℳ,
 
     x_axis = x_axis[periods]
     
-    extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
+    if filter_free_plot
+        variables_to_plot = filter_free_output.variables
+        shocks_to_plot = filter_free_output.shocks
+        standard_deviations = zeros(0, 0)
+        decomposition = zeros(size(variables_to_plot, 1), size(shocks_to_plot, 1) + 2, size(variables_to_plot, 2))
+        measurement_error_std_to_plot = filter_free_output.measurement_error_std
+    else
+        extra_kw = mc ? (; marginal_contribution = true) : NamedTuple()
+        variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts; extra_kw...)
+    end
 
-    if is_pruned
+    if is_pruned && !filter_free_plot
         if mc
             decomposition[:, end - 1, :] .+= SSS_delta
         else
@@ -924,6 +996,9 @@ function plot_model_estimates(𝓂::ℳ,
                            :decomposition => decomposition,
                            :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
+                           :measurement_error_std => measurement_error_std_to_plot,
+                           :filter_free_shocks => filter_free_shocks,
+                           :filter_free_plot => filter_free_plot,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names_display,
@@ -1020,10 +1095,23 @@ function plot_model_estimates(𝓂::ℳ,
                                         color_total = estimate_color)
                     if var_idx[i] ∈ obs_idx
                         # Pad data with NaN for forecast period
+                        obs_row = indexin([var_idx[i]],obs_idx)
                         data_padded = if forecast_periods > 0
-                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                            vcat(vec(data_in_deviations[obs_row,periods]), fill(NaN, forecast_periods))
                         else
-                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                            vec(data_in_deviations[obs_row,periods])
+                        end
+                        if !isnothing(measurement_error_std_to_plot)
+                            std_padded = if forecast_periods > 0
+                                vcat(vec(measurement_error_std_to_plot[obs_row, periods]), fill(NaN, forecast_periods))
+                            else
+                                vec(measurement_error_std_to_plot[obs_row, periods])
+                            end
+                            plot_observation_std_band!(p,
+                                                       extended_x_axis,
+                                                       shock_decomposition ? data_padded : data_padded .+ SS,
+                                                       std_padded,
+                                                       shock_decomposition ? data_color : pal[2])
                         end
                         StatsPlots.plot!(p,
                             # extended_x_axis,
@@ -1064,10 +1152,23 @@ function plot_model_estimates(𝓂::ℳ,
 
                     if var_idx[i] ∈ obs_idx
                         # Pad data with NaN for forecast period
+                        obs_row = indexin([var_idx[i]],obs_idx)
                         data_padded = if forecast_periods > 0
-                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                            vcat(vec(data_in_deviations[obs_row,periods]), fill(NaN, forecast_periods))
                         else
-                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                            vec(data_in_deviations[obs_row,periods])
+                        end
+                        if !isnothing(measurement_error_std_to_plot)
+                            std_padded = if forecast_periods > 0
+                                vcat(vec(measurement_error_std_to_plot[obs_row, periods]), fill(NaN, forecast_periods))
+                            else
+                                vec(measurement_error_std_to_plot[obs_row, periods])
+                            end
+                            plot_observation_std_band!(p,
+                                                       extended_x_axis,
+                                                       shock_decomposition ? data_padded : data_padded .+ SS,
+                                                       std_padded,
+                                                       shock_decomposition ? data_color : pal[2])
                         end
                         StatsPlots.plot!(p,
                             extended_x_axis,
@@ -1128,6 +1229,18 @@ function plot_model_estimates(𝓂::ℳ,
                             [NaN], 
                             label = "Data", 
                             color = shock_decomposition ? data_color : pal[2])
+
+            if !isnothing(measurement_error_std_to_plot)
+                StatsPlots.plot!(pl,
+                                [NaN], [NaN],
+                                seriestype = :scatter,
+                                label = "[+σ,-σ]",
+                                markershape = :rect,
+                                markersize = 8,
+                                markeralpha = 0.18,
+                                markercolor = shock_decomposition ? data_color : pal[2],
+                                markerstrokewidth = 0)
+            end
 
             if shock_decomposition
                 additional_labels_prefix = ["Initial value"]
@@ -1200,6 +1313,18 @@ function plot_model_estimates(𝓂::ℳ,
                         label = "Data", 
                         color = shock_decomposition ? data_color : pal[2])
 
+        if !isnothing(measurement_error_std_to_plot)
+            StatsPlots.plot!(pl,
+                            [NaN], [NaN],
+                            seriestype = :scatter,
+                            label = "[+σ,-σ]",
+                            markershape = :rect,
+                            markersize = 8,
+                            markeralpha = 0.18,
+                            markercolor = shock_decomposition ? data_color : pal[2],
+                            markerstrokewidth = 0)
+        end
+
 
         if shock_decomposition
             additional_labels_prefix = ["Initial value"]
@@ -1271,6 +1396,8 @@ This function shares most of the signature and functionality of [`plot_model_est
 # Arguments
 - $MODEL®
 - $DATA®
+- `filter_free_shocks` [optional positional, Type: `AbstractMatrix{<:Real}`]: latent structural shock path from filter-free estimation. The matrix must have one row per exogenous shock and one column per data period, plus `max(warmup_iterations - 1, 0)` leading warmup columns when warmup is used. When supplied, the model-implied endogenous path is forward-simulated from these shocks.
+- `measurement_error_std` [optional positional, Type: `Real`, `AbstractVector`, or `AbstractMatrix`]: standard deviation(s) for a transparent [+σ,-σ] band around observations. Vectors must have one entry per observable; matrices must have dimensions `(n_observables, n_periods)`.
 # Keyword Arguments
 - $PARAMETERS®
 - $STEADY_STATE_FUNCTION®
@@ -1355,6 +1482,21 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 ```
 """
 function plot_model_estimates!(𝓂::ℳ,
+                               data::KeyedArray,
+                               filter_free_shocks::AbstractMatrix{<:Real};
+                               kwargs...)
+    return plot_model_estimates!(𝓂, data; filter_free_shocks = filter_free_shocks, kwargs...)
+end
+
+function plot_model_estimates!(𝓂::ℳ,
+                               data::KeyedArray,
+                               filter_free_shocks::AbstractMatrix{<:Real},
+                               measurement_error_std::Union{Real,AbstractVector{<:Real},AbstractMatrix{<:Real}};
+                               kwargs...)
+    return plot_model_estimates!(𝓂, data; filter_free_shocks = filter_free_shocks, measurement_error_std = measurement_error_std, kwargs...)
+end
+
+function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray;
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
@@ -1384,7 +1526,10 @@ function plot_model_estimates!(𝓂::ℳ,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                                 caching::Bool = DEFAULT_CACHING,
-                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES)
+                                use_workspaces::Bool = DEFAULT_USE_WORKSPACES,
+                                filter_free_shocks::Union{Nothing,AbstractMatrix{<:Real}} = nothing,
+                                measurement_error_std::Union{Nothing,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
+                                initial_state = DEFAULT_INITIAL_STATE)
     # @nospecialize # reduce compile time                            
 
     if !caching invalidate_cache_validity!(𝓂) end
@@ -1397,13 +1542,21 @@ function plot_model_estimates!(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    warn_irrelevant_tol(tol, algorithm; needs_covariance = filter == :kalman)
+    warn_irrelevant_tol(tol, algorithm; needs_covariance = isnothing(filter_free_shocks) && filter == :kalman)
     gr_back, attributes, attributes_redux = setup_plot_attributes(plot_attributes)
 
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
+    filter_free_plot = !isnothing(filter_free_shocks)
+    if filter_free_plot
+        @assert algorithm ∈ [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order] "`plot_model_estimates!` with positional shocks only supports perturbation algorithms (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`)."
+        smooth = false
+        pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
+        filter = :filter_free
+    else
+        filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
+    end
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -1470,8 +1623,22 @@ function plot_model_estimates!(𝓂::ℳ,
         data_in_deviations = MacroModelling.missing_data_to_nan(data)
     end
 
-    data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
-                                                                            require_informative_periods = true)
+    measurement_error_std_to_plot = nothing
+    if filter_free_plot
+        filter_free_output = filter_free_data_with_model(𝓂,
+                                                         data_in_deviations,
+                                                         filter_free_shocks,
+                                                         measurement_error_std,
+                                                         initial_state;
+                                                         algorithm = algorithm,
+                                                         warmup_iterations = warmup_iterations,
+                                                         opts = opts)
+        data_in_deviations = filter_free_output.data_in_deviations
+        informative_periods = filter_free_output.period_range
+    else
+        data_in_deviations, _, _, informative_periods = trim_informative_sample(data_in_deviations;
+                                                                                require_informative_periods = true)
+    end
     presample_periods = normalize_presample_periods(presample_periods, size(data_in_deviations, 2))
 
     x_axis = axiskeys(data,2)[informative_periods]
@@ -1482,9 +1649,17 @@ function plot_model_estimates!(𝓂::ℳ,
 
     x_axis = x_axis[periods]
     
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    if filter_free_plot
+        variables_to_plot = filter_free_output.variables
+        shocks_to_plot = filter_free_output.shocks
+        standard_deviations = zeros(0, 0)
+        decomposition = zeros(size(variables_to_plot, 1), size(shocks_to_plot, 1) + 2, size(variables_to_plot, 2))
+        measurement_error_std_to_plot = filter_free_output.measurement_error_std
+    else
+        variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
+    end
     
-    if pruning
+    if pruning && !filter_free_plot
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
         decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
     end
@@ -1557,6 +1732,9 @@ function plot_model_estimates!(𝓂::ℳ,
                            :decomposition => decomposition,
                            :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
+                           :measurement_error_std => measurement_error_std_to_plot,
+                           :filter_free_shocks => filter_free_shocks,
+                           :filter_free_plot => filter_free_plot,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names_display,
@@ -1603,6 +1781,42 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
+    end
+
+    filter_free_shocks_idx = Int[]
+
+    if haskey(diffdict, :filter_free_shocks)
+        unique_ffs = unique(map(x -> isnothing(x) ? nothing : collect(x), diffdict[:filter_free_shocks]))
+
+        for init in diffdict[:filter_free_shocks]
+            normalized = isnothing(init) ? nothing : collect(init)
+            for (i,u) in enumerate(unique_ffs)
+                if u == normalized
+                    push!(filter_free_shocks_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Filter-free shocks" => ["#$i" for i in filter_free_shocks_idx])
+    end
+
+    measurement_error_std_idx = Int[]
+
+    if haskey(diffdict, :measurement_error_std)
+        unique_mes = unique(map(x -> isnothing(x) ? nothing : collect(x), diffdict[:measurement_error_std]))
+
+        for init in diffdict[:measurement_error_std]
+            normalized = isnothing(init) ? nothing : collect(init)
+            for (i,u) in enumerate(unique_mes)
+                if u == normalized
+                    push!(measurement_error_std_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Obs. error std" => ["#$i" for i in measurement_error_std_idx])
     end
 
     annotate_rename_dict_diff!(annotate_diff_input, diffdict)
@@ -1670,7 +1884,8 @@ function plot_model_estimates!(𝓂::ℳ,
          :tol, :label,
          :shocks, :shock_names,
          :variables, :variable_names,
-         :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis])
+         :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis,
+         :filter_free_shocks, :measurement_error_std])
 
     annotate_tol_diff!(annotate_diff_input, model_estimates_active_plot_container)
     
@@ -1734,6 +1949,18 @@ function plot_model_estimates!(𝓂::ℳ,
                                 color = data_color)
     end
 
+    if any(k -> !isnothing(k[:measurement_error_std]), model_estimates_active_plot_container)
+        StatsPlots.plot!(legend_plot,
+                                [NaN], [NaN],
+                                seriestype = :scatter,
+                                label = "[+σ,-σ]",
+                                markershape = :rect,
+                                markersize = 8,
+                                markeralpha = 0.18,
+                                markercolor = data_color,
+                                markerstrokewidth = 0)
+    end
+
     sort!(joint_shocks, by = normalize_superscript)
     sort!(joint_variables, by = normalize_superscript)
 
@@ -1768,7 +1995,7 @@ function plot_model_estimates!(𝓂::ℳ,
             end
         end
         
-        if not_zero_anywhere 
+        if not_zero_anywhere
             push!(joint_non_zero_variables, var)
         else
             # If all irf data for this variable and shock is approximately zero, we skip this subplot.
@@ -1920,6 +2147,7 @@ function plot_model_estimates!(𝓂::ℳ,
                 var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                    obs_row = indexin([var], string.(obs_symbols_display))
                     if common_axis == []
                         idx = 1:length(k[:x_axis])
                     else
@@ -1928,12 +2156,24 @@ function plot_model_estimates!(𝓂::ℳ,
 
                     # Use extended_combined_x_axis length for padding
                     data_in_deviations = fill(NaN, length(extended_combined_x_axis))
-                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
+                    data_in_deviations[idx] = k[:data_in_deviations][obs_row, periods]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
+
+                    plotted_observations = data_in_deviations .+ k[:reference_steady_state][var_indx]
+
+                    if !isnothing(k[:measurement_error_std])
+                        std_values = fill(NaN, length(extended_combined_x_axis))
+                        std_values[idx] = k[:measurement_error_std][obs_row, periods]
+                        plot_observation_std_band!(p,
+                                                   extended_combined_x_axis,
+                                                   plotted_observations,
+                                                   std_values,
+                                                   pal[length(model_estimates_active_plot_container) + i])
+                    end
 
                     StatsPlots.plot!(p,
                         extended_combined_x_axis,
-                        data_in_deviations .+ k[:reference_steady_state][var_indx],
+                        plotted_observations,
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
                         )
@@ -1952,15 +2192,30 @@ function plot_model_estimates!(𝓂::ℳ,
                 var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary])))) 
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                    obs_row = indexin([var], string.(obs_symbols_display))
                     # Use extended_combined_x_axis length for padding
                     data_in_deviations_padded = fill(NaN, length(extended_combined_x_axis))
-                    data_vals = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
+                    data_vals = k[:data_in_deviations][obs_row,:]
                     data_vals[1:k[:presample_periods]] .= NaN
                     data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
+
+                    plotted_observations = data_in_deviations_padded .+ k[:reference_steady_state][var_indx]
+
+                    if !isnothing(k[:measurement_error_std])
+                        std_values_padded = fill(NaN, length(extended_combined_x_axis))
+                        std_vals = k[:measurement_error_std][obs_row, :]
+                        std_vals[1:k[:presample_periods]] .= NaN
+                        std_values_padded[1:length(combined_x_axis)] = std_vals[periods]
+                        plot_observation_std_band!(p,
+                                                   extended_combined_x_axis,
+                                                   plotted_observations,
+                                                   std_values_padded,
+                                                   data_color)
+                    end
                     
                     StatsPlots.plot!(p,
                         extended_combined_x_axis,
-                        data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
+                        plotted_observations,
                         label = "",
                         color = data_color
                     )
