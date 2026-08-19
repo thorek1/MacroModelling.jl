@@ -342,6 +342,10 @@ macro parameters(𝓂, ex...)
 
         set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
 
+        if !has_missing_parameters
+            stationarize_model!(mod.$𝓂; verbose = $verbose, silent = $silent)
+        end
+
         mod.$𝓂.functions.functions_written = false
 
         if !isnothing($steady_state_function)
@@ -817,4 +821,3 @@ end
 
 
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-

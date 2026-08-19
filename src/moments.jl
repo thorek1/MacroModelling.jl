@@ -133,6 +133,28 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
     return sparse(coo_I, coo_J, coo_V, m, m)
 end
 
+function solve_moment_linear_system(A, b, 𝓂::ℳ)
+    return is_bgp_model(𝓂) ? ℒ.pinv(Matrix(A)) * b : A \ b
+end
+
+function internal_steady_state_and_parameters(SS_and_pars::Vector{R}, 𝓂::ℳ) where R <: Real
+    𝓂.equations.stationarization === nothing && return SS_and_pars
+
+    T = 𝓂.constants.post_model_macro
+    public_names = filter(name -> !endswith(string(name), "ᴳ"), T.var)
+    public_values = SS_and_pars[1:length(public_names)]
+    public_by_name = Dict(public_names .=> public_values)
+    sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+    sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+    variable_values = R[
+        endswith(string(name), "ᴳ") ?
+        R(sol_values[findfirst(==(name), sol_names)]) :
+        public_by_name[name]
+        for name in T.var
+    ]
+    vcat(variable_values, SS_and_pars[(length(public_names) + 1):end])
+end
+
 
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
@@ -227,10 +249,11 @@ function calculate_mean(parameters::Vector{R},
     
     nsss_result = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     SS_and_pars = nsss_result[1]::Vector{R}
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
     solution_error = nsss_result[2][1]
     
     if algorithm == :first_order
-        mean_of_variables = SS_and_pars[1:T.nVars]
+        mean_of_variables = internal_SS_and_pars[1:T.nVars]
 
         solved = solution_error < opts.tol.nsss.acceptance_tol
     else
@@ -307,8 +330,9 @@ function calculate_mean(parameters::Vector{R},
                 variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec_Iₑ) / 2
 
                 ## First-order moments, ie mean of variables
-                mean_of_pruned_states   = (ℒ.I(size(pruned_states_to_pruned_states, 1)) - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
-                mean_of_variables   = SS_and_pars[1:T.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+                mean_of_pruned_states   = solve_moment_linear_system(ℒ.I(size(pruned_states_to_pruned_states, 1)) - pruned_states_to_pruned_states,
+                                                                      pruned_states_vol_and_shock_effect, 𝓂)
+                mean_of_variables   = internal_SS_and_pars[1:T.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
             end
         end
     end
@@ -323,6 +347,7 @@ function calculate_second_order_moments(parameters::Vector{R},
                                         opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R,Int}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
 
     if solved
         # Initialize constants at entry point
@@ -336,7 +361,7 @@ function calculate_second_order_moments(parameters::Vector{R},
 
         iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
 
-        Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σᶻ₁ = ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(R))
 
         # precalc second order
         ## mean
@@ -404,6 +429,7 @@ function calculate_second_order_moments(parameters::Vector{R},
             ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2 * D₂ˢ]
 
             ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+            apply_bgp_difference_output!(ŝ_to_y₂, 𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.past_not_future_and_mixed, 𝓂; state_blocks = (1, 2))
 
             vec_Iₑ = so.vec_Iₑ
             ŝv₂ = [ zeros(nˢ) 
@@ -413,9 +439,11 @@ function calculate_second_order_moments(parameters::Vector{R},
             yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
-            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
-            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μˢ⁺₂ = solve_moment_linear_system(ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂, ŝv₂, 𝓂)
+            Δμˢ₂ = vec(solve_moment_linear_system(ℒ.I(size(s_to_s₁, 1)) - s_to_s₁,
+                                                   s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2,
+                                                   𝓂))
+            μʸ₂  = internal_SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             slvd = solved && solved2
         else
@@ -452,6 +480,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                                         opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractMatrix{R}, AbstractSparseMatrix{R,Int}, Bool} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
+    internal_SS_and_pars = internal_steady_state_and_parameters(SS_and_pars, 𝓂)
 
     if solved
         ensure_moments_constants!(𝓂.constants)
@@ -462,7 +491,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
         iˢ = 𝓂.constants.post_model_macro.past_not_future_and_mixed_idx
 
-        Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σᶻ₁ = ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(R))
 
         # precalc second order
         ## mean
@@ -528,6 +557,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2 * D₂ˢ]
 
             ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+            apply_bgp_difference_output!(ŝ_to_y₂, 𝓂.constants.post_model_macro.var, 𝓂.constants.post_model_macro.past_not_future_and_mixed, 𝓂; state_blocks = (1, 2))
 
             vec_Iₑ = so.vec_Iₑ
             ŝv₂ = [ zeros(nˢ) 
@@ -537,9 +567,11 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec_Iₑ) / 2
 
             ## Mean
-            μˢ⁺₂ = collect(ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
-            Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2))
-            μʸ₂  = SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μˢ⁺₂ = solve_moment_linear_system(ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂, ŝv₂, 𝓂)
+            Δμˢ₂ = vec(solve_moment_linear_system(ℒ.I(size(s_to_s₁, 1)) - s_to_s₁,
+                                                   s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec_Iₑ) / 2,
+                                                   𝓂))
+            μʸ₂  = internal_SS_and_pars[1:𝓂.constants.post_model_macro.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             # Covariance
             Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
@@ -575,6 +607,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                     copyto!(𝓂.caches.covariance_second_order, Σᶻ₂)
                     𝓂.caches.valid_for.covariance_second_order = Float64.(parameters)
                 end
+            end
+
+            if info && is_bgp_model(𝓂)
+                Σᶻ₂ = ifelse.(isfinite.(Σᶻ₂), Σᶻ₂, zero(R))
             end
 
             if info
@@ -862,7 +898,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
     dependencies_in_states_idx = collect(1:nˢ)
     dependencies_in_var_idx = iˢ
 
-    Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
     Σ̂ᶻ₂ = Σᶻ₂
     Δ̂μˢ₂ = Δμˢ₂
 
@@ -937,7 +973,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
 
     ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
-    μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec(
+    μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                 (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                 s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                 s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -946,7 +982,7 @@ function calculate_per_shock_variance_third_order(parameters::Vector{R},
                                 e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                 s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                 e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                ), nˢ, nˢ)
+                                ), 𝓂), nˢ, nˢ)
 
     Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
             spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -1328,7 +1364,7 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
     obs_in_y = collect(1:nVars)
     dependencies_in_states_idx = collect(1:nˢ)
 
-    Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+    Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
     Σ̂ᶻ₂ = Σᶻ₂
     Δ̂μˢ₂ = Δμˢ₂
 
@@ -1400,7 +1436,7 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
 
     ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
 
-    μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec(
+    μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                 (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                 s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                 s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -1409,7 +1445,7 @@ function calculate_aumann_shapley_third_order_at_nodes(parameters::Vector{R},
                                 e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                 s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                 e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                ), nˢ, nˢ)
+                                ), 𝓂), nˢ, nˢ)
 
     Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
             spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -1717,7 +1753,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         iˢ = dependencies_in_var_idx
 
-        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx, 
                 dependencies_in_states_idx .+ 𝓂.constants.post_model_macro.nPast_not_future_and_mixed, 
@@ -1811,8 +1847,9 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+        apply_bgp_difference_output!(ŝ_to_y₃, variance_observable, dependencies, 𝓂; state_blocks = (1, 2, 4))
 
-        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+        μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                     (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                     s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                     s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -1821,7 +1858,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                     e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                     s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                     e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                    ), nˢ, nˢ)
+                                    ), 𝓂), nˢ, nˢ)
 
         Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
                 spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -2086,7 +2123,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         iˢ = dependencies_in_var_idx
 
-        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σ̂ᶻ₁ = is_bgp_model(𝓂) ? ifelse.(isfinite.(Σʸ₁[iˢ, iˢ]), Σʸ₁[iˢ, iˢ], zero(T)) : Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx, 
                 dependencies_in_states_idx .+ 𝓂.constants.post_model_macro.nPast_not_future_and_mixed, 
@@ -2180,8 +2217,9 @@ function calculate_third_order_moments(parameters::Vector{T},
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
         ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+        apply_bgp_difference_output!(ŝ_to_y₃, variance_observable, dependencies, 𝓂; state_blocks = (1, 2, 4))
 
-        μˢ₃δμˢ₁ = reshape((ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁) \ vec( 
+        μˢ₃δμˢ₁ = reshape(solve_moment_linear_system(ℒ.I(size(s_to_s₁_by_s_to_s₁, 1)) - s_to_s₁_by_s_to_s₁, vec(
                                     (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
                                     s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
                                     s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec_Iₑ) / 2 +
@@ -2190,7 +2228,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                     e_e_e_to_s₃ * e4_nᵉ_nᵉ³' / 6 +
                                     s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
                                     e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                    ), nˢ, nˢ)
+                                    ), 𝓂), nˢ, nˢ)
 
         Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    e4_nᵉ_nᵉ³
                 spzeros(nᵉ^2, nᵉ)    e4_minus_vecIₑ_outer     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -2260,6 +2298,10 @@ function calculate_third_order_moments(parameters::Vector{T},
         end
     
         solved_lyapunov = solved_lyapunov && info
+
+        if is_bgp_model(𝓂)
+            Σᶻ₃ = ifelse.(isfinite.(Σᶻ₃), Σᶻ₃, zero(T))
+        end
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + sparse_ABAt(ê_to_y₃, Γ₃) + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
         for obs in variance_observable

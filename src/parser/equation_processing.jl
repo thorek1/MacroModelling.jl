@@ -21,7 +21,10 @@ original equations populated. Calibration fields on the returned equations
 struct are left empty and must be populated by
 `process_parameter_definitions` before the model can be solved.
 """
-function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, precompile::Bool)
+function process_model_equations(model_block_in::Expr,
+                                 max_obc_horizon::Int,
+                                 precompile::Bool;
+                                 allow_single_variable_equations::Bool = false)
     original_equations = []
     calibration_equations = []
     calibration_equations_parameters = []
@@ -47,8 +50,29 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
     model_ex = remove_nothing(model_ex::Expr)::Expr
 
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
-    
+
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
+
+    # Balanced growth path: extract steady-state level anchors `x[ss] = expr` before
+    # any dynamic processing. These pin a trending variable's steady level (an IRIS
+    # `!!`-style steady-state override); they are not dynamic equations, so we remove
+    # them from the model block and apply them during steady-state anchoring. The RHS
+    # is collapsed to steady-state form (timed/`[ss]` refs → bare level symbols).
+    ss_anchors = Dict{Symbol, Any}()
+    let kept_args = Any[]
+        for arg in model_ex.args
+            if isa(arg, Expr) && arg.head == :(=) && arg.args[1] isa Expr &&
+               arg.args[1].head == :ref &&
+               occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(arg.args[1].args[2]))
+                anchored_var = arg.args[1].args[1]
+                anchor_rhs = postwalk(x -> x isa Expr && x.head == :ref ? x.args[1] : x, arg.args[2])
+                ss_anchors[anchored_var] = anchor_rhs
+            else
+                push!(kept_args, arg)
+            end
+        end
+        model_ex = Expr(model_ex.head, kept_args...)
+    end
 
     # write down dynamic equations and add auxiliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
@@ -257,14 +281,14 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                             bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
-                                x.args[2].head == :ref ?
+                                x.args[2] isa Expr && x.args[2].head == :ref ?
                                     x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                         begin
                                             bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
                                     x :
-                                x.args[2].head == :call ? # nonnegative expressions
+                                x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                     begin
                                         if precompile
                                             replacement = x.args[2]
@@ -305,14 +329,14 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -349,14 +373,14 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1-eps())
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1-eps())) : (eps(), 1-eps())
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -393,14 +417,14 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 600)) : (-1e12, 600)
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -437,14 +461,14 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2-eps())) : (eps(), 2-eps())
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -604,6 +628,22 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
 
     all_vars = union(all_dyn_vars, dyn_var_ss)
 
+    # Balanced growth path: parameters referenced only in steady-state level anchors
+    # (`x[ss] = expr`) are otherwise invisible to the parser (the anchor equation was
+    # extracted before dynamic processing). Register the non-variable anchor symbols
+    # as parameters so they enter the parameter vector and steady-state machinery.
+    if !isempty(ss_anchors)
+        anchor_symbols = Symbol[]
+        for v in values(ss_anchors)
+            if v isa Expr
+                append!(anchor_symbols, collect(get_symbols(v)))
+            elseif v isa Symbol
+                push!(anchor_symbols, v)
+            end
+        end
+        parameters_in_equations = sort(union(parameters_in_equations, setdiff(anchor_symbols, all_vars)))
+    end
+
     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
     past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
@@ -670,10 +710,10 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
     vars_in_ss_equations_no_aux = setdiff(vars_in_ss_equations, ➕_vars)
 
-    dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
-    dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
-    dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
-    dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
+    dyn_future_list =   Set.(match_pattern.(get_symbols.(dyn_equations),r"₍₁₎"))
+    dyn_present_list =  Set.(match_pattern.(get_symbols.(dyn_equations),r"₍₀₎"))
+    dyn_past_list =     Set.(match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎"))
+    dyn_exo_list =      Set.(match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎"))
 
     T = post_model_macro(
                 max_obc_horizon,
@@ -768,7 +808,9 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
                                                     #   collect.(dyn_ss_list), # needs to be dynamic after all
                                                       collect.(dyn_exo_list))) .== 1)
                                                     
-    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
+    if !allow_single_variable_equations
+        @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
+    end
     
     duplicate_equations = []
     for item in unique(dyn_equations)
@@ -799,6 +841,9 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
         Expr[],            # calibration_no_var
         Symbol[],          # calibration_parameters
         Expr[],            # calibration_original
+        ss_anchors,        # balanced growth path steady-state level anchors
+        nothing,            # structural BGP detection metadata
+        nothing,            # symbolic stationarization metadata
     )
 
     return T, equations_struct, ℂ, 𝓦

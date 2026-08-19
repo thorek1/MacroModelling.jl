@@ -54,6 +54,61 @@ Additional information can guide the automatic solver toward convergence and val
   
   which returns steady-state equation residuals in absolute value.
 
+## Balanced Growth Path (Models in Levels)
+
+Level models with multiplicative trends are stationarized before the steady
+state and perturbation equations are generated. For a variable with trend
+function `Hᵢ(Aₜ)`, the solver uses
+
+```math
+\widehat{x}^i_t = x^i_t / H^i(A_t), \qquad
+\Delta H^i_t = H^i(A_t) / H^i(A_{t-1}).
+```
+
+Trend drivers and their growth restrictions are inferred from the model
+equations. Current trend-driver levels are normalized to one, leads use future
+gross growth factors, and lags use their reciprocals. The resulting equations
+are stationary and are passed to the ordinary NSSS and perturbation solvers.
+This is the equation-level construction described by Canova and
+Sæterhagen Paulsen (Norges Bank Working Paper 18/2021), rather than a
+post-processing correction to a level solution.
+
+For example, a stationary growth factor `a` can drive a level variable `x`:
+
+```@repl ss_bgp
+using MacroModelling
+
+@model GrowthModel begin
+    a[0] = (1 - ρ) * γ + ρ * a[-1] + σ * e[x]
+    x[0] = a[0] * x[-1]
+end
+
+@parameters GrowthModel begin
+    γ = 1.02
+    ρ = 0.5
+    σ = 0.01
+end
+
+get_SS(GrowthModel, derivatives = false)
+```
+
+`Growth_rate` reports logarithmic gross growth, `log(ΔH)`. Thus the growth
+rate of `x` in this example is `log(γ)` on the deterministic path. With
+`levels = false`, IRFs are responses of the stationary normalized variables.
+With `levels = true`, the simulated growth-factor path is accumulated to
+reconstruct the original level path, including stochastic growth shocks.
+
+Pure additive random walks such as `x[0] = x[-1] + g` are not assigned an
+artificial multiplicative trend. They raise a diagnostic and must be rewritten
+with a positive gross growth factor. Unsupported operators, ambiguous trend
+drivers, inconsistent restrictions, and rank-deficient growth systems likewise
+raise an error rather than silently falling back to additive behavior.
+
+Covariances are computed directly for the stationary transformed variables, so
+they remain finite without post-hoc first-differencing or `Delta_` relabeling.
+The generated stationary equations and the original equations remain available
+through the inspection APIs.
+
 ## Custom Steady State Functions
 
 For models where the internal solver fails, or when analytical solutions are available (often faster to compute), a custom steady state function can be provided. There are two primary ways to specify this:

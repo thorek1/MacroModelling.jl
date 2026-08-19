@@ -2190,8 +2190,14 @@ function ensure_model_structure_constants!(constants::constants, calibration_par
 
         vars_in_ss_equations = T.vars_in_ss_equations_no_aux
         vars_in_ss_equations_with_aux = T.vars_in_ss_equations
-        vars_and_calib = vcat(T.var, calibration_parameters)
-        ss_var_idx_in_var_and_calib = Int.(indexin(vars_in_ss_equations, vars_and_calib))
+        # Growth-factor variables are internal NSSS unknowns and are omitted
+        # from the public steady-state vector returned by the solver.
+        public_vars = filter(s -> !endswith(string(s), "ᴳ"), T.var)
+        vars_and_calib = vcat(public_vars, calibration_parameters)
+        # Balanced growth path: growth unknowns (`xᴳ`) are solved with the SS but
+        # are not model variables, so they have no slot in `var`/calib reporting.
+        reported_ss_vars = filter(s -> !endswith(string(s), "ᴳ"), vars_in_ss_equations)
+        ss_var_idx_in_var_and_calib = Int.(indexin(reported_ss_vars, vars_and_calib))
         calib_idx_in_var_and_calib = Int.(indexin(calibration_parameters, vars_and_calib))
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), T.var), calibration_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, calibration_parameters))

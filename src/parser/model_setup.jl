@@ -68,7 +68,20 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
+    if 𝓂.equations.stationarization === nothing
+        reference_steady_state = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+                                  ndims(relevant_SS) == 1 ? relevant_SS(s) : relevant_SS(s, :Steady_state)
+                                  for s in full_NSSS]
+    else
+        sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        reference_steady_state = [
+            endswith(string(name), "ᴳ") ?
+            sol_values[findfirst(==(name), sol_names)] :
+            relevant_SS(name, :Steady_state)
+            for name in 𝓂.constants.post_model_macro.var
+        ]
+    end
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -79,7 +92,20 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
+    if 𝓂.equations.stationarization === nothing
+        NSSS = [s ∈ 𝓂.constants.post_model_macro.exo_present ? 0.0 :
+                ndims(relevant_NSSS) == 1 ? relevant_NSSS(s) : relevant_NSSS(s, :Steady_state)
+                for s in full_NSSS]
+    else
+        sol_names = 𝓂.constants.post_complete_parameters.nsss_sol_names
+        sol_values = 𝓂.workspaces.nsss_solver.sol_vec_buffer
+        NSSS = [
+            endswith(string(name), "ᴳ") ?
+            sol_values[findfirst(==(name), sol_names)] :
+            relevant_NSSS(name, :Steady_state)
+            for name in 𝓂.constants.post_model_macro.var
+        ]
+    end
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -107,8 +133,9 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
                     x, parsed)
 end
 
-function convert_to_ss_equation(eq::Expr)::Expr
-    postwalk(x -> 
+function convert_to_ss_equation(eq)::Expr
+    eq isa Symbol && return Expr(:call, :(-), eq, 0)
+    result = postwalk(x ->
         x isa Expr ? 
             x.head == :(=) ? 
                 Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
@@ -126,6 +153,112 @@ function convert_to_ss_equation(eq::Expr)::Expr
             unblock(x) : 
         x,
     eq)
+    result isa Symbol ? Expr(:call, :(-), result, 0) : result
+end
+
+
+# ── Balanced growth path (BGP) support ─────────────────────────────────────
+# Models written in levels (non-stationary I(1) variables sharing a balanced
+# growth path) are handled IRIS-style: every variable gets BOTH a level and a
+# per-period growth/change unknown `xᴳ`, and each steady-state equation is
+# evaluated at TWO time origins so that the 2N residuals pin the 2N (level,
+# growth) unknowns. Additive growth only (linear in `xᴳ`). Auto-detected, so
+# fully stationary models are untouched. See `augment_ss_system_for_growth`.
+
+# Growth symbol for a variable's additive per-period change along the BGP.
+growth_sym(name::Symbol)::Symbol = Symbol(string(name) * "ᴳ")
+
+# Time-origin shift used to pin growth. Any nonzero shift works for additive
+# growth (residuals are linear in the growth unknown); K = 1 is the cheapest.
+const GROWTH_SHIFT_K = 1
+
+# IRIS-style two-time-point substitution: replace each timed reference of a
+# variable by its image at time-origin shift `s`:
+#   shock        -> 0
+#   x[ss]        -> x                      (level anchor, no trend)
+#   x[k]         -> x + (k+s)·xᴳ           (additive growth)
+# Also turns `=` into a residual (`lhs - rhs`), mirroring `convert_to_ss_equation`.
+function growth_ss_subst(eq::Expr, shift::Int)::Union{Expr,Symbol,Int}
+    postwalk(x ->
+        x isa Expr ?
+            x.head == :(=) ?
+                Expr(:call, :(-), x.args[1], x.args[2]) :
+            x.head == :ref ?
+                occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2])) ? 0 :
+                x.args[2] isa Int ?
+                    (x.args[2] + shift == 0 ?
+                        x.args[1] :
+                        Expr(:call, :+, x.args[1],
+                             Expr(:call, :*, growth_sym(x.args[1]), x.args[2] + shift))) :
+                x.args[1] :
+            unblock(x) :
+        x,
+    eq)
+end
+
+# Build the augmented (level + growth) steady-state system. Each of the N
+# collapsed SS equations is evaluated at two time origins (shift 0 and shift K),
+# giving 2N residuals for the 2N (level, growth) unknowns. Trending levels cancel
+# algebraically (handled later as indeterminate -> default), growth identities
+# (incl. cointegration) fall out automatically. Returns the augmented SS
+# equations, the per-equation symbol lists, the rebuilt nonnegativity-aux index
+# set, and the full set of SS unknowns (levels ∪ growth symbols).
+function augment_ss_system_for_growth(ss_and_aux_equations::Vector,
+                                      ss_equations_with_aux_variables::Vector{Int})
+    # all level (bare) variable names appearing in a timed reference (not shocks)
+    level_names = Set{Symbol}()
+    for eq in ss_and_aux_equations
+        postwalk(x -> begin
+            if x isa Expr && x.head == :ref &&
+               !occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2]))
+                push!(level_names, x.args[1])
+            end
+            x
+        end, eq)
+    end
+    growth_names = Set(growth_sym(n) for n in level_names)
+    ss_unknowns  = union(level_names, growth_names)
+
+    aug_eqs              = Expr[]
+    var_list_aug         = []
+    ss_list_aug          = []
+    par_list_aug         = []
+    var_future_list_aug  = []
+    var_present_list_aug = []
+    var_past_list_aug    = []
+    aux_idx_aug          = Int[]
+    for shift in (0, GROWTH_SHIFT_K)
+        for (idx, eq) in enumerate(ss_and_aux_equations)
+            res = growth_ss_subst(eq, shift)
+            res = res isa Expr ? simplify(res) : res
+
+            # SS is a static system: classify all variable symbols as "present".
+            present_tmp = Set{Symbol}()
+            par_tmp     = Set{Symbol}()
+            for s in (res isa Expr ? get_symbols(res) : res isa Symbol ? [res] : Symbol[])
+                (s in ss_unknowns) ? push!(present_tmp, s) : push!(par_tmp, s)
+            end
+
+            push!(var_present_list_aug, present_tmp)
+            push!(var_past_list_aug,    Set{Symbol}())
+            push!(var_future_list_aug,  Set{Symbol}())
+            push!(ss_list_aug,          Set{Symbol}())
+            push!(var_list_aug,         copy(present_tmp))
+            push!(par_list_aug,         par_tmp)
+
+            if idx in ss_equations_with_aux_variables
+                push!(aux_idx_aug, length(aug_eqs) + 1)
+            end
+
+            push!(aug_eqs, res isa Expr ? res : Expr(:call, :-, res, 0))
+        end
+    end
+
+    return (aug_eqs,
+            var_list_aug, ss_list_aug, par_list_aug,
+            var_future_list_aug, var_present_list_aug, var_past_list_aug,
+            aux_idx_aug,
+            sort(collect(ss_unknowns)))
 end
 
 

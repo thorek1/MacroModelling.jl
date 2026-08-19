@@ -16,6 +16,42 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
+function stationarization_matrix_rank(matrix::AbstractMatrix{T}) where T <: Real
+    rows, columns = size(matrix)
+    min(rows, columns) == 0 && return 0
+
+    work = Matrix(matrix)
+    scale = max(maximum(abs, work; init = zero(T)), one(T))
+    tolerance = 10 * eps(T) * max(rows, columns) * scale
+    rank_value = 0
+
+    for column in 1:columns
+        pivot_row = rank_value + 1
+        pivot_value = zero(T)
+        for row in pivot_row:rows
+            value = abs(work[row, column])
+            if value > pivot_value
+                pivot_value = value
+                pivot_row = row
+            end
+        end
+        pivot_value <= tolerance && continue
+
+        rank_value += 1
+        if pivot_row != rank_value
+            work[[rank_value, pivot_row], :] = work[[pivot_row, rank_value], :]
+        end
+
+        pivot = work[rank_value, column]
+        for row in rank_value + 1:rows
+            factor = work[row, column] / pivot
+            work[row, column:columns] .-= factor .* work[rank_value, column:columns]
+        end
+    end
+
+    rank_value
+end
+
 @unstable function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
     if sol.is_number == true
         return sol
@@ -363,7 +399,10 @@ end
     end
 
     other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
+    # Balanced growth path: growth unknowns (`xᴳ`) are SS unknowns but not in `var`;
+    # include them so a block using a growth solved in another block receives it.
+    growth_vars = filter(s -> endswith(string(s), "ᴳ"), 𝓂.constants.post_model_macro.vars_in_ss_equations)
+    other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars, growth_vars),
                                         sort(solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
 
@@ -1121,6 +1160,65 @@ end
         end
     end
 
+    # ── Balanced growth path: anchor free trend levels to 0 ───────────────────
+    # A cointegrated system of I(1) levels is rank-deficient in steady state: the
+    # absolute level of each independent stochastic trend is a free initial
+    # condition. The structural unmatched mechanism only catches levels that are
+    # entirely absent from the SS equations (single-trend / all-zero column); for
+    # multiple cointegrated trends the free directions are numeric. Detect them
+    # from the augmented SS Jacobian (rank-revealing, keeping growth unknowns and
+    # anchoring redundant level unknowns) and zero their incidence rows so the
+    # existing indeterminate→default path pins them to 0 (a valid particular
+    # solution; for a linear model dynamics/IRFs are anchor-invariant).
+    unknown_names = Symbol.(string.(unknowns))
+    if symbolics_data !== nothing && any(n -> endswith(string(n), "ᴳ"), unknown_names)
+        check_unknowns = Symbol.(string.(union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)))
+        Jbuf = 𝓂.caches.NSSS_∂equations_∂SS_and_pars
+        𝓂.functions.NSSS_∂equations_∂SS_and_pars(Jbuf, 𝓂.parameter_values, zeros(length(check_unknowns)))
+        Jdense = Matrix(Jbuf)
+        colpos = Dict(n => i for (i, n) in enumerate(check_unknowns))
+        growth_idx = [i for i in eachindex(unknown_names) if endswith(string(unknown_names[i]), "ᴳ")]
+        level_idx  = [i for i in eachindex(unknown_names) if !endswith(string(unknown_names[i]), "ᴳ")]
+        anchored_any = false
+
+        # M4: user-supplied `x[ss] = expr` level anchors force that trend's level to
+        # be pinned (to the anchor value, handled in the indeterminate step below)
+        # rather than left to the automatic pick. Force-anchor them first, then let
+        # the rank pass cover any remaining free directions.
+        ss_anchors = 𝓂.equations.ss_anchors
+        forced = Int[]
+        if !isempty(ss_anchors)
+            for i in level_idx
+                if haskey(ss_anchors, unknown_names[i])
+                    incidence_matrix[i, :] .= 0
+                    push!(forced, i)
+                    anchored_any = true
+                end
+            end
+        end
+
+        kept = Int[]
+        currank = 0
+        for i in vcat(growth_idx, setdiff(level_idx, forced))   # keep growths first, anchor redundant levels
+            c = get(colpos, unknown_names[i], 0)
+            c == 0 && continue
+            candidate_columns = vcat(kept, c)
+            r = isempty(candidate_columns) || size(Jdense, 1) == 0 || size(Jdense, 2) == 0 ?
+                currank :
+                stationarization_matrix_rank(Jdense[:, candidate_columns])
+            if r > currank
+                push!(kept, c)
+                currank = r
+            else
+                incidence_matrix[i, :] .= 0   # anchor this free level → default value
+                anchored_any = true
+            end
+        end
+        # `.= 0` leaves explicit stored zeros; drop them so BlockTriangularForm
+        # (which reads the sparsity structure) treats the row as truly empty.
+        anchored_any && SparseArrays.dropzeros!(incidence_matrix)
+    end
+
     # Precomputed per-equation symbol sets used as a cheap Julia-side filter for
     # SymPy solve/subs calls in the analytical branch. Aligned with ss_equations.
     eq_symbol_sets = [Set{Symbol}(Symbol.(collect(e))) for e in eq_list]
@@ -1183,12 +1281,15 @@ end
     end
 
     output_var_names = unique(Symbol.(replace.(string.(sort(union(
-        𝓂.constants.post_model_macro.var,
+        filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
         𝓂.constants.post_model_macro.exo_past,
         𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")))
     calib_param_names = 𝓂.equations.calibration_parameters
     plus_var_names = Symbol.(𝓂.constants.post_model_macro.➕_vars)
-    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names)
+    # Balanced growth path: store solved growth unknowns (`xᴳ`) so later stages
+    # (linearization, IRFs) can read them. They are extra SS unknowns, not levels.
+    growth_var_names = Symbol[s for s in 𝓂.constants.post_model_macro.vars_in_ss_equations if endswith(string(s), "ᴳ")]
+    all_sol_names = vcat(output_var_names, calib_param_names, plus_var_names, growth_var_names)
     n_sol = length(all_sol_names)
     sol_name_to_index = Dict(name => i for (i, name) in enumerate(all_sol_names))
     plus_var_count_at_start = length(plus_var_names)
@@ -1203,7 +1304,7 @@ end
 
     output_names_full = vcat(
         Symbol.(replace.(string.(sort(union(
-            𝓂.constants.post_model_macro.var,
+            filter(name -> !endswith(string(name), "ᴳ"), 𝓂.constants.post_model_macro.var),
             𝓂.constants.post_model_macro.exo_past,
             𝓂.constants.post_model_macro.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
         calib_param_names
@@ -1303,31 +1404,50 @@ end
     builder = NSSSSolverBuilder()
     numerical_block_count = 0
 
-    # Emit analytical steps for unmatched (indeterminate) variables
+    # Emit analytical steps for unmatched (indeterminate) variables. Balanced growth
+    # path: a free trend level carrying a user anchor `x[ss] = expr` is set to that
+    # expression (typically a parameter/constant); otherwise it defaults to the user
+    # guess or 0 (an arbitrary particular solution of the cointegrated system).
     if n_unmatched > 0
+        ss_anchors = 𝓂.equations.ss_anchors
         for vn in unmatched_var_names
             var_sym = Symbol(vn)
-            default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
-                Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
-
             widx = sol_name_to_index[var_sym]
 
-            eval_func! = let cv = default_val
-                (out, _sol_vec, _params_vec) -> begin
-                    out[1] = cv
-                    return nothing
+            if haskey(ss_anchors, var_sym)
+                anchor_expr = ss_anchors[var_sym]
+                eval_func! = compile_exprs_to_func([anchor_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                anchor_atoms = anchor_expr isa Expr ? get_symbols(anchor_expr) :
+                               anchor_expr isa Symbol ? Set([anchor_expr]) : Symbol[]
+                push!(solved_vars, var_sym)
+                push!(solved_vals, anchor_expr)
+                push!(atoms_in_equations_list, anchor_atoms)
+                push_analytical_step!(builder;
+                    eval_func! = eval_func!,
+                    write_indices = [widx],
+                    description = "BGP anchor: $var_sym = $anchor_expr",
+                )
+            else
+                default_val = haskey(𝓂.constants.post_parameters_macro.guess, var_sym) ?
+                    Float64(𝓂.constants.post_parameters_macro.guess[var_sym]) : 0.0
+
+                eval_func! = let cv = default_val
+                    (out, _sol_vec, _params_vec) -> begin
+                        out[1] = cv
+                        return nothing
+                    end
                 end
+
+                push!(solved_vars, var_sym)
+                push!(solved_vals, default_val)
+                push!(atoms_in_equations_list, [])
+
+                push_analytical_step!(builder;
+                    eval_func! = eval_func!,
+                    write_indices = [widx],
+                    description = "Indeterminate: $var_sym = $default_val",
+                )
             end
-
-            push!(solved_vars, var_sym)
-            push!(solved_vals, default_val)
-            push!(atoms_in_equations_list, [])
-
-            push_analytical_step!(builder;
-                eval_func! = eval_func!,
-                write_indices = [widx],
-                description = "Indeterminate: $var_sym = $default_val",
-            )
         end
     end
 
@@ -2459,7 +2579,17 @@ function solve_nsss_steps(
             # large finite values from log/sqrt/power at the same solution point).
             residual = nsss_ws.check_residual
             fill!(residual, 0.0)
-            𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
+            # NSSS_check's unknown vector is ordered as the SS-equation unknowns
+            # (incl. balanced-growth-path growth symbols `xᴳ`), which for stationary
+            # models coincides with the output (var+calib) vector. When growth
+            # unknowns are present they must be gathered from the full solution.
+            check_unknowns = union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.constants.post_model_macro.➕_vars), 𝓂.equations.calibration_parameters)
+            if length(check_unknowns) == n_output
+                𝓂.functions.NSSS_check(residual, parameters, SS_and_pars)
+            else
+                check_input = sol_vec[Int.(indexin(check_unknowns, 𝓂.constants.post_complete_parameters.nsss_sol_names))]
+                𝓂.functions.NSSS_check(residual, parameters, check_input)
+            end
             residual_error = ℒ.norm(residual)
             if isfinite(residual_error) && residual_error > solution_error
                 solution_error = residual_error

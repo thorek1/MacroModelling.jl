@@ -166,6 +166,7 @@ include("./steady_state/nsss_solver.jl")
 include("occasionally_binding_constraints.jl")
 include("./parser/macros.jl")
 include("./parser/equation_processing.jl")
+include("./parser/stationarization.jl")
 include("./parser/model_setup.jl")
 include("./parser/equation_modification.jl")
 include("get_functions.jl")
@@ -1841,6 +1842,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
         end
+        𝓂.equations.bgp_detection === nothing ||
+            refresh_bgp_representation!(𝓂)
+    end
+
+    if isempty(p.missing_parameters) && 𝓂.equations.bgp_detection === nothing
+        stationarize_model!(𝓂)
     end
 
     return nothing
@@ -1905,6 +1912,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             end
 
             𝓂.parameter_values[match_idx] = parameters[match_idx]
+            𝓂.equations.bgp_detection === nothing ||
+                refresh_bgp_representation!(𝓂)
         end
     end
 
