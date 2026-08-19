@@ -248,6 +248,22 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
+      - name: Remove Turing from non-estimation runs
+        if: matrix.test_set == 'basic' || startsWith(matrix.test_set, 'higher_order') || startsWith(matrix.test_set, 'plots') || startsWith(matrix.test_set, 'jet') || matrix.test_set == 'gradient_checks'
+        shell: bash
+        run: |
+          # Turing's Optimization dependency currently requires SciMLBase 2,
+          # which makes the shared test target resolve LinearSolve to v3.
+          # These test sets do not import Turing, so omit it to exercise the
+          # LinearSolve 5-compatible environment.
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Turing"//g' \
+            -e '/^\[targets\]/,$ s/"Turing",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
