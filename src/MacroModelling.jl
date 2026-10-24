@@ -2790,51 +2790,6 @@ end
 
 end # dispatch_doctor
 
-@setup_workload begin
-    @compile_workload begin
-        @model RBC_for_precompile precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
-
-        @parameters RBC_for_precompile silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
-
-        # Warm the standard first-order workflow used by a simple IRF script.
-        get_steady_state(
-            RBC_for_precompile;
-            # derivatives = false,
-            stochastic = false,
-            return_variables_only = true,
-            silent = true,
-        )
-        get_irf(
-            RBC_for_precompile;
-            algorithm = :first_order,
-            periods = 40,
-            variables = :all,
-            shocks = :all,
-            verbose = false,
-        )
-        get_moments(
-            RBC_for_precompile;
-            algorithm = :first_order,
-            variables = :all,
-            non_stochastic_steady_state = true,
-            mean = true,
-            standard_deviation = true,
-            variance = true,
-            covariance = true,
-            correlation = true,
-            # derivatives = false,
-            silent = true,
-            verbose = false,
-        )
-    end
-end
 #     # Putting some things in `setup` can reduce the size of the
 #     # precompile file and potentially make loading faster.
 #     @model FS2000 precompile = true begin
@@ -2914,5 +2869,53 @@ end
 # Include rrule definitions for reverse-mode AD (Zygote/ChainRulesCore)
 # Must be at the end of the module because rrules depend on function definitions
 include("./rrules.jl")
+
+# Keep the workload after `rrules.jl`: `get_steady_state` uses its pullback when
+# computing parameter derivatives, and precompile workloads run as the file is
+# evaluated. Running this above the rrule definitions makes `rrule(...)` return
+# `nothing` on a cold precompile.
+@setup_workload begin
+    @compile_workload begin
+        @model RBC_for_precompile precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
+
+        @parameters RBC_for_precompile silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
+
+        # Warm the standard first-order workflow used by a simple IRF script.
+        get_steady_state(
+            RBC_for_precompile;
+            stochastic = false,
+            return_variables_only = true,
+            silent = true,
+        )
+        get_irf(
+            RBC_for_precompile;
+            algorithm = :first_order,
+            periods = 40,
+            variables = :all,
+            shocks = :all,
+            verbose = false,
+        )
+        get_moments(
+            RBC_for_precompile;
+            algorithm = :first_order,
+            variables = :all,
+            non_stochastic_steady_state = true,
+            mean = true,
+            standard_deviation = true,
+            variance = true,
+            covariance = true,
+            correlation = true,
+            silent = true,
+            verbose = false,
+        )
+    end
+end
 
 end
