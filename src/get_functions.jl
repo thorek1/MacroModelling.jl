@@ -1136,6 +1136,7 @@ The same can be achieved with the other input formats:
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 levels::Bool = false,
                                 verbose::Bool = DEFAULT_VERBOSE,
+                                rescue_shocks::Bool = false,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_SELECTOR(𝓂),
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
@@ -1150,6 +1151,7 @@ The same can be achieved with the other input formats:
     if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                rescue_shocks = rescue_shocks,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                 sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
@@ -1272,7 +1274,8 @@ The same can be achieved with the other input formats:
                                                       S₃,
                                                       𝓂.constants,
                                                       𝓂.workspaces.find_shocks;
-                                                      verbose = verbose)
+                                                      verbose = verbose,
+                                                      rescue_shocks = rescue_shocks)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
     
@@ -1314,7 +1317,8 @@ The same can be achieved with the other input formats:
                                                               S₃,
                                                               𝓂.constants,
                                                               𝓂.workspaces.find_shocks;
-                                                              verbose = verbose)
+                                                              verbose = verbose,
+                                                              rescue_shocks = rescue_shocks)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
@@ -4636,6 +4640,7 @@ function get_loglikelihood(𝓂::ℳ,
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
+                            rescue_shocks::Bool = false,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::S where {T <: Union{Float64,Missing,Nothing}, S <: Real, U <: AbstractFloat}
     # Convenience method: no `initial_state` argument; uses the internal default.
@@ -4666,6 +4671,7 @@ function get_loglikelihood(𝓂::ℳ,
                              lyapunov_algorithm = lyapunov_algorithm,
                              sylvester_algorithm = sylvester_algorithm,
                              verbose = verbose,
+                             rescue_shocks = rescue_shocks,
                              caching = caching,
                              use_workspaces = use_workspaces)
 end
@@ -4698,6 +4704,7 @@ function get_loglikelihood(𝓂::ℳ,
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
+                            rescue_shocks::Bool = false,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, InitialStateScalar) where {T <: Union{Float64,Missing,Nothing}, S <: Real, InitialStateScalar <: Real, InitialState <: Union{AbstractVector{InitialStateScalar}, AbstractVector{<:AbstractVector{InitialStateScalar}}}, U <: AbstractFloat}
 
@@ -4711,6 +4718,7 @@ function get_loglikelihood(𝓂::ℳ,
         sylvester_algorithm[2]
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            rescue_shocks = rescue_shocks,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = sylv²,
                             sylvester_algorithm³ = sylv³,
@@ -5050,6 +5058,7 @@ function get_loglikelihood(𝓂::ℳ,
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
+                            rescue_shocks::Bool = false,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat}
     # Convenience method: no `initial_state` argument; uses the internal default.
@@ -5065,6 +5074,7 @@ function get_loglikelihood(𝓂::ℳ,
                             lyapunov_algorithm = lyapunov_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
                             verbose = verbose,
+                            rescue_shocks = rescue_shocks,
                             caching = caching,
                             use_workspaces = use_workspaces)
 end
@@ -5086,6 +5096,7 @@ function get_loglikelihood(𝓂::ℳ,
                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                             verbose::Bool = DEFAULT_VERBOSE,
+                            rescue_shocks::Bool = false,
                             caching::Bool = DEFAULT_CACHING,
                             use_workspaces::Bool = DEFAULT_USE_WORKSPACES)::promote_type(S, T, Float64, IT) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real, U <: AbstractFloat, IT <: Real}
 
@@ -5110,6 +5121,7 @@ function get_loglikelihood(𝓂::ℳ,
     if !use_workspaces; 𝓂.workspaces = fresh_workspaces(orig_ws); end
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            rescue_shocks = rescue_shocks,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],

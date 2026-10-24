@@ -9830,8 +9830,17 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                      init_guess, kron_buffer, kron_buffer2, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                # Limited-budget restarts (mirrors the primal inversion filter).
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x[i], false)
+                if !matched
+                    if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                x .= xr
+                if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) rescued at step $t (||x|| = $(ℒ.norm(xr)))") end
             end
             if t > presample_periods
                 jac_v = similar(𝐒ⁱ_v)
@@ -11883,8 +11892,19 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
     
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            # Limited-budget restarts (mirrors the primal inversion filter):
+            # the zero start above preserves min-norm behavior wherever it
+            # converges; only a failing step pays for extra starts.
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kronxx[i], kron_buffer2, J, 𝐒ⁱ, 𝐒ⁱ²ᵉ, shock_independent;
+                verbose = opts.verbose) : (x[i], false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+            x[i] = xr
+            if opts.verbose println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(xr)))") end
         end
 
         # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
@@ -12497,8 +12517,17 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                      init_guess, kron_buffer, kron_buffer2, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                # Limited-budget restarts (mirrors the primal inversion filter).
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x[i], false)
+                if !matched
+                    if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                x .= xr
+                if opts.verbose println("Inversion filter rrule (2nd, missing) rescued at step $t (||x|| = $(ℒ.norm(xr)))") end
             end
             if t > presample_periods
                 jac_v = similar(𝐒ⁱ_v)
@@ -13031,8 +13060,17 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
 
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            # Limited-budget restarts (mirrors the primal inversion filter).
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kronxx[i], kron_buffer2, J, 𝟒𝟗, 𝟒𝟗²ᵉ, shock_independent;
+                verbose = opts.verbose) : (x[i], false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+            x[i] = xr
+            if opts.verbose println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(xr)))") end
         end
         
         compressed_kron²!(kron_buffer2, x[i], J)
@@ -13733,8 +13771,17 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                      init_guess, kb1, kb2, kb3, kb4, kb5, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                # Limited-budget restarts (mirrors the primal inversion filter).
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kb1, kb2, kb3, kb4, kb5, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x[i], false)
+                if !matched
+                    if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                x .= xr
+                if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) rescued at step $t (||x|| = $(ℒ.norm(xr)))") end
             end
             if t > presample_periods
                 compressed_kron²!(kb3, x, J)
@@ -14590,9 +14637,18 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
 
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
-        end 
+            # Limited-budget restarts (mirrors the primal inversion filter).
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kronxx[i], kronxxx[i], kron_buffer2, kron_buffer3, kron_buffer4, J, 𝟒𝟗, 𝟒𝟗²ᵉ[i], 𝟒𝟗³ᵉ, shock_independent;
+                verbose = opts.verbose) : (x[i], false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+            x[i] = xr
+            if opts.verbose println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(xr)))") end
+        end
         
         compressed_kron²!(kron_buffer2, x[i], J)
         compressed_kron³!(kron_buffer3, x[i], x[i], J)
@@ -15371,8 +15427,17 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                                      init_guess, kb1, kb2, kb3, kb4, kb5, J,
                                      𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t") end
-                return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                # Limited-budget restarts (mirrors the primal inversion filter).
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kb1, kb2, kb3, kb4, kb5, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x[i], false)
+                if !matched
+                    if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t") end
+                    return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+                end
+                x .= xr
+                if opts.verbose println("Inversion filter rrule (3rd, missing) rescued at step $t (||x|| = $(ℒ.norm(xr)))") end
             end
             if t > presample_periods
                 kron_J_x = compressed_kron²(x, J)
@@ -16880,8 +16945,17 @@ function rrule(::typeof(calculate_loglikelihood),
         # end # timeit_debug
     
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            # Limited-budget restarts (mirrors the primal inversion filter).
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kronxx[i], kronxxx[i], kron_buffer2, kron_buffer3, kron_buffer4, J, 𝟒𝟗, 𝟒𝟗²ᵉ[i], 𝟒𝟗³ᵉ, shock_independent;
+                verbose = opts.verbose) : (x[i], false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood, x -> (NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent())
+            end
+            x[i] = xr
+            if opts.verbose println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(xr)))") end
         end
 
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])

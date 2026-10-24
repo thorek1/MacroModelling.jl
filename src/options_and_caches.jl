@@ -2779,6 +2779,7 @@ struct CalculationOptions
     
     tol::Tolerances
     verbose::Bool
+    rescue_shocks::Bool
 end
 
 """
@@ -2882,7 +2883,8 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                     sylvester_preconditioner::Symbol = :ilu,
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::Tolerances = Tolerances(),
-                                    verbose::Bool = false)
+                                    verbose::Bool = false,
+                                    rescue_shocks::Bool = false)
                                     
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
                                 sylvester_algorithm², 
@@ -2890,7 +2892,8 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                 sylvester_preconditioner, 
                                 lyapunov_algorithm, 
                                 tol, 
-                                verbose)
+                                verbose,
+                                rescue_shocks)
 end
 
 

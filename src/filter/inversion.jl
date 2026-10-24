@@ -408,7 +408,7 @@ function calculate_loglikelihood(::Val{:inversion},
         #                             )
             # println("COBYLA: $matched; current x: $x")
             # if !matched
-            #     x, matched = find_shocks(Val(filter_algorithm), 
+            #     x, matched = find_shocks(Val(filter_algorithm),
             #                             x,
             #                             kron_buffer,
             #                             kron_buffer2,
@@ -417,9 +417,21 @@ function calculate_loglikelihood(::Val{:inversion},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    if opts.verbose println("Inversion filter failed at step $i") end
-                    return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
-                end 
+                    # Limited-budget restarts: the zero start above preserves
+                    # min-norm-leaning behavior wherever it converges; only a
+                    # failing step pays for extra starts. See
+                    # find_shocks_with_restarts (AD-safe).
+                    # Shock rescue is optional (opts.rescue_shocks, default off).
+                    x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                        kron_buffer, kron_buffer2, J, 𝐒ⁱ, 𝐒ⁱ²ᵉ, shock_independent;
+                        verbose = opts.verbose) : (x, false)
+                    if !matched
+                        if opts.verbose println("Inversion filter failed at step $i") end
+                        return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive
+                    elseif opts.verbose
+                        println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                    end
+                end
             # end
         # end
 
@@ -688,7 +700,7 @@ function calculate_loglikelihood(::Val{:inversion},
         #                             # max_iter = 500
         #                             )
             # if !matched
-            #     x, matched = find_shocks(Val(filter_algorithm), 
+            #     x, matched = find_shocks(Val(filter_algorithm),
             #                             x,
             #                             kron_buffer,
             #                             kron_buffer2,
@@ -697,9 +709,21 @@ function calculate_loglikelihood(::Val{:inversion},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    if opts.verbose println("Inversion filter failed at step $i") end
-                    return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
-                end 
+                    # Limited-budget restarts: the zero start above preserves
+                    # min-norm-leaning behavior wherever it converges; only a
+                    # failing step pays for extra starts. See
+                    # find_shocks_with_restarts (AD-safe).
+                    # Shock rescue is optional (opts.rescue_shocks, default off).
+                    x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                        kron_buffer, kron_buffer2, J, 𝐒ⁱ, 𝐒ⁱ²ᵉ, shock_independent;
+                        verbose = opts.verbose) : (x, false)
+                    if !matched
+                        if opts.verbose println("Inversion filter failed at step $i") end
+                        return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive
+                    elseif opts.verbose
+                        println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                    end
+                end
             # end
         # end
 
@@ -1141,9 +1165,22 @@ function calculate_loglikelihood(::Val{:inversion},
         # end
 
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
-        end 
+            # Limited-budget restarts: the zero start above preserves
+            # min-norm-leaning behavior wherever it converges; only a
+            # failing step pays for extra starts. See
+            # find_shocks_with_restarts (AD-safe).
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                J, 𝟒𝟗, 𝟒𝟗²ᵉ, 𝟒𝟗³ᵉ, shock_independent;
+                verbose = opts.verbose) : (x, false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive
+            elseif opts.verbose
+                println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(x)))")
+            end
+        end
             # println("COBYLA: $matched; current x: $x")
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
@@ -1571,9 +1608,22 @@ function calculate_loglikelihood(::Val{:inversion},
         # end
 
         if !matched
-            if opts.verbose println("Inversion filter failed at step $i") end
-            return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
-        end 
+            # Limited-budget restarts: the zero start above preserves
+            # min-norm-leaning behavior wherever it converges; only a
+            # failing step pays for extra starts. See
+            # find_shocks_with_restarts (AD-safe).
+            # Shock rescue is optional (opts.rescue_shocks, default off).
+            x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                J, 𝟒𝟗, 𝟒𝟗²ᵉ, 𝟒𝟗³ᵉ, shock_independent;
+                verbose = opts.verbose) : (x, false)
+            if !matched
+                if opts.verbose println("Inversion filter failed at step $i") end
+                return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive
+            elseif opts.verbose
+                println("Inversion filter rescued at step $i (||x|| = $(ℒ.norm(x)))")
+            end
+        end
             # println("COBYLA: $matched; current x: $x")
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
@@ -2098,9 +2148,21 @@ end
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    @error "Inversion filter failed at step $i"
-                    return variables, shocks, zeros(0,0), zeros(0,0)
-                end 
+                    # Limited-budget restarts with the same system just attempted.
+                    if has_missing
+                        # Shock rescue is optional (opts.rescue_shocks, default off).
+                        x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                            kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v) : (x, false)
+                    else
+                        # Shock rescue is optional (opts.rescue_shocks, default off).
+                        x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                            kron_buffer, kron_buffer2, J, 𝟒𝟗, 𝟒𝟗²ᵉ, shock_independent) : (x, false)
+                    end
+                    if !matched
+                        @error "Inversion filter failed at step $i"
+                        return variables, shocks, zeros(0,0), zeros(0,0)
+                    end
+                end
             # end
         # end
 
@@ -2423,8 +2485,20 @@ end
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    @error "Inversion filter failed at step $i"
-                    return variables, shocks, zeros(0,0), decomposition
+                    # Limited-budget restarts with the same system just attempted.
+                    if has_missing
+                        # Shock rescue is optional (opts.rescue_shocks, default off).
+                        x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                            kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v) : (x, false)
+                    else
+                        # Shock rescue is optional (opts.rescue_shocks, default off).
+                        x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                            kron_buffer, kron_buffer2, J, 𝟒𝟗, 𝟒𝟗²ᵉ, shock_independent) : (x, false)
+                    end
+                    if !matched
+                        @error "Inversion filter failed at step $i"
+                        return variables, shocks, zeros(0,0), decomposition
+                    end
                 end
             # end
         # end
@@ -2867,9 +2941,23 @@ end
         #     end
         # end
         if !matched
-            @error "Inversion filter failed at step $i"
-            return variables, shocks, zeros(0,0), zeros(0,0)
-        end 
+            # Limited-budget restarts with the same system just attempted.
+            if has_missing
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v) : (x, false)
+            else
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝟒𝟗, 𝟒𝟗²ᵉ, 𝟒𝟗³ᵉ, shock_independent) : (x, false)
+            end
+            if !matched
+                @error "Inversion filter failed at step $i"
+                return variables, shocks, zeros(0,0), zeros(0,0)
+            end
+        end
             # println("COBYLA: $matched; current x: $x")
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
@@ -3333,8 +3421,22 @@ end
         #     end
         # end
         if !matched
-            @error "Inversion filter failed at step $i"
-            return variables, shocks, zeros(0,0), decomposition
+            # Limited-budget restarts with the same system just attempted.
+            if has_missing
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v) : (x, false)
+            else
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝟒𝟗, 𝟒𝟗²ᵉ, 𝟒𝟗³ᵉ, shock_independent) : (x, false)
+            end
+            if !matched
+                @error "Inversion filter failed at step $i"
+                return variables, shocks, zeros(0,0), decomposition
+            end
         end
             # println("COBYLA: $matched; current x: $x")
             # if !matched
@@ -4577,8 +4679,17 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_s
                                     init_guess, kron_buffer, kron_buffer2, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i") end
-                return on_failure_loglikelihood
+                # Limited-budget restarts on the observed-rows subsystem.
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer2, J, 𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x, false)
+                if !matched
+                    if opts.verbose println("Inversion filter (pruned 2nd) failed at step $i") end
+                    return on_failure_loglikelihood
+                elseif opts.verbose
+                    println("Inversion filter (pruned 2nd) rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                end
             end
             if i > presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
@@ -4754,8 +4865,17 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:second_o
                                     init_guess, kron_buffer, kron_buffer2, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter (2nd) failed at step $i") end
-                return on_failure_loglikelihood
+                # Limited-budget restarts on the observed-rows subsystem.
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer2, J, 𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x, false)
+                if !matched
+                    if opts.verbose println("Inversion filter (2nd) failed at step $i") end
+                    return on_failure_loglikelihood
+                elseif opts.verbose
+                    println("Inversion filter (2nd) rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                end
             end
             if i > presample_periods
                 jacc_v = view(jacc_v_buf, 1:m, :)
@@ -5022,8 +5142,18 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:pruned_t
                                     kron_buffer3, kron_buffer4, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i") end
-                return on_failure_loglikelihood
+                # Limited-budget restarts on the observed-rows subsystem.
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x, false)
+                if !matched
+                    if opts.verbose println("Inversion filter (pruned 3rd) failed at step $i") end
+                    return on_failure_loglikelihood
+                elseif opts.verbose
+                    println("Inversion filter (pruned 3rd) rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                end
             end
             if i > presample_periods
             compressed_kron²!(kron_buffer2, x, J)
@@ -5257,8 +5387,18 @@ function calculate_loglikelihood_with_missing(::Val{:inversion}, ::Val{:third_or
                                     kron_buffer3, kron_buffer4, J,
                                     𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v)
             if !matched
-                if opts.verbose println("Inversion filter (3rd) failed at step $i") end
-                return on_failure_loglikelihood
+                # Limited-budget restarts on the observed-rows subsystem.
+                # Shock rescue is optional (opts.rescue_shocks, default off).
+                x, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
+                    kron_buffer, kron_buffer², kron_buffer2, kron_buffer3, kron_buffer4,
+                    J, 𝐒ⁱ_v, 𝐒ⁱ²ᵉ_v, 𝐒ⁱ³ᵉ_v, si_v;
+                    verbose = opts.verbose) : (x, false)
+                if !matched
+                    if opts.verbose println("Inversion filter (3rd) failed at step $i") end
+                    return on_failure_loglikelihood
+                elseif opts.verbose
+                    println("Inversion filter (3rd) rescued at step $i (||x|| = $(ℒ.norm(x)))")
+                end
             end
             if i > presample_periods
                 compressed_kron²!(kron_buffer2, x, J)
