@@ -445,3 +445,12 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
   Ivashchenko `48/48`, direct unsupported-dispatch checks pass, and `git diff --check` passes.
   The replacement GitHub run is pending after push; the observed in-flight run predates this
   local fix.
+
+## Machinery commit grouping (2026-10-24)
+
+- Grouped the opt-in nonlinear shock-rescue solver and its public option, primal inversion,
+  missing-observation, and reverse-mode wiring in commit `7cc4c016`.
+- Kept the independent repeated-call inversion pullback accumulator reset in commit `6926d92b`.
+- Both staged diffs pass `git diff --check`. No tests were run for this commit-organization task.
+- Left the older `Project.toml` dependency edits and untracked local model/data/scratch files
+  untouched; they were outside the machinery changes being committed.
