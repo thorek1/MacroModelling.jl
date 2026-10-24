@@ -107,7 +107,7 @@ The inversion filter takes a different route: instead of integrating the shocks 
 y_t = g(x_{t-1}, \varepsilon_t)[\text{observables}]
 ```
 
-for ``\varepsilon_t``. At first order this is a linear solve; at higher order it is a small Newton problem per period (`filter_algorithm = :LagrangeNewton`). The recovered shocks are then scored under their own standard normal prior, with a Jacobian term for the change of variables:
+for ``\varepsilon_t``. At first order this is a linear solve; at higher order it is a small Newton problem per period (`filter_algorithm = :LagrangeNewton`). When the observed series and shocks have equal counts, damped Newton steps solve the shock Jacobian directly, with backtracking on the observation residual. The Lagrange–Newton shock/multiplier system is retained for underidentified maps and as a fallback when direct Newton stalls. The recovered shocks are then scored under their own standard normal prior, with a Jacobian term for the change of variables:
 
 ```math
 \log p(y_{1:T}) = -\tfrac{1}{2}\sum_t \left( \varepsilon_t'\varepsilon_t + d\log 2\pi \right) - \sum_t \log\left|\det J_t\right|.
@@ -885,7 +885,14 @@ third-order extension is an implementation of the same moment-closure idea, not 
 distribution, not these polynomial moments conditional on the assumed Gaussian input.
 
 The `:theoretical` initial covariance solves the coupled unpruned mean/covariance fixed point,
-starting from the linear Lyapunov covariance. A supplied covariance or `:diagonal` uses that
+starting from the linear Lyapunov covariance. Each generic iteration freezes the effective
+Hermite transition ``A``, solves ``P^+ = A P^+ A' + V - A P A'`` for the covariance,
+and takes the mean step ``\mu^+ = \mu + (I-A)^{-1}(E[x']-\mu)``. This removes the slow
+linear persistence from the moment iteration. The returned prior must satisfy the original
+moment equations; a failed frozen solve falls back to moment iteration. A unit root or
+unstable linear seed fails theoretical initialization and requires an explicit prior.
+The analytical reverse rule covers both the Newton and Lyapunov steps.
+A supplied covariance or `:diagonal` uses that
 prior directly. The filter supports Gaussian measurement error and partial or fully missing
 observation periods: the update is restricted to the observed rows, and a fully missing period
 is prediction-only. `smooth = true` applies the fixed-interval Rauch–Tung–Striebel smoother,

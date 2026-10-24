@@ -2,7 +2,7 @@
 
 ## Current task
 
-Merge the particle-filter parent changes, keep pruned higher-order Kalman recursions compressed, and verify Kollmann, Ivashchenko, SW07 accuracy, and likelihood gradients.
+Port useful scoped Rust filtering algorithms onto `codex/ivashchenko-filter-resolved`, retaining Julia linear algebra and analytical derivatives.
 
 ## Status
 
@@ -627,3 +627,64 @@ is an explicit extension of that idea; it is not attributed to Ivashchenko's sec
 - Both staged diffs pass `git diff --check`. No tests were run for this commit-organization task.
 - Left the older `Project.toml` dependency edits and untracked local model/data/scratch files
   untouched; they were outside the machinery changes being committed.
+
+
+## Rust filtering algorithm review and ports (2026-10-24)
+
+Compared Julia branch base `cad1c035` with the read-only Rust repository at
+`5123b84`. Incorporated two algorithm improvements without copying Rust's
+linear algebra infrastructure:
+
+- Ported the effective-transition Lyapunov covariance rounds and Newton mean
+  steps from Rust `filter/ivashchenko.rs::PolynomialMap::start`. Recorded and
+  unrecorded generic initialization now share one iteration. Existing optimized
+  pruned block initialization remains in place. Returned moments must satisfy
+  the original moment equations; failed frozen solves use the original moment
+  iteration. Unit-root/unstable seeds fail theoretical initialization explicitly.
+- Derived analytical pullbacks for the new stationary mean and covariance
+  solves, including the cubic Hermite effective transition. No AD or finite
+  differences are used inside pullbacks.
+- Ported the bounded, residual-backtracked square Newton solve from Rust
+  `filter/inversion/mod.rs::Problem::gauss_newton`. It factors the shock Jacobian
+  directly; the existing Lagrange–Newton solver remains the fallback and handles
+  underidentified systems. Fixed initialization of the residual at nonzero
+  starting shocks and the zero-shock relative-step division. The final Newton
+  correction is retained at exact primal roots for ForwardDiff derivatives.
+- Added `test/test_filter_convergence.jl` to the higher-order filter test group
+  and documented both numerical algorithms in `docs/src/filters.md`.
+
+Verification (focused tests only, Julia 1.13.2):
+
+- Before the port, an analytically soluble AR(1) polynomial with persistence
+  0.999 exhausted 500 iterations at mean 0.393621 instead of 1.0, at both orders.
+  After the port it returns the analytical mean and covariance.
+- New convergence regressions: 56/56, covering both polynomial orders, all
+  supported Gaussian closures, analytical/forward/finite-difference gradient
+  agreement, theoretical unit-root rejection, exact starting roots, zero-shock
+  derivatives, underidentified solutions, backtracking, and infeasible data.
+- Existing Ivashchenko regressions: unpruned 49/49, pruned 32/32.
+- Public API reproduction: 28/28, checking inversion values/forward/reverse
+  gradients at all five orders with dense and missing data, plus theoretical
+  Ivashchenko gradients at all four higher orders. Maximum Ivashchenko gradient
+  differences were 1.4e-14 to 2.2e-14 on the small model.
+- After preserving the zero-start underidentified fast path, the directly
+  affected shock regressions pass again (23/23).
+- Warmed seven-shock square-system microbenchmarks: second order 8.318 to
+  4.537 microseconds (10,448 to 1,728 bytes); third order 16.385 to 13.290
+  microseconds (11,760 to 1,776 bytes). Four-observable/seven-shock timings
+  remain within 1% and allocations are unchanged. These are synthetic solver
+  benchmarks, not end-to-end model speed claims.
+- Final scalar stationary-initialization benchmark at persistence 0.95:
+  283.393 to 9.710 microseconds (29.2×), with allocations reduced from
+  238,672 to 16,848 bytes (93%). The persistence-0.999 case is a convergence
+  improvement: its baseline did not converge, so no speedup is claimed there.
+- `git diff --check` passes. Runtime scripts, isolated test dependencies, review
+  notes, reproductions, and logs are in ignored `work/`; Rust was not modified.
+
+Already present on the Julia branch: compressed Hermite moments, compact
+likelihood output maps, missing-data updates, analytical likelihood rules,
+smoothing, and decomposition support. Retained these implementations. Deferred
+Rust diffuse/trend and exact-equation filters because they need infrastructure
+outside this perturbation-filter branch. Also retained the existing opt-in
+rescue policy; pseudo-arclength root enumeration and earlier-period rewinds
+require a separate path-selection/derivative design.

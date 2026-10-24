@@ -1131,30 +1131,75 @@ function ivashchenko_stationary_initialization(sys, initial_mean, initial_covari
         lyapunov_algorithm = lyapunov_algorithm)
     pruned_initialization !== nothing && return pruned_initialization
 
-    # Start from the linear stationary covariance, then solve the coupled
-    # nonlinear mean/covariance fixed point implied by the unpruned polynomial.
+    m, P, converged, _ = ivashchenko_stationary_iteration(
+        sys, initial_mean, ws; workspaces = workspaces,
+        lyapunov_algorithm = lyapunov_algorithm)
+    return m, P, converged
+end
+
+function ivashchenko_stationary_iteration(sys, initial_mean, ws;
+                                          workspaces = nothing,
+                                          lyapunov_algorithm::Symbol = :doubling,
+                                          record::Bool = false)
+    m = Vector{eltype(ws.vbar)}(initial_mean)
+    iterations = NamedTuple[]
+    # A theoretical prior requires a stable linear seed. In particular,
+    # doubling at a unit root can return an enormous finite covariance whose
+    # apparent zero residual is just loss of the process noise to rounding.
+    if !all(isfinite, primal.(sys.A)) ||
+       maximum(abs, ℒ.eigvals(primal.(sys.A)); init = 0.0) >= 1
+        P = zeros(eltype(ws.vbar), sys.nPast, sys.nPast)
+        return m, P, false, (; iterations, linear_covariance = copy(P))
+    end
     P = qkf_lyapunov(sys.A, sys.B * sys.B'; workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
-    m = Vector{scalar_type}(initial_mean)
-    converged = false
-    for _ in 1:IVASHCHENKO_STATIONARY_MAXITER
+    linear_covariance = record ? copy(P) : nothing
+    for iteration in 1:IVASHCHENKO_STATIONARY_MAXITER
         ivashchenko_polynomial_moments!(sys, m, P, ws)
-        next_m = collect(view(ws.mean, sys.state_position))
+        next_m = Vector(view(ws.mean, sys.state_position))
         next_P = Matrix(view(ws.covariance, sys.state_position, sys.state_position))
-        next_P = (next_P + next_P') / 2
-        delta_m = isempty(next_m) ? 0.0 : maximum(abs, primal.(next_m .- m))
-        delta_P = isempty(next_P) ? 0.0 : maximum(abs, primal.(next_P .- P))
         if !all(isfinite, primal.(next_m)) || !all(isfinite, primal.(next_P))
-            return m, P, false
+            return m, P, false, (; iterations, linear_covariance)
         end
-        m, P = next_m, next_P
-        if max(delta_m, delta_P) <= IVASHCHENKO_STATIONARY_TOLERANCE *
-                                  max(1.0, maximum(abs, primal.(m)), maximum(abs, primal.(P)))
-            converged = true
-            break
+        residual = max(maximum(abs, primal.(next_m - m); init = 0.0),
+                       maximum(abs, primal.(next_P - P); init = 0.0))
+        scale = max(1.0, maximum(abs, primal.(m); init = 0.0),
+                    maximum(abs, primal.(P); init = 0.0))
+        # Test the actual moment equations at the returned point, rather than
+        # accepting a small solver step near a singular stationary equation.
+        if iteration > 1 && residual <= IVASHCHENKO_STATIONARY_TOLERANCE * scale
+            return m, P, true, (; iterations, linear_covariance)
         end
+
+        A = Matrix(view(ws.effective_linear, sys.state_position, 1:sys.nPast))
+        step = ivashchenko_stationary_mean_solve(A, next_m - m)
+        accelerated = false
+        if step !== nothing && all(isfinite, primal.(step)) &&
+           maximum(abs, ℒ.eigvals(primal.(A)); init = 0.0) < 1
+            # Freeze the Hermite transition: P⁺ = A P⁺ A' + (V - A P A').
+            Q = next_P - A * P * A'
+            candidate_P = qkf_lyapunov(A, (Q + Q') / 2;
+                                       workspaces = workspaces,
+                                       lyapunov_algorithm = lyapunov_algorithm)
+            if all(isfinite, primal.(candidate_P)) &&
+               maximum(abs, primal.(candidate_P - A * candidate_P * A' - Q); init = 0.0) <=
+                   IVASHCHENKO_STATIONARY_TOLERANCE *
+                   max(1.0, maximum(abs, primal.(candidate_P); init = 0.0))
+                next_m = m + step
+                next_P = candidate_P
+                accelerated = true
+            end
+        end
+        # Keep the original moment iteration when the frozen solve fails.
+        if record
+            push!(iterations, (; input_mean = copy(m), input_covariance = copy(P),
+                                moment_tape = ivashchenko_copy_moment_tape(ws),
+                                accelerated, A, mean_step = step,
+                                output_covariance = copy(next_P)))
+        end
+        m, P = next_m, (next_P + next_P') / 2
     end
-    return m, P, converged
+    return m, P, false, (; iterations, linear_covariance)
 end
 
 function ivashchenko_measurement_covariance(measurement_error, n_obs, scalar_type)
@@ -1205,34 +1250,8 @@ function ivashchenko_stationary_initialization_taped(sys, initial_mean, initial_
         throw(ArgumentError("Unsupported Ivashchenko initial covariance: $(initial_covariance)."))
     end
 
-    P = qkf_lyapunov(sys.A, sys.B * sys.B'; workspaces = workspaces,
-                     lyapunov_algorithm = lyapunov_algorithm)
-    linear_covariance = copy(P)
-    m = Vector{scalar_type}(initial_mean)
-    iterations = NamedTuple[]
-    converged = false
-    for _ in 1:IVASHCHENKO_STATIONARY_MAXITER
-        input_mean = copy(m)
-        input_covariance = copy(P)
-        ivashchenko_polynomial_moments!(sys, m, P, ws)
-        moment_tape = ivashchenko_copy_moment_tape(ws)
-        next_m = collect(view(ws.mean, sys.state_position))
-        next_P = Matrix(view(ws.covariance, sys.state_position, sys.state_position))
-        next_P = (next_P + next_P') / 2
-        push!(iterations, (; input_mean, input_covariance, moment_tape))
-        delta_m = isempty(next_m) ? 0.0 : maximum(abs, primal.(next_m .- m))
-        delta_P = isempty(next_P) ? 0.0 : maximum(abs, primal.(next_P .- P))
-        if !all(isfinite, primal.(next_m)) || !all(isfinite, primal.(next_P))
-            return m, P, false, (; iterations, linear_covariance)
-        end
-        m, P = next_m, next_P
-        if max(delta_m, delta_P) <= IVASHCHENKO_STATIONARY_TOLERANCE *
-                                  max(1.0, maximum(abs, primal.(m)), maximum(abs, primal.(P)))
-            converged = true
-            break
-        end
-    end
-    return m, P, converged, (; iterations, linear_covariance)
+    return ivashchenko_stationary_iteration(sys, initial_mean, ws;
+        workspaces = workspaces, lyapunov_algorithm = lyapunov_algorithm, record = true)
 end
 
 function ivashchenko_filter_pass(sys, data_in_deviations::AbstractMatrix{<:Real}, initial_mean;
@@ -1566,7 +1585,8 @@ function ivashchenko_rank_one_add!(matrix, left, right, scale)
 end
 
 function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
-                                                   covariance_bar, buffers)
+                                                   covariance_bar, buffers,
+                                                   effective_linear_bar)
     nout, d = sys.nout, sys.d
     Σ = moment_tape.covariance_input
     v = moment_tape.vbar
@@ -1589,6 +1609,7 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
     ℒ.mul!(buffers.tmp_noutd, covariance_bar_symmetric, L)
     ivashchenko_right_input_covariance!(gL, buffers.tmp_noutd, Σ,
                                         sys.nPast, 2.0)
+    effective_linear_bar !== nothing && (gL .+= effective_linear_bar)
     ℒ.mul!(buffers.tmp_dnout, transpose(L), covariance_bar_symmetric)
     ℒ.mul!(gΣ, buffers.tmp_dnout, L, 1.0, 0.0)
     if moment_tape.gaussian_closure != :linearized
@@ -1669,11 +1690,13 @@ end
 
 function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, covariance_bar;
                                                  quadratic_buffers = nothing,
-                                                 third_order_buffers = nothing)
+                                                 third_order_buffers = nothing,
+                                                 effective_linear_bar = nothing)
     moment_tape.third_derivative === nothing &&
         return ivashchenko_second_order_moment_pullback!(sys, moment_tape,
                                                          mean_bar, covariance_bar,
-                                                         quadratic_buffers)
+                                                         quadratic_buffers,
+                                                         effective_linear_bar)
     nout, d, dv = sys.nout, sys.d, sys.dv
     Σ = moment_tape.covariance_input
     v = moment_tape.vbar
@@ -1776,6 +1799,20 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
         ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
                                                    covariance_bar_symmetric, Σ,
                                                    quadratic_buffers)
+    end
+
+    if effective_linear_bar !== nothing
+        gL .+= effective_linear_bar
+        # E = L + T R(Σ)/6: gT += gE R'/6, gR = T' gE/6.
+        ℒ.mul!(gT, effective_linear_bar, transpose(moment_tape.third_linear), 1 / 6, 1.0)
+        ℒ.mul!(B.gR_internal, transpose(third), effective_linear_bar, 1 / 6, 0.0)
+        @inbounds for p in eachindex(sys.random_triple_indices), r in 1:d
+            i, j, k = sys.random_triple_indices[p]
+            weight = sys.random_triple_multiplicities[p] * B.gR_internal[p, r]
+            r == i && (gΣ[j, k] += weight)
+            r == j && (gΣ[i, k] += weight)
+            r == k && (gΣ[i, j] += weight)
+        end
     end
 
     pair_cotangent = B.pair_cotangent
@@ -1983,14 +2020,40 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
         for iteration in reverse(tape.initialization_tape.iterations)
             output_mean_bar = zeros(scalar_type, sys.nout)
             output_covariance_bar = zeros(scalar_type, sys.nout, sys.nout)
-            output_mean_bar[sys.state_position] .= initialization_mean_bar
-            output_covariance_bar[sys.state_position, sys.state_position] .=
-                (initialization_covariance_bar + initialization_covariance_bar') / 2
+            effective_linear_bar = nothing
+            direct_mean_bar = zeros(scalar_type, sys.nPast)
+            direct_covariance_bar = zeros(scalar_type, sys.nPast, sys.nPast)
+            if iteration.accelerated
+                A = iteration.A
+                # s = (I-A)⁻¹(u-m), m⁺ = m+s: gr = (I-A)'⁻¹ gm⁺.
+                residual_bar = ivashchenko_stationary_mean_solve(A', initialization_mean_bar)
+                output_mean_bar[sys.state_position] .= residual_bar
+                direct_mean_bar .= initialization_mean_bar - residual_bar
+                # P⁺ = A P⁺ A' + V - A P A'. Reverse the Lyapunov
+                # solve and subtract the frozen input covariance contribution.
+                covariance_forcing_bar = qkf_lyapunov(A', initialization_covariance_bar;
+                    lyapunov_algorithm = lyapunov_algorithm)
+                covariance_forcing_bar = (covariance_forcing_bar + covariance_forcing_bar') / 2
+                output_covariance_bar[sys.state_position, sys.state_position] .= covariance_forcing_bar
+                direct_covariance_bar .= -A' * covariance_forcing_bar * A
+                transition_bar = residual_bar * iteration.mean_step' +
+                    2 * covariance_forcing_bar * A *
+                    (iteration.output_covariance - iteration.input_covariance)
+                effective_linear_bar = zeros(scalar_type, sys.nout, sys.d)
+                effective_linear_bar[sys.state_position, 1:sys.nPast] .= transition_bar
+            else
+                output_mean_bar[sys.state_position] .= initialization_mean_bar
+                output_covariance_bar[sys.state_position, sys.state_position] .=
+                    (initialization_covariance_bar + initialization_covariance_bar') / 2
+            end
             initialization_mean_bar, initialization_covariance_bar, local_S1, local_S2, local_S3 =
                 ivashchenko_polynomial_moments_pullback(sys, iteration.moment_tape,
                                                         output_mean_bar, output_covariance_bar;
                                                         quadratic_buffers = quadratic_buffers,
-                                                        third_order_buffers = third_order_buffers)
+                                                        third_order_buffers = third_order_buffers,
+                                                        effective_linear_bar = effective_linear_bar)
+            initialization_mean_bar .+= direct_mean_bar
+            initialization_covariance_bar .+= direct_covariance_bar
             gS1 .+= local_S1
             gS2 .+= local_S2
             if gS3 !== nothing

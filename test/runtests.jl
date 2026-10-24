@@ -72,6 +72,7 @@ elseif test_set == "update_equations"
 elseif test_set == "jet_hot_paths"
     include("test_jet_hot_paths.jl")
 elseif test_set == "higher_order_filters"
+    include("test_filter_convergence.jl")
     include("test_quadratic_kalman.jl")
     include("test_ivashchenko_kalman.jl")
     include("test_pruned_ivashchenko_kalman.jl")

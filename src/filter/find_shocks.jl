@@ -923,12 +923,97 @@ end
 #     return x[free_shock_idx], matched
 # end
 
+function shock_polynomial_residual!(residual, part, pairs, triples, x,
+                                     linear, quadratic, cubic, target)
+    compressed_kron²_power!(pairs, x)
+    # residual = linear*x + quadratic*k₂(x) + cubic*k₃(x) - target.
+    ℒ.mul!(residual, linear, x)
+    scale = max(ℒ.norm(residual), ℒ.norm(target))
+    ℒ.mul!(part, quadratic, pairs)
+    scale = max(scale, ℒ.norm(part))
+    ℒ.axpy!(1, part, residual)
+    if cubic !== nothing
+        compressed_kron³_power!(triples, x)
+        ℒ.mul!(part, cubic, triples)
+        scale = max(scale, ℒ.norm(part))
+        ℒ.axpy!(1, part, residual)
+    end
+    ℒ.axpy!(-1, target, residual)
+    return scale
+end
+
+# A square observation map needs only Newton's n×n Jacobian, rather than the
+# 2n×2n shock/multiplier KKT system. Backtracking keeps the observation residual
+# decreasing; the caller retains LagrangeNewton as a fallback when this stalls.
+function find_square_shocks(initial_guess, pairs, triples, pair_jacobian,
+                             triple_jacobian, identity, linear, quadratic, cubic,
+                             target; max_iter, tol)
+    x = copy(initial_guess)
+    residual = similar(target)
+    trial_residual = similar(target)
+    part = similar(target)
+    trial = similar(x)
+    step = similar(x)
+    jacobian = similar(linear)
+    scale = shock_polynomial_residual!(residual, part, pairs, triples, x,
+                                        linear, quadratic, cubic, target)
+    for _ in 1:min(max_iter, 60)
+        compressed_kron²!(pair_jacobian, x, identity)
+        copyto!(jacobian, linear)
+        # J(x) = linear + 2quadratic*D₂(x) + 3cubic*D₃(x).
+        ℒ.mul!(jacobian, quadratic, pair_jacobian, 2, 1)
+        if cubic !== nothing
+            compressed_kron³!(triple_jacobian, x, x, identity)
+            ℒ.mul!(jacobian, cubic, triple_jacobian, 3, 1)
+        end
+        factor = ℒ.lu!(jacobian, check = false)
+        ℒ.issuccess(factor) || return x, false
+        # step = J(x)⁻¹ f(x).
+        ℒ.ldiv!(step, factor, residual)
+        all(isfinite, step) || return x, false
+        current = ℒ.norm(residual)
+        feasible = tol * scale
+        if current <= feasible
+            # Apply the final correction even at an exact primal root so Dual
+            # inputs retain the implicit root derivative through J⁻¹f.
+            @. trial = x - step
+            trial_scale = shock_polynomial_residual!(trial_residual, part, pairs,
+                triples, trial, linear, quadratic, cubic, target)
+            if ℒ.norm(trial_residual) <= tol * trial_scale
+                copyto!(x, trial)
+            end
+            return x, true
+        end
+        alpha = one(eltype(x))
+        accepted = false
+        for _ in 1:30
+            @. trial = x - alpha * step
+            trial_scale = shock_polynomial_residual!(trial_residual, part, pairs,
+                triples, trial, linear, quadratic, cubic, target)
+            trial_norm = ℒ.norm(trial_residual)
+            if isfinite(trial_norm) && trial_norm <= (1 - 1e-4 * alpha) * current
+                copyto!(x, trial)
+                copyto!(residual, trial_residual)
+                scale = trial_scale
+                accepted = true
+                break
+            end
+            alpha /= 2
+        end
+        accepted || return x, false
+    end
+    return x, false
+end
+
 """
 Solve for minimum-norm shocks that satisfy linear and quadratic constraints using a
 Lagrange-Newton stepper. For higher-order solutions the global minimum-norm problem is
 NP-hard because the number of feasible roots grows exponentially; any gradient-based
 solver started at the origin (not just LagrangeNewton) will converge to the root whose
 basin contains the origin rather than guaranteeing the global optimum.
+
+Square observation maps first use damped Newton steps on the shock Jacobian;
+Lagrange-Newton is retained for underidentified maps and as a fallback.
 """
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{R},
@@ -941,6 +1026,12 @@ function find_shocks(::Val{:LagrangeNewton},
                     max_iter::Int = 1000,
                     tol::AbstractFloat = 1e-13,
                     verbose::Bool = false) where R <: Real
+    if size(𝐒ⁱ, 1) == size(𝐒ⁱ, 2) && max_iter > 0
+        square_x, matched = find_square_shocks(initial_guess, kron_buffer, nothing,
+            kron_buffer2, nothing, J, 𝐒ⁱ, 𝐒ⁱ²ᵉ, nothing, shock_independent;
+            max_iter = max_iter, tol = tol)
+        matched && return square_x, true
+    end
     x = copy(initial_guess)
     
     λ = zeros(R, size(𝐒ⁱ, 1))
@@ -959,6 +1050,11 @@ function find_shocks(::Val{:LagrangeNewton},
     x̂ = copy(shock_independent)
 
     part_buf = zeros(R, size(𝐒ⁱ, 1))
+    if !all(iszero, x)
+        shock_polynomial_residual!(x̂, part_buf, kron_buffer, nothing, x,
+                                   𝐒ⁱ, 𝐒ⁱ²ᵉ, nothing, shock_independent)
+        ℒ.rmul!(x̂, -1)
+    end
 
     x̄ = zeros(R, size(𝐒ⁱ,2))
 
@@ -1044,7 +1140,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
         residual = norm_part > 0 ? ℒ.norm(x̂) / norm_part : ℒ.norm(x̂)
 
-        if residual < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+        if residual < tol && ℒ.norm(Δxλ) / max(one(R), ℒ.norm(xλ)) < sqrt(tol)
             break
         end
     end
@@ -1062,7 +1158,7 @@ function find_shocks(::Val{:LagrangeNewton},
     ℒ.axpby!(1, shock_independent, -1, x̂)
     residual = norm_part > 0 ? ℒ.norm(x̂) / norm_part : ℒ.norm(x̂)
 
-    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    step_norm = ℒ.norm(Δxλ) / max(one(R), ℒ.norm(xλ))
     matched = residual < tol && step_norm < sqrt(tol)
     verbose && @info "LagrangeNewton solve (2nd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
     return x, matched
@@ -1838,6 +1934,12 @@ function find_shocks(::Val{:LagrangeNewton},
                     max_iter::Int = 1000,
                     tol::AbstractFloat = 1e-13,
                     verbose::Bool = false) where R <: Real
+    if size(𝐒ⁱ, 1) == size(𝐒ⁱ, 2) && max_iter > 0
+        square_x, matched = find_square_shocks(initial_guess, kron_buffer, kron_buffer²,
+            kron_buffer2, kron_buffer3, J, 𝐒ⁱ, 𝐒ⁱ²ᵉ, 𝐒ⁱ³ᵉ, shock_independent;
+            max_iter = max_iter, tol = tol)
+        matched && return square_x, true
+    end
     x = copy(initial_guess)
 
     λ = zeros(R, size(𝐒ⁱ, 1))
@@ -1856,6 +1958,11 @@ function find_shocks(::Val{:LagrangeNewton},
     x̂ = copy(shock_independent)
 
     part_buf = zeros(R, size(𝐒ⁱ, 1))
+    if !all(iszero, x)
+        shock_polynomial_residual!(x̂, part_buf, kron_buffer, kron_buffer², x,
+                                   𝐒ⁱ, 𝐒ⁱ²ᵉ, 𝐒ⁱ³ᵉ, shock_independent)
+        ℒ.rmul!(x̂, -1)
+    end
 
     x̄ = zeros(R, size(𝐒ⁱ,2))
 
@@ -1951,7 +2058,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
         residual = norm_part > 0 ? ℒ.norm(x̂) / norm_part : ℒ.norm(x̂)
 
-        if residual < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+        if residual < tol && ℒ.norm(Δxλ) / max(one(R), ℒ.norm(xλ)) < sqrt(tol)
             break
         end
     end
@@ -1971,7 +2078,7 @@ function find_shocks(::Val{:LagrangeNewton},
     ℒ.axpby!(1, shock_independent, -1, x̂)
     residual = norm_part > 0 ? ℒ.norm(x̂) / norm_part : ℒ.norm(x̂)
 
-    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    step_norm = ℒ.norm(Δxλ) / max(one(R), ℒ.norm(xλ))
     matched = residual < tol && step_norm < sqrt(tol)
     verbose && @info "LagrangeNewton solve (3rd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
     return x, matched
