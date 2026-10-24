@@ -63,9 +63,8 @@ function translate_mod_file(path_to_mod_file::AbstractString)
             eq = replace(eq, Regex("(?<!\\b)\\($(v)\\)") => v * "[ss]")
             eq = replace(eq, Regex("\\b$(v)\\b(?!\\[)") => v * "[0]")
         end
-        # Dynare 7 emits steady-state references as STEADY_STATE(var), while
-        # older releases emit the indexed form that MacroModelling accepts.
-        eq = replace(eq, r"\bSTEADY_STATE\(([^()]*)\[0\]\)" => s"\1[ss]")
+        # Dynare's STEADY_STATE(x) should use MacroModelling's x[ss] syntax.
+        eq = replace(eq, r"STEADY_STATE\((\w+)(?:\[0\])?\)" => s"\1[ss]")
         for x in shocks
             eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
         end
@@ -311,3 +310,4 @@ function translate_expression_to_ascii(exp::Expr)
                 x,
     exp)
 end
+

@@ -160,6 +160,25 @@ function solve_lu_right!(A::AbstractMatrix{R},
     return B
 end
 
+# `solve_lu_left!` and `solve_lu_right!` above are the backend kernels used by
+# filters that own a FastLapack workspace directly.  The higher-order filters
+# instead own a `LinearSolve.LinearCache`; these two adapters reach the same
+# workspace and LU factors through `cacheval`.  They are intentionally not a
+# second solve implementation, and they are not a reason to replace the
+# generic Kalman path, whose direct workspace is faster on its tested shapes.
+function solve_linear_cache_lu_left!(cache::𝒮.LinearCache,
+                                     B::AbstractVecOrMat{R}) where {R <: AbstractFloat}
+    cacheval = cache.cacheval
+    return solve_lu_left!(cache.A, B, cacheval.workspace, cacheval.factors)
+end
+
+function solve_linear_cache_lu_right!(cache::𝒮.LinearCache,
+                                      B::AbstractMatrix{R},
+                                      rhs_t::AbstractMatrix{R}) where {R <: AbstractFloat}
+    cacheval = cache.cacheval
+    return solve_lu_right!(cache.A, B, cacheval.workspace, cacheval.factors, rhs_t)
+end
+
 # ─── Generalized Schur factorization ──────────────────────────────────────────
 
 # Returns NamedTuple{(:S,:T,:Z)} for the decomposition (or dummy values on failure).

@@ -254,3 +254,36 @@ plot_model_estimates(FS2000, data)
 ![Model estimates](../assets/estimates__FS2000__3.png)
 
 shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.
+
+## Nonlinear estimation with the particle filter
+
+For genuinely nonlinear models the structural shocks can be integrated out by Monte Carlo using a particle filter. These work for every perturbation order (`:first_order` through `:pruned_third_order`) and require measurement error on the observables. That is what `measurement_error` supplies: the covariance of the Gaussian measurement error, as a scalar variance, a vector of per-observable variances, or a full covariance matrix — not a standard deviation. It defaults to `:auto`, which is a variance of `(0.1 s_i)^2` per observable, `s_i` being that observable's sample standard deviation. Because it is scale-free that default is a reasonable starting point on any dataset, from a two-observable RBC model to Smets-Wouters (2007); set it explicitly (or estimate it) once you care about the level of the likelihood. Each variant is its own `filter` value:
+
+- `:bootstrap_particle` — the sequential-importance-resampling filter of Gordon, Salmond & Smith (1993), applied to DSGE models by Fernández-Villaverde & Rubio-Ramírez (2007),
+- `:auxiliary_particle` — the auxiliary particle filter of Pitt & Shephard (1999), which uses a look-ahead proposal,
+- `:tempered_particle` — the tempered particle filter of Herbst & Schorfheide (2019), which yields a much lower-variance likelihood estimate for the same number of particles.
+
+The particle-filter likelihood is a stochastic estimator and is **not** differentiable (resampling is discontinuous), so it must be used with gradient-free samplers such as the slice sampler in `Pigeons.jl` or nested sampling. Pass a seeded `particle_rng` for reproducibility.
+
+See the [Filters](../filters.md) page for the full comparison, the maths behind each filter, and guidance on choosing between them.
+
+```julia
+using MacroModelling
+import Pigeons, Random
+
+Random.seed!(1)
+
+Turing.@model function FS2000_particle(data, m)
+    parameters ~ Turing.product_distribution(prior_distributions)
+    Turing.@addlogprob! get_loglikelihood(m, data, parameters;
+                                          algorithm = :pruned_second_order,
+                                          filter = :tempered_particle,
+                                          n_particles = 5000,
+                                          particle_rng = Random.Xoshiro(1))
+end
+
+pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_particle(data, FS2000)),
+                     n_rounds = 8)
+```
+
+Because the likelihood is noisy, `on_failure_loglikelihood` already defaults to a large finite penalty (`-1e6`) for the particle filters rather than `-Inf`, so an occasional failed evaluation rejects one proposal instead of killing the chain; override it if your posterior legitimately reaches values that low. Prefer a larger `n_particles` (and the `:tempered_particle` filter) to reduce the estimate's variance.

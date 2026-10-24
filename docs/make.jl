@@ -48,6 +48,7 @@ makedocs(
             "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
             "Model Estimates" => "plot_model_estimates.md",
         ],
+        "Filters" => "filters.md",
         "Steady State" => "steady_state.md",
         "Shapley decompositions (higher order)" => "shapley_decompositions.md",
         "Speed Benchmarks" => "speed.md",

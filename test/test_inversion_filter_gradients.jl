@@ -22,8 +22,8 @@ import FiniteDifferences
 #
 # Edge cases (where supported by the dispatch):
 #   * n_obs <  n_shocks  (under-identified — LagrangeNewton path)
-#   * n_obs == n_shocks  (square — first_order only; higher orders cannot
-#     invert square systems on this model with LagrangeNewton)
+#   * n_obs == n_shocks  (square — first_order here; the smaller nonlinear
+#     fixture in test_filter_convergence covers all higher-order dispatches)
 #   * partial + fully missing observations (public missing-data dispatch)
 #   * warmup_iterations > 0   (first_order dense path + hidden-warmup
 #     paths for missing data and higher-order inversion likelihoods)
@@ -259,9 +259,9 @@ end
     compare_gradients("Gali :$algo (under-identified, FULL param vector)",
                       GALI, data, base_params, collect(eachindex(base_params)), algo)
 
-    # --- (c) square observables (n_obs == n_shocks): first_order only -------
-    #   (higher-order inversion does not converge for square systems on this
-    #    model — exercising it would test the failure path, not the gradient.)
+    # --- (c) square observables (n_obs == n_shocks): first_order ------------
+    # The square direct-Newton path is covered across all higher-order
+    # dispatches by the small public-API fixture in test_filter_convergence.
     algo = :first_order
     # Use a tighter σ so that finite-difference perturbations keep the
     # square-system inversion inside its convergence basin.
