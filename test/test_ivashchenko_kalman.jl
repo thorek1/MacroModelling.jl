@@ -262,4 +262,28 @@ import AxisKeys: KeyedArray
           get_loglikelihood(RBC_ivashchenko, data, RBC_ivashchenko.parameter_values;
                             algorithm = :first_order,
                             filter = :inversion)
+
+    # The RTS cross-covariance is PₜAₜ₊₁', not Aₜ₊₁Pₜ.  Use a non-commuting
+    # transition/covariance pair so the orientation error cannot be hidden by
+    # symmetric toy matrices.
+    smoother_sys = (nVars = 2, nExo = 1, state_position = 1:2)
+    post_covariance = [2.0 0.3; 0.3 1.0]
+    predicted_covariance = [3.0 0.1; 0.1 2.0]
+    transition = [0.4 0.8; -0.2 0.3]
+    post_mean = [0.0, 0.0]
+    predicted_mean = [0.5, -0.3]
+    next_post_mean = [1.2, 0.4]
+    smoother_tape = (state_position = 1:2,
+                     post_means = [post_mean, next_post_mean],
+                     post_covariances = [post_covariance, predicted_covariance],
+                     transitions = [zeros(2, 2), transition],
+                     predicted_means = [zeros(2), predicted_mean],
+                     predicted_covariances = [Matrix{Float64}(ℒ.I, 2, 2), predicted_covariance],
+                     output_means = [zeros(2), zeros(2)],
+                     output_covariances = [Matrix{Float64}(ℒ.I, 2, 2), predicted_covariance],
+                     shock_loadings = [[0.2; 0.4], [0.2; 0.4]])
+    smoothed, = MacroModelling.ivashchenko_smooth_pass(smoother_sys, smoother_tape)
+    expected = post_mean + post_covariance * transition' /
+               predicted_covariance * (next_post_mean - predicted_mean)
+    @test smoothed[:, 1] ≈ expected
 end

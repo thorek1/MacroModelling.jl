@@ -391,14 +391,15 @@ Constant structure of the cubic augmented system:
 `z = [x₁; x₂; x₃; q₁₁; q₁₂; q₁₁₁]` over the retained rows (past states plus
 observables), together with the coefficient blocks that keep the step affine.
 """
-function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒₃, observables_index::Vector{Int})
+function build_cubic_kalman_system_from_constants(cons, 𝐒₁, 𝐒₂, 𝐒₃, observables_index::Vector{Int};
+                                                  keep_all_rows::Bool = false)
     T = cons.post_model_macro
     nPast, nExo = T.nPast_not_future_and_mixed, T.nExo
     past = T.past_not_future_and_mixed_idx
 
     # As in the quadratic filter, carry only the rows the recursion actually
     # reads: past states for the transition, observables for the measurement.
-    oas = sort(union(past, observables_index))
+    oas = keep_all_rows ? collect(1:T.nVars) : sort(union(past, observables_index))
     nr = length(oas)
     pos = Dict(v => i for (i, v) in enumerate(oas))
 
@@ -1177,7 +1178,7 @@ here as `C(z) Ψ C(z)'`, with `C` affine in `z`, so a period costs one matvec an
 two gemms rather than a quadrature sweep.
 """
 function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
-                          measurement_error::Union{Nothing,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
+                          measurement_error::Union{Nothing,Real,AbstractVector{<:Real},AbstractMatrix{<:Real}} = nothing,
                           presample_periods::Int = 0,
                           on_failure_loglikelihood::Real = -Inf,
                           workspaces = nothing,
@@ -1194,6 +1195,8 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
 
     Hm = if measurement_error === nothing
         zeros(Tv, n_obs, n_obs)
+    elseif measurement_error isa Real
+        Matrix{Tv}(measurement_error * ℒ.I(n_obs))
     elseif measurement_error isa AbstractMatrix
         Matrix{Tv}(measurement_error)
     else
@@ -1317,6 +1320,179 @@ function run_cubic_kalman(sys, data_in_deviations::AbstractMatrix{<:Real};
         end
     end
     return ll
+end
+
+function cubic_kalman_filter_data_with_model(𝓂::ℳ,
+                                             data_in_deviations::KeyedArray{Float64};
+                                             initial_covariance = :theoretical,
+                                             measurement_error = nothing,
+                                             smooth::Bool = false,
+                                             marginal_contribution::Bool = false,
+                                             opts::CalculationOptions = merge_calculation_options())
+    smooth && throw(ArgumentError("The cubic Kalman estimate path is filtered only; pass smooth = false."))
+
+    constants = initialise_constants!(𝓂)
+    T = constants.post_model_macro
+    ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
+    result = calculate_stochastic_steady_state(Val(:pruned_third_order),
+                                               𝓂.parameter_values, 𝓂; opts = opts)
+    sss, converged, SS_and_pars, solution_error = result[1:4]
+    nT = size(data_in_deviations, 2)
+    variables = zeros(Float64, T.nVars, nT)
+    shocks = zeros(Float64, T.nExo, nT)
+    standard_deviations = zeros(Float64, T.nVars, nT)
+    decomposition = zeros(Float64, T.nVars,
+                          marginal_contribution ? T.nExo + 2 : T.nExo + 3, nT)
+    if !converged || solution_error > opts.tol.nsss.acceptance_tol || !isfinite(solution_error)
+        @error "Could not find pruned 3rd order stochastic steady state for the cubic Kalman estimate path."
+        return variables, shocks, standard_deviations, decomposition
+    end
+
+    𝐒 = [result[8], result[9], result[10]]
+    all_SS = expand_steady_state(SS_and_pars, constants.post_complete_parameters)
+    initial_state = [zeros(Float64, T.nVars), collect(sss) - all_SS, zeros(Float64, T.nVars)]
+    observables = get_and_check_observables(T, data_in_deviations)
+    observables_index = convert(Vector{Int}, indexin(observables,
+                                                      constants.post_complete_parameters.SS_and_pars_names))
+    sys = build_cubic_kalman_system_from_constants(constants, 𝐒[1], 𝐒[2], 𝐒[3], observables_index;
+                                                   keep_all_rows = true)
+    n_obs = size(data_in_deviations, 1)
+    Hm = if measurement_error === nothing
+        zeros(Float64, n_obs, n_obs)
+    elseif measurement_error isa Real
+        Matrix{Float64}(measurement_error * ℒ.I(n_obs))
+    elseif measurement_error isa AbstractMatrix
+        Matrix{Float64}(measurement_error)
+    elseif measurement_error isa AbstractVector
+        Matrix{Float64}(ℒ.Diagonal(collect(measurement_error)))
+    else
+        throw(ArgumentError("cubic_kalman expects measurement_error to be nothing, a scalar, vector, or matrix."))
+    end
+
+    basis = cubic_noise_basis(sys.nExo)
+    N = basis.N
+    shock_moment_cross = zeros(Float64, N, sys.nExo)
+    @inbounds for (i, exponent) in enumerate(basis.exps), j in 1:sys.nExo
+        exponent_with_shock = copy(exponent)
+        exponent_with_shock[j] += 1
+        shock_moment_cross[i, j] = gaussian_moment(exponent_with_shock)
+    end
+    ws = cubic_kalman_workspace(sys)
+    𝒜, c, c₀, Λ = build_cubic_kalman_system(sys, basis; ws = ws)
+    Λnoise = Matrix(Λ[:, sys.noise_state_indices])
+    z = (Matrix{Float64}(ℒ.I(sys.nz)) - 𝒜) \ c
+    cvec = c₀ + Λ * z
+    Cbar = reshape(cvec, sys.nz, N)
+    Σ = cubic_kalman_initial_covariance(𝒜, Cbar, Λnoise, basis.Ψ,
+                                        sys.noise_state_indices;
+                                        workspaces = 𝓂.workspaces,
+                                        lyapunov_algorithm = opts.lyapunov_algorithm)
+    if initial_covariance isa AbstractMatrix
+        size(initial_covariance) == (sys.nz, sys.nz) ||
+            throw(DimensionMismatch("cubic_kalman initial_covariance must have size $(sys.nz)×$(sys.nz)."))
+        Σ .= initial_covariance
+    elseif initial_covariance === :diagonal
+        Σ .= Matrix{Float64}(ℒ.I(sys.nz))
+    elseif initial_covariance !== :theoretical
+        throw(ArgumentError("Unsupported cubic_kalman initial_covariance: $initial_covariance"))
+    end
+
+    Pp = zeros(Float64, sys.nz, sys.nz)
+    Tm = similar(Pp)
+    Q = similar(Pp)
+    Pc = copy(Σ)
+    zp = zeros(Float64, sys.nz)
+    CP = zeros(Float64, n_obs, sys.nz)
+    F = zeros(Float64, n_obs, n_obs)
+    Fv = zeros(Float64, n_obs)
+    Kg = zeros(Float64, sys.nz, n_obs)
+    CΨ = zeros(Float64, sys.nz, N)
+    Pnoise = zeros(Float64, length(sys.noise_state_indices), length(sys.noise_state_indices))
+    mixvec = zeros(Float64, sys.nz * N)
+    mixΨ = zeros(Float64, sys.nz, N)
+    mixAll = zeros(Float64, sys.nz * N, max(1, min(length(sys.noise_state_indices), 16)))
+    shock_loading = zeros(Float64, sys.nz, sys.nExo)
+    data = collect(data_in_deviations)
+
+    for t in 1:nT
+        copyto!(cvec, c₀)
+        ℒ.mul!(cvec, Λ, z, 1.0, 1.0)
+        C = reshape(cvec, sys.nz, N)
+        ℒ.mul!(shock_loading, C, shock_moment_cross)
+        cubic_kalman_noise_covariance!(Q, C, Λnoise, basis.Ψ, Pc,
+                                       sys.noise_state_indices, Pnoise, mixvec,
+                                       mixΨ, CΨ; mixAll = mixAll)
+        ℒ.mul!(Tm, 𝒜, Pc)
+        ℒ.mul!(Pp, Tm, 𝒜')
+        Pp .+= Q
+        for j in 1:sys.nz, i in 1:j
+            value = (Pp[i, j] + Pp[j, i]) / 2
+            Pp[i, j] = value
+            Pp[j, i] = value
+        end
+        ℒ.mul!(zp, 𝒜, z)
+        zp .+= c
+        ℒ.mul!(CP, sys.C, Pp)
+        ℒ.mul!(F, CP, sys.C')
+        F .+= Hm
+        for j in 1:n_obs, i in 1:j-1
+            value = (F[i, j] + F[j, i]) / 2
+            F[i, j] = value
+            F[j, i] = value
+        end
+        v = view(data, :, t) .- sys.C * zp
+        Fc = ℒ.cholesky!(ℒ.Symmetric(F), check = false)
+        ℒ.issuccess(Fc) || throw(ArgumentError("cubic_kalman innovation covariance was not positive definite at period $t."))
+        copyto!(Fv, v)
+        ℒ.ldiv!(Fc, Fv)
+        copyto!(Kg, CP')
+        ℒ.rdiv!(Kg, Fc)
+        # Cov(ε, yₜ − E[yₜ|t−1]) is obtained from the monomial coefficients;
+        # higher-order shock terms are projected onto ε analytically.
+        shocks[:, t] .= shock_loading' * sys.C' * Fv
+        copyto!(z, zp)
+        ℒ.mul!(z, Kg, v, 1.0, 1.0)
+        copyto!(Pc, Pp)
+        ℒ.mul!(Pc, Kg, CP, -1.0, 1.0)
+        for j in 1:sys.nz, i in 1:j
+            value = (Pc[i, j] + Pc[j, i]) / 2
+            Pc[i, j] = value
+            Pc[j, i] = value
+        end
+        @inbounds for (j, row) in enumerate(sys.oas)
+            i1 = sys.r1.start + j - 1
+            i2 = sys.r2.start + j - 1
+            i3 = sys.r3.start + j - 1
+            variables[row, t] = z[i1] + z[i2] + z[i3]
+            standard_deviations[row, t] = sqrt(max(Pc[i1, i1] + Pc[i2, i2] + Pc[i3, i3] +
+                                                   2Pc[i1, i2] + 2Pc[i1, i3] + 2Pc[i2, i3], 0.0))
+        end
+    end
+
+    sequential_pruned_shock_decomposition!(decomposition, variables, shocks,
+                                           initial_state, 𝐒, T, T.nExo;
+                                           third_order = true,
+                                           marginal_contribution = marginal_contribution,
+                                           verbose = opts.verbose)
+    return variables, shocks, standard_deviations, decomposition
+end
+
+@unstable function filter_data_with_model(𝓂::ℳ,
+                                          data_in_deviations::KeyedArray{Float64},
+                                          ::Val{:pruned_third_order},
+                                          ::Val{:cubic_kalman};
+                                          warmup_iterations::Int = 0,
+                                          initial_covariance = :theoretical,
+                                          measurement_error = nothing,
+                                          smooth::Bool = false,
+                                          marginal_contribution::Bool = false,
+                                          opts::CalculationOptions = merge_calculation_options())
+    return cubic_kalman_filter_data_with_model(𝓂, data_in_deviations;
+                                                initial_covariance = initial_covariance,
+                                                measurement_error = measurement_error,
+                                                smooth = smooth,
+                                                marginal_contribution = marginal_contribution,
+                                                opts = opts)
 end
 
 

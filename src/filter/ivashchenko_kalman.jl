@@ -2021,6 +2021,31 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
     return solution_bar, data_bar, state_bar
 end
 
+function ivashchenko_covariance_right_division!(matrix, covariance)
+    factor = ℒ.cholesky(covariance, check = false)
+    if ℒ.issuccess(factor)
+        ℒ.rdiv!(matrix, factor)
+    else
+        # Moment closure can produce a singular covariance even though the
+        # innovation covariance used by the filter is valid.  RTS regression
+        # only needs the positive-semidefinite generalized inverse in that
+        # case; discard numerical negative and near-zero modes rather than
+        # amplifying them into unstable smoothed states.
+        eig = ℒ.eigen(ℒ.Symmetric(covariance))
+        cutoff = 1e-6 * max(maximum(abs, eig.values), 1.0)
+        active = eig.values .> cutoff
+        if any(active)
+            inverse = eig.vectors[:, active] *
+                      ℒ.Diagonal(inv.(eig.values[active])) *
+                      eig.vectors[:, active]'
+            matrix .= matrix * inverse
+        else
+            fill!(matrix, zero(eltype(matrix)))
+        end
+    end
+    return matrix
+end
+
 function ivashchenko_smooth_pass(sys, tape)
     nT = length(tape.post_means)
     n_state = length(tape.state_position)
@@ -2028,11 +2053,10 @@ function ivashchenko_smooth_pass(sys, tape)
     smoothed_covariances = [copy(tape.post_covariances[t]) for t in 1:nT]
     for t in nT - 1:-1:1
         transition = tape.transitions[t + 1]
-        cross = transition * tape.post_covariances[t]
-        predicted_factor = ℒ.cholesky(tape.predicted_covariances[t + 1], check = false)
-        ℒ.issuccess(predicted_factor) || error(
-            "Ivashchenko smoother covariance factorization failed at period $(t + 1).")
-        ℒ.rdiv!(cross, predicted_factor)
+        # Cov(xₜ, xₜ₊₁) = Pₜ Aₜ₊₁'; the current-state covariance belongs on
+        # the left of the transposed effective transition in the RTS gain.
+        cross = tape.post_covariances[t] * transition'
+        ivashchenko_covariance_right_division!(cross, tape.predicted_covariances[t + 1])
         smoother_gain = cross
         delta = smoothed_means[t + 1] - tape.predicted_means[t + 1]
         smoothed_means[t] .+= smoother_gain * delta
@@ -2046,11 +2070,9 @@ function ivashchenko_smooth_pass(sys, tape)
     shocks = zeros(eltype(tape.post_means[1]), sys.nExo, nT)
     @inbounds for t in 1:nT
         pred_covariance = tape.predicted_covariances[t]
-        predicted_factor = ℒ.cholesky(pred_covariance, check = false)
-        ℒ.issuccess(predicted_factor) || error("Ivashchenko smoother covariance factorization failed at period $t.")
         state_delta = smoothed_means[t] - tape.predicted_means[t]
         state_regression = copy(tape.output_covariances[t][ :, tape.state_position])
-        ℒ.rdiv!(state_regression, predicted_factor)
+        ivashchenko_covariance_right_division!(state_regression, pred_covariance)
         variables[:, t] .= tape.output_means[t] + state_regression * state_delta
         variables[tape.state_position, t] .= smoothed_means[t]
         standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(tape.output_covariances[t] -
@@ -2058,7 +2080,7 @@ function ivashchenko_smooth_pass(sys, tape)
         standard_deviations[tape.state_position, t] .= sqrt.(abs.(ℒ.diag(smoothed_covariances[t])))
 
         shock_regression = copy(tape.shock_loadings[t]')
-        ℒ.rdiv!(shock_regression, predicted_factor)
+        ivashchenko_covariance_right_division!(shock_regression, pred_covariance)
         shocks[:, t] .= shock_regression * state_delta
     end
 
@@ -2067,20 +2089,57 @@ function ivashchenko_smooth_pass(sys, tape)
     return variables, shocks, standard_deviations, decomposition, smoothed_means, smoothed_covariances
 end
 
+function ivashchenko_filtered_output_at(sys, tape, t)
+    output_mean = copy(tape.output_means[t])
+    output_covariance = copy(tape.output_covariances[t])
+    observed = tape.observed_indices[t]
+
+    # Condition the complete output directly on the observed measurement block.
+    # The full predicted state covariance can be singular for a moment-closure
+    # filter, while the innovation covariance is the matrix already validated by
+    # the filtering update.
+    if !isempty(observed)
+        observation_positions = tape.observation_position[observed]
+        output_cross_covariance = output_covariance[:, observation_positions]
+        regression = output_cross_covariance * tape.inverse_innovation_covariances[t]
+        output_mean .+= regression * tape.innovations[t]
+        output_covariance .-= regression * output_cross_covariance'
+        output_covariance .= (output_covariance + output_covariance') / 2
+    end
+
+    # Shock extraction still uses the state update. Fall back to a Moore–Penrose
+    # regression when the full state covariance does not admit a Cholesky factor.
+    state_delta = tape.post_means[t] - tape.predicted_means[t]
+    predicted_covariance = tape.predicted_covariances[t]
+    predicted_factor = ℒ.cholesky(predicted_covariance, check = false)
+    if ℒ.issuccess(predicted_factor)
+        shock_regression = copy(tape.shock_loadings[t]')
+        ℒ.rdiv!(shock_regression, predicted_factor)
+        shocks = shock_regression * state_delta
+    else
+        shocks = tape.shock_loadings[t]' *
+                 ℒ.pinv(predicted_covariance) * state_delta
+    end
+    return output_mean, output_covariance, shocks
+end
+
 function ivashchenko_filter_data_with_model(𝓂::ℳ,
                                             data_in_deviations::KeyedArray{Float64},
                                             order::Symbol;
                                             initial_covariance = :theoretical,
                                             measurement_error = nothing,
                                             smooth::Bool = true,
+                                            marginal_contribution::Bool = false,
                                             opts::CalculationOptions = merge_calculation_options())
     constants = initialise_constants!(𝓂)
     T = constants.post_model_macro
     nT = size(data_in_deviations, 2)
+    pruned = order ∈ (:pruned_second_order, :pruned_third_order)
     variables = zeros(Float64, T.nVars, nT)
     shocks = zeros(Float64, T.nExo, nT)
     standard_deviations = zeros(Float64, T.nVars, nT)
-    decomposition = zeros(Float64, T.nVars, T.nExo + 2, nT)
+    decomposition_columns = pruned && !marginal_contribution ? T.nExo + 3 : T.nExo + 2
+    decomposition = zeros(Float64, T.nVars, decomposition_columns, nT)
 
     result = calculate_stochastic_steady_state(Val(order), 𝓂.parameter_values, 𝓂, opts = opts)
     sss, converged, SS_and_pars, solution_error = result[1:4]
@@ -2092,7 +2151,6 @@ function ivashchenko_filter_data_with_model(𝓂::ℳ,
     ensure_model_structure_constants!(constants, 𝓂.equations.calibration_parameters)
     all_SS = expand_steady_state(SS_and_pars, constants.post_complete_parameters)
     state_deviation = collect(sss) - all_SS
-    pruned = order ∈ (:pruned_second_order, :pruned_third_order)
     state = if order == :pruned_second_order
         [zeros(Float64, T.nVars), state_deviation]
     elseif order == :pruned_third_order
@@ -2130,10 +2188,8 @@ function ivashchenko_filter_data_with_model(𝓂::ℳ,
                                          (stage - 1) * sys.nKeep .+ (1:T.nVars), t)
                                      for stage in 1:sys.nStages))
             predicted_covariance = pass[2].predicted_covariances[t]
-            predicted_factor = ℒ.cholesky(predicted_covariance, check = false)
-            ℒ.issuccess(predicted_factor) || error("Ivashchenko smoother covariance factorization failed at period $t.")
             state_regression = copy(pass[2].output_covariances[t][:, sys.state_position])
-            ℒ.rdiv!(state_regression, predicted_factor)
+            ivashchenko_covariance_right_division!(state_regression, predicted_covariance)
             conditional = pass[2].output_covariances[t] -
                           state_regression * predicted_covariance * state_regression'
             smoothed_output_covariance = conditional +
@@ -2143,28 +2199,39 @@ function ivashchenko_filter_data_with_model(𝓂::ℳ,
                 standard_deviations[variable, t] = sqrt(abs(sum(smoothed_output_covariance[row_indices, row_indices])))
             end
         end
-        decomposition = zeros(Float64, T.nVars, T.nExo + 2, nT)
-        decomposition[:, end - 1, :] .= variables
-        return variables, shocks, standard_deviations, decomposition
     end
 
-    tape = pass[2]
-    @inbounds for t in 1:nT
-        if pruned
-            for stage in 1:sys.nStages
-                variables[:, t] .+= tape.output_means[t][(stage - 1) * sys.nKeep .+ (1:T.nVars)]
+    if !smooth
+        tape = pass[2]
+        @inbounds for t in 1:nT
+            output_mean, output_covariance, filtered_shocks =
+                ivashchenko_filtered_output_at(sys, tape, t)
+            shocks[:, t] .= filtered_shocks
+            if pruned
+                for stage in 1:sys.nStages
+                    variables[:, t] .+= output_mean[(stage - 1) * sys.nKeep .+ (1:T.nVars)]
+                end
+                for variable in 1:T.nVars
+                    output_rows = [(stage - 1) * sys.nKeep + variable for stage in 1:sys.nStages]
+                    standard_deviations[variable, t] =
+                        sqrt(abs(sum(output_covariance[output_rows, output_rows])))
+                end
+            else
+                variables[:, t] .= output_mean
+                standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(output_covariance)))
             end
-            for variable in 1:T.nVars
-                output_rows = [(stage - 1) * sys.nKeep + variable for stage in 1:sys.nStages]
-                standard_deviations[variable, t] =
-                    sqrt(abs(sum(tape.output_covariances[t][output_rows, output_rows])))
-            end
-        else
-            variables[:, t] .= tape.output_means[t]
-            standard_deviations[:, t] .= sqrt.(abs.(ℒ.diag(tape.output_covariances[t])))
         end
     end
-    decomposition[:, end - 1, :] .= variables
+
+    if pruned
+        sequential_pruned_shock_decomposition!(decomposition, variables, shocks,
+                                               state, 𝐒, T, T.nExo;
+                                               third_order = order == :pruned_third_order,
+                                               marginal_contribution = marginal_contribution,
+                                               verbose = opts.verbose)
+    else
+        decomposition[:, end - 1, :] .= variables
+    end
     return variables, shocks, standard_deviations, decomposition
 end
 
@@ -2176,11 +2243,14 @@ end
                                           initial_covariance = :theoretical,
                                           measurement_error = nothing,
                                           smooth::Bool = true,
+                                          marginal_contribution::Bool = false,
                                           opts::CalculationOptions = merge_calculation_options())
     return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :second_order;
                                               initial_covariance = initial_covariance,
                                               measurement_error = measurement_error,
-                                              smooth = smooth, opts = opts)
+                                              smooth = smooth,
+                                              marginal_contribution = marginal_contribution,
+                                              opts = opts)
 end
 
 @unstable function filter_data_with_model(𝓂::ℳ,
@@ -2191,11 +2261,14 @@ end
                                           initial_covariance = :theoretical,
                                           measurement_error = nothing,
                                           smooth::Bool = true,
+                                          marginal_contribution::Bool = false,
                                           opts::CalculationOptions = merge_calculation_options())
     return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :third_order;
                                               initial_covariance = initial_covariance,
                                               measurement_error = measurement_error,
-                                              smooth = smooth, opts = opts)
+                                              smooth = smooth,
+                                              marginal_contribution = marginal_contribution,
+                                              opts = opts)
 end
 
 @unstable function filter_data_with_model(𝓂::ℳ,
@@ -2206,11 +2279,14 @@ end
                                           initial_covariance = :theoretical,
                                           measurement_error = nothing,
                                           smooth::Bool = true,
+                                          marginal_contribution::Bool = false,
                                           opts::CalculationOptions = merge_calculation_options())
     return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :pruned_second_order;
                                               initial_covariance = initial_covariance,
                                               measurement_error = measurement_error,
-                                              smooth = smooth, opts = opts)
+                                              smooth = smooth,
+                                              marginal_contribution = marginal_contribution,
+                                              opts = opts)
 end
 
 @unstable function filter_data_with_model(𝓂::ℳ,
@@ -2221,11 +2297,14 @@ end
                                           initial_covariance = :theoretical,
                                           measurement_error = nothing,
                                           smooth::Bool = true,
+                                          marginal_contribution::Bool = false,
                                           opts::CalculationOptions = merge_calculation_options())
     return ivashchenko_filter_data_with_model(𝓂, data_in_deviations, :pruned_third_order;
                                               initial_covariance = initial_covariance,
                                               measurement_error = measurement_error,
-                                              smooth = smooth, opts = opts)
+                                              smooth = smooth,
+                                              marginal_contribution = marginal_contribution,
+                                              opts = opts)
 end
 
 function calculate_loglikelihood(::Val{:ivashchenko_kalman}, ::Val{O},
