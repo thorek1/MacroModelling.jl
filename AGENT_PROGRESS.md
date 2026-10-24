@@ -699,3 +699,58 @@ require a separate path-selection/derivative design.
   paths.
 - The focused convergence test file passes 72/72, including 16 public square
   likelihood/value and gradient checks. `git diff --check` passes.
+
+## Julia 1.13 / 1.14 and dependency compatibility audit (2026-10-24)
+
+- Updated the main CI matrix and stable-only rows to Julia 1.13; the preview
+  smoke rows select the Julia 1.14 prerelease/final series with
+  `~1.14.0-0`. Kept the existing LTS compatibility rows. The Dynare comparison
+  job also uses 1.13.
+- Broadened compat for `DynarePreprocessor_jll` to 6/7, `LinearSolve` to 3/5,
+  JET through 0.12, DocStringExtensions through 0.10, and Turing through 0.49.
+  The Julia minimum remains 1.10.
+- A fresh Julia 1.13 resolver selected LinearSolve 5.18.2,
+  DynarePreprocessor_jll 7.0.0, Symbolics 7.47.0, and DocStringExtensions
+  0.9.5. A separate Turing 0.49.0 environment selected DynamicPPL 0.42.14 and
+  FlexiChains 0.6.44; MacroModelling and the Turing extension loaded and the
+  distribution integration assertion passed.
+- Checked MacroModelling's directly imported DocStringExtensions symbols
+  against 0.10.2 in isolation; the API check passed, though current upstream
+  dependencies keep the complete package resolver on 0.9.5.
+- Julia 1.13.2's CI-equivalent JET test job passed with JET 0.12.3. Julia
+  1.14.0-alpha1 resolved, instantiated, precompiled, and loaded MacroModelling.
+  The alpha was build/load checked, not test-set checked.
+- The initial Julia 1.13 `basic` run reached the Dynare model round-trip and
+  failed because imported `STEADY_STATE(y)` was not converted to `[ss]` syntax.
+  Added that importer conversion and passed the focused export/import/solve
+  reproduction. The complete `basic` test set subsequently passed on Julia
+  1.13.2.
+- Compatibility limits from the fresh resolver: Combinatorics 1.1.0 is blocked
+  by SymbolicUtils; DocStringExtensions 0.10.x is allowed by this package but
+  current upstream dependencies still select 0.9.5. MacroModelling's direct
+  FlexiChains bound now includes 0.7, but Turing 0.49 still restricts the
+  resolved stack to FlexiChains 0.6.44. This upstream constraint remains
+  visible rather than being worked around with forced versions.
+- Parsed `Project.toml` and CI YAML successfully; `git diff --check` passes.
+  The ignored local Manifest was restored unchanged after resolver checks.
+
+## Follow-up compatibility integration tests (2026-10-24)
+
+- The full Julia 1.13.2 `basic` test set passed after the Dynare importer fix.
+- On Julia 1.13.2 with Turing 0.49.0, DynamicPPL 0.42.14, and FlexiChains
+  0.6.44, the complete `estimation` CI set passed. It exercised five 1,000-draw
+  NUTS runs covering filter-free first order, Mooncake first order, a custom
+  steady state, ForwardDiff first order, and missing observations; posterior
+  and gradient checks passed.
+- The complete `1st_order_inversion_estimation` CI set also passed on that
+  stack (exit 0), including filter-free, inversion-filter, missing-data,
+  posterior, and gradient paths.
+- Turing 0.49.0 also passed reduced smoke runs from the `2nd_order_estimation`
+  and `pruned_2nd_order_estimation` test bodies. Those runs used two draws,
+  two adaptation steps, and a maximum tree depth of three; the likelihood,
+  missing-data, FlexiChains summary, and gradient checks passed. These are
+  integration smokes, not substitutes for the full CI sampling sets.
+- Full `estimate_sw07`, nested-sampling, `system_prior_estimation`, and 3rd-order
+  CI sets were not run with Turing 0.49. The Pigeons CI rows intentionally pin
+  DynamicPPL 0.40 because of upstream compatibility constraints; no Turing
+  0.49 + Pigeons claim is made.
