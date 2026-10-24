@@ -9536,11 +9536,20 @@ function rrule(::typeof(calculate_loglikelihood),
     function inversion_pullback(∂llh)
         # @timeit_debug timer "Inversion filter - pullback" begin
 
+        # Reset EVERY closure-captured accumulator on each invocation (the
+        # comment at the allocation site promises this). ∂𝐒 / ∂data_in_deviations
+        # are += accumulated below (and by dense_first_order_inv_pullback_loop!),
+        # and ∂state is only assigned on its t⁻ slots in the non-warmup path —
+        # without these fill!s a second call to the same pullback returns
+        # call-index × the true gradient (observed: pb, pb → exact 2×).
         fill!(∂state_t⁻, 0)
         fill!(v_buf, 0)
         fill!(∂state_full_next, 0)
         fill!(∂v, 0)
         fill!(∂y, 0)
+        fill!(∂𝐒, 0)
+        fill!(∂data_in_deviations, 0)
+        fill!(∂state, 0)
 
         𝐒obs_v = view(𝐒, obs_idx, 1:n_cols - T.nExo)
         square_case = (T.nExo == n_obs_loc)
