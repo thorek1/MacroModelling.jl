@@ -260,15 +260,18 @@ jobs:
         if: matrix.test_set == 'basic' || startsWith(matrix.test_set, 'higher_order') || startsWith(matrix.test_set, 'plots') || startsWith(matrix.test_set, 'jet') || matrix.test_set == 'gradient_checks'
         shell: bash
         run: |
-          # Turing's Optimization dependency currently requires SciMLBase 2,
-          # which makes the shared test target resolve LinearSolve to v3.
-          # These test sets do not import Turing, so omit it to exercise the
-          # LinearSolve 5-compatible environment.
+          # Turing's Optimization dependency requires SciMLBase 2, which makes
+          # the shared test target resolve LinearSolve to v3. These test sets
+          # do not import Turing, so remove its weak dependency and extension
+          # metadata too; Aqua checks weak-dependency availability in the test
+          # environment. This lets the jobs exercise LinearSolve 5.
           sed -i.bak \
             -e '/^\[targets\]/,$ s/,[[:space:]]*"Turing"//g' \
             -e '/^\[targets\]/,$ s/"Turing",[[:space:]]*//g' \
             -e '/^\[compat\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
             -e '/^\[extras\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            -e '/^\[weakdeps\]/,/^\[/ s/^Turing[[:space:]]*=.*$//g' \
+            -e '/^\[extensions\]/,/^\[/ s/^TuringExt[[:space:]]*=.*$//g' \
             Project.toml
           rm -f Project.toml.bak
 
