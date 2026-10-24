@@ -688,3 +688,14 @@ Rust diffuse/trend and exact-equation filters because they need infrastructure
 outside this perturbation-filter branch. Also retained the existing opt-in
 rescue policy; pseudo-arclength root enumeration and earlier-period rewinds
 require a separate path-selection/derivative design.
+
+## Public higher-order square inversion coverage (2026-10-24)
+
+- Added an end-to-end one-shock/one-observable nonlinear model to
+  `test_filter_convergence.jl`. All four higher-order dispatches now run through
+  `get_loglikelihood(filter=:inversion)` and compare ForwardDiff with Zygote.
+- Corrected the inversion-gradient test comments: the Gali square fixture is
+  still first-order there, while the new fixture covers higher-order square
+  paths.
+- The focused convergence test file passes 72/72, including 16 public square
+  likelihood/value and gradient checks. `git diff --check` passes.

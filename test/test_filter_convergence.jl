@@ -1,5 +1,19 @@
 using MacroModelling, Test, ForwardDiff
+using AxisKeys
+import Zygote
 import LinearAlgebra as LA
+
+@model ConvergenceSquareInversion begin
+    u[0] = 0.2 * u[-1] + sigma * eps[x]
+    y[0] = rho * y[-1] + u[0] + curve * u[0]^2 + skew * u[0]^3
+end
+
+@parameters ConvergenceSquareInversion begin
+    rho = 0.5
+    sigma = 0.03
+    curve = 0.001
+    skew = 0.0001
+end
 
 function convergence_persistent_system(rho; third = false)
     cons = (post_model_macro = (nVars = 1, nPast_not_future_and_mixed = 1,
@@ -153,4 +167,22 @@ end
     # A quadratic with no real preimage must remain a visible failure.
     x, matched = convergence_square_shocks(0.0, 1.0, nothing, -1.0; max_iter=20)
     @test !matched
+end
+
+@testset "Public higher-order square inversion" begin
+    values = reshape([0.01, -0.02, 0.0, 0.03, -0.01], 1, :)
+    data = KeyedArray(values; Variable = [:y], Time = 1:5)
+    parameters = ConvergenceSquareInversion.parameter_values
+    for algorithm in (:second_order, :pruned_second_order,
+                      :third_order, :pruned_third_order)
+        likelihood(candidate) = get_loglikelihood(
+            ConvergenceSquareInversion, data, candidate;
+            filter = :inversion, algorithm = algorithm)
+        @test isfinite(likelihood(parameters))
+        forward_gradient = ForwardDiff.gradient(likelihood, parameters)
+        reverse_gradient = only(Zygote.gradient(likelihood, parameters))
+        @test all(isfinite, forward_gradient)
+        @test all(isfinite, reverse_gradient)
+        @test reverse_gradient ≈ forward_gradient rtol = 1e-6 atol = 1e-7
+    end
 end
