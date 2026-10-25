@@ -1139,7 +1139,7 @@ The same can be achieved with the other input formats:
 @unstable function get_conditional_forecast(𝓂::ℳ,
                                 conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                 shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
+                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = default_initial_state(),
                                 periods::Int = DEFAULT_PERIODS, 
                                 parameters::ParameterType = nothing,
                                 steady_state_function::SteadyStateFunctionType = missing,
@@ -1624,7 +1624,7 @@ function get_irf(𝓂::ℳ,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
                     negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
-                    initial_state::Vector{Float64} = DEFAULT_INITIAL_STATE,
+                    initial_state::Vector{Float64} = default_initial_state(),
                     levels::Bool = false,
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
@@ -1783,7 +1783,7 @@ And data, 4×40×1 Array{Float64, 3}:
                 generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                 generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
-                initial_state::Union{Vector{Vector{R}},Vector{R}} = DEFAULT_INITIAL_STATE,
+                initial_state::Union{Vector{Vector{R}},Vector{R}} = default_initial_state(),
                 levels::Bool = false,
                 shock_size::Real = DEFAULT_SHOCK_SIZE,
                 ignore_obc::Bool = DEFAULT_IGNORE_OBC,
@@ -4663,7 +4663,7 @@ function get_loglikelihood(𝓂::ℳ,
     # Convenience method: no `initial_state` argument; uses the internal default.
     # To override the initial state (and get AD tangents through it), call the
     # positional method `get_loglikelihood(𝓂, data, p, initial_state; ...)`.
-    return get_loglikelihood(𝓂, data, parameter_values, DEFAULT_INITIAL_STATE;
+    return get_loglikelihood(𝓂, data, parameter_values, default_initial_state();
                              steady_state_function = steady_state_function,
                              algorithm = algorithm,
                              filter = filter,
@@ -4752,7 +4752,7 @@ function get_loglikelihood(𝓂::ℳ,
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance isa AbstractMatrix || initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`), large values (10.0) along the diagonal (option `:diagonal`), or a user-supplied matrix."
 
-    if initial_state != DEFAULT_INITIAL_STATE
+    if !is_default_initial_state(initial_state)
         nVars = 𝓂.constants.post_model_macro.nVars
         if eltype(initial_state) <: Real
             @assert length(initial_state) == nVars "initial_state must have length equal to the total number of variables ($nVars, see `show(model)`), got $(length(initial_state))."
@@ -5081,7 +5081,7 @@ function get_loglikelihood(𝓂::ℳ,
     # Convenience method: no `initial_state` argument; uses the internal default.
     # To override the initial state (and get AD tangents through it), call the
     # positional method `get_loglikelihood(𝓂, data, p, shocks, me_std, initial_state; ...)`.
-    return get_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE;
+    return get_loglikelihood(𝓂, data, parameter_values, shocks, measurement_error_std, default_initial_state();
                             steady_state_function = steady_state_function,
                             algorithm = algorithm,
                             warmup_iterations = warmup_iterations,
@@ -5121,7 +5121,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     @assert length(parameter_values) == length(𝓂.constants.post_complete_parameters.parameters) "The number of parameter values provided does not match the number of parameters in the model."
 
-    if initial_state != DEFAULT_INITIAL_STATE
+    if !is_default_initial_state(initial_state)
         nVars_check = 𝓂.constants.post_model_macro.nVars
         if eltype(initial_state) <: Real
             @assert length(initial_state) == nVars_check "initial_state must have length equal to the total number of variables ($nVars_check, see `show(model)`), got $(length(initial_state))."

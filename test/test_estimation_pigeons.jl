@@ -47,6 +47,18 @@ const T_ff_1st = size(data, 2)
 const data_ff_1st = data
 const nExo_ff_1st = length(get_shocks(FS2000))
 
+# The default initial state is used on every filter-free likelihood evaluation
+# in the Turing/Pigeons model below. Keep a small direct regression check here
+# so a malformed or shared default is caught before a long sampling run.
+@test MacroModelling.default_initial_state() !== MacroModelling.default_initial_state()
+@test MacroModelling.is_default_initial_state(MacroModelling.default_initial_state())
+@test isfinite(get_loglikelihood(FS2000,
+                                 data_ff_1st,
+                                 FS2000.parameter_values,
+                                 zeros(nExo_ff_1st, T_ff_1st),
+                                 0.05;
+                                 algorithm = :first_order))
+
 Turing.@model function FS2000_filter_free_function_1st(data, m, algorithm, nExo, nT, on_failure_loglikelihood)
     all_params  ~ Turing.product_distribution(dists)
     me_std      ~ InverseGamma(0.05, Inf, μσ = true)

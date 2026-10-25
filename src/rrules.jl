@@ -2212,7 +2212,7 @@ function rrule(::typeof(get_loglikelihood),
                 data::KeyedArray,
                 parameter_values::Vector{S};
                 kwargs...) where {S <: Real}
-    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, DEFAULT_INITIAL_STATE; kwargs...)
+    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, default_initial_state(); kwargs...)
     pb_short(Δy) = begin
         t = pb(Δy)
         return (t[1], t[2], t[3], t[4])
@@ -2598,7 +2598,7 @@ function rrule(::typeof(get_irf),
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
-                initial_state::Vector{Float64} = DEFAULT_INITIAL_STATE,
+                initial_state::Vector{Float64} = default_initial_state(),
                 levels::Bool = false,
                 verbose::Bool = DEFAULT_VERBOSE,
                 tol::Tolerances = Tolerances(),
@@ -20190,7 +20190,7 @@ function rrule(::typeof(get_loglikelihood),
                 shocks::AbstractMatrix{T},
                 measurement_error_std::Union{T, AbstractVector{T}, AbstractMatrix{T}};
                 kwargs...) where {D <: Union{Float64,Missing,Nothing}, S <: Real, T <: Real}
-    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, shocks, measurement_error_std, DEFAULT_INITIAL_STATE; kwargs...)
+    y, pb = rrule(get_loglikelihood, 𝓂, data, parameter_values, shocks, measurement_error_std, default_initial_state(); kwargs...)
     pb_short(Δy) = begin
         t = pb(Δy)
         return (t[1], t[2], t[3], t[4], t[5], t[6])

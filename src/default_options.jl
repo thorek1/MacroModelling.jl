@@ -175,6 +175,15 @@ const DEFAULT_GENERALISED_IRF_WARMUP = 100
 const DEFAULT_GENERALISED_IRF_DRAWS = 50
 const DEFAULT_INITIAL_STATE = [0.0]
 
+# `DEFAULT_INITIAL_STATE` is retained as the documented default value, but it is
+# mutable. Pass a fresh vector to each likelihood evaluation so a downstream
+# operation cannot leak state into later calls.
+default_initial_state() = [0.0]
+
+is_default_initial_state(initial_state) =
+    initial_state === DEFAULT_INITIAL_STATE ||
+    (initial_state isa AbstractVector{<:Real} && length(initial_state) == 1 && iszero(initial_state[1]))
+
 # Moment and statistics defaults
 const DEFAULT_SIGMA_RANGE = 2
 const DEFAULT_NON_STOCHASTIC_STEADY_STATE_FLAG = true
