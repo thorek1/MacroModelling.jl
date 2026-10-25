@@ -8,7 +8,7 @@ import LinearAlgebra as ℒ
 using FiniteDifferences
 using Zygote
 import Optim, LineSearches
-import DifferentiationInterface, ADTypes
+import DifferentiationInterface
 
 Random.seed!(3)
 

@@ -1,4 +1,4 @@
-import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
+import Zygote, FiniteDifferences, DifferentiationInterface
 
 # if !test_higher_order
     include("../models/Guerrieri_Iacoviello_2017.jl")
@@ -37,7 +37,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1), x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
@@ -80,7 +80,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -124,7 +124,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values[1:10])
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), functionality_test_ad(config = nothing), model.parameter_values[1:10])
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), model.parameter_values[1:10])[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end]), verbose = true), model.parameter_values[1:10])
@@ -169,7 +169,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -211,7 +211,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -255,7 +255,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-5), x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
@@ -299,7 +299,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -342,7 +342,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
     # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -387,7 +387,7 @@ import Zygote, FiniteDifferences, Mooncake, DifferentiationInterface, ADTypes
     
     # SS(model, parameters = [:alpha => 0.1, :trend_inflation => 1.5, :var_rho => 0.01]) # avoid the NaN error for finitediff in tests
 
-    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+    back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
     zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
     
     # use forward_cdm so that parameter values stay positive. they would return NaN otherwise
@@ -442,7 +442,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -495,7 +495,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -549,7 +549,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -604,7 +604,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -652,7 +652,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
@@ -706,7 +706,7 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), verbose = true, model.parameter_values)
 
-back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), ADTypes.AutoMooncake(config = nothing), model.parameter_values)
+back_grad = DifferentiationInterface.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), functionality_test_ad(config = nothing), model.parameter_values)
 zygote_back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)[1]
 
 # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)

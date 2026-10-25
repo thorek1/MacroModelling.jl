@@ -2,7 +2,7 @@
 
 ## Current task
 
-Fix remaining Mooncake-dependent tests in the Julia prerelease `basic` CI job.
+Fix the latest nested-sampling and Julia prerelease `basic` CI failures.
 
 ## Status
 
@@ -765,10 +765,12 @@ require a separate path-selection/derivative design.
   bounded live-point/effective-sample/likelihood budget and finite-evidence and
   posterior assertions. Julia callbacks are wrapped with `PythonCall.pyfunc`.
 - The Julia prerelease `basic` job still failed after the first fallback because
-  `test_standalone_function.jl` directly imported Mooncake and used its backend
-  in two gradient checks. It now uses the shared conditional backend helper, as
-  do the broader functionality tests.
-- Focused checks pass: Julia parsing, the no-Mooncake backend constructor,
-  CondaPkg's Python/package specs, and a Julia/PythonCall Nautilus sampling
-  smoke test. The standalone test parses and contains no direct Mooncake
-  dependency; full Julia prerelease CI validation is pending the pushed run.
+  `test_standalone_function.jl` and then `test_models.jl` directly imported
+  Mooncake. Both now use the shared conditional AD backend helper.
+- The nested-sampling test changed Python versions after `MacroModelling` had
+  initialized PythonCall through SymPyPythonCall, leaving the active interpreter
+  inconsistent with its files. CondaPkg now pins/installs Python and samplers
+  before importing MacroModelling or PythonCall.
+- Focused checks pass: Julia parsing and CondaPkg resolution followed by
+  PythonCall successfully imports `sympy.tensor.tensor` under Python 3.14.9 and
+  SymPy 1.14. Full CI validation is pending the pushed run.

@@ -1,14 +1,5 @@
 using Test
-using MacroModelling
-import Turing
-using PythonCall
 using CondaPkg
-using DelimitedFiles, AxisKeys
-using FlexiChains
-using FlexiChains: Parameter, FlexiChain
-using DataStructures: OrderedDict
-
-include("test_helpers.jl")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration switches
@@ -78,6 +69,18 @@ USE_ULTRANEST && CondaPkg.add_pip("ultranest"; resolve = false)
 USE_NAUTILUS  && CondaPkg.add_pip("nautilus-sampler"; resolve = false)
 CondaPkg.resolve()
 println("Nested-sampling Python packages installed successfully")
+
+# Configure CondaPkg before importing MacroModelling/PythonCall: the package
+# precompile initializes PythonCall through SymPyPythonCall.
+using MacroModelling
+import Turing
+using PythonCall
+using DelimitedFiles, AxisKeys
+using FlexiChains
+using FlexiChains: Parameter, FlexiChain
+using DataStructures: OrderedDict
+
+include("test_helpers.jl")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Load data (identical to test_sw07_estimation.jl)
