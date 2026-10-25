@@ -2,7 +2,7 @@
 
 ## Current task
 
-Port useful scoped Rust filtering algorithms onto `codex/ivashchenko-filter-resolved`, retaining Julia linear algebra and analytical derivatives.
+Fix the latest nested-sampling CI failure and add Nautilus to the SW07 nested-sampling job.
 
 ## Status
 
@@ -754,3 +754,20 @@ require a separate path-selection/derivative design.
   CI sets were not run with Turing 0.49. The Pigeons CI rows intentionally pin
   DynamicPPL 0.40 because of upstream compatibility constraints; no Turing
   0.49 + Pigeons claim is made.
+
+## Nested-sampling CI follow-up (2026-10-25)
+
+- The latest workflow run failed in `estimate_sw07_nested_sampling` because
+  `CondaPkg.add("python=3.14")` passes an invalid package name. The Python
+  dependency now uses CondaPkg's separate `version` keyword with a 3.14 minor
+  range, and Python packages are resolved together.
+- Added Nautilus (`nautilus-sampler`) to the SW07 nested-sampling job with a
+  bounded live-point/effective-sample/likelihood budget and finite-evidence and
+  posterior assertions. Julia callbacks are wrapped with `PythonCall.pyfunc`.
+- The latest Julia prerelease `basic` job also failed because CI removes
+  Mooncake before `functionality_tests.jl` imports it. The tests now use
+  ForwardDiff for those reference derivatives when Mooncake is unavailable and
+  retain Mooncake when it is installed.
+- Focused checks pass: Julia parsing, the no-Mooncake backend constructor,
+  CondaPkg's Python/package specs, and a Julia/PythonCall Nautilus sampling
+  smoke test. Full SW07 CI validation is pending the pushed workflow run.

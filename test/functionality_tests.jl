@@ -1,4 +1,15 @@
-import Zygote, FiniteDifferences, ForwardDiff, Mooncake, DifferentiationInterface, ADTypes
+import Zygote, FiniteDifferences, ForwardDiff, DifferentiationInterface, ADTypes
+const FUNCTIONALITY_TESTS_HAS_MOONCAKE = Base.find_package("Mooncake") !== nothing
+if FUNCTIONALITY_TESTS_HAS_MOONCAKE
+    @eval import Mooncake
+end
+
+function functionality_test_ad(; config = nothing)
+    if FUNCTIONALITY_TESTS_HAS_MOONCAKE
+        return ADTypes.AutoMooncake(config = config)
+    end
+    return ADTypes.AutoForwardDiff()
+end
 import LinearAlgebra as ℒ
 import StatsPlots
 using Random
@@ -1876,7 +1887,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                     presample_periods = presample_periods,
                                                                                                     initial_covariance = initial_covariance,
                                                                                                     tol = tol,
-                                                                                                    verbose = verbose), ADTypes.AutoMooncake(config = nothing), parameter_values)
+                                                                                                    verbose = verbose), functionality_test_ad(config = nothing), parameter_values)
 
                                     zyg_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                     algorithm = algorithm,
@@ -1939,7 +1950,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                                                 sylvester_algorithm = sylvester_algorithm,
-                                                                                                                verbose = verbose), ADTypes.AutoMooncake(config = nothing), parameter_values)
+                                                                                                                verbose = verbose), functionality_test_ad(config = nothing), parameter_values)
 
                                                 ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                                 algorithm = algorithm,
@@ -2523,7 +2534,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                 deriv_sol_moon = []
                 for i in 1:length(sol[2])
-                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
+                    push!(deriv_sol_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm), i), functionality_test_ad(config = nothing), parameter_values))
                 end
 
                 clear_solution_caches!(m, algorithm)
@@ -2568,7 +2579,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 push!(DERIV_SOL_moon, DifferentiationInterface.jacobian(x -> sol_el(get_solution(m, x, algorithm = algorithm, 
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm), i), ADTypes.AutoMooncake(config = nothing), parameter_values))
+                                                sylvester_algorithm = sylvester_algorithm), i), functionality_test_ad(config = nothing), parameter_values))
                             end
 
                             clear_solution_caches!(m, algorithm)
@@ -2684,7 +2695,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                     clear_solution_caches!(m, algorithm)
 
-                    deriv_moon = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_moon = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], functionality_test_ad(config = nothing), parameter_values)
                     deriv_zyg = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)[1]
 
                     for i in 1:100
@@ -2722,7 +2733,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     # Last period derivative tests (Mooncake)
                     clear_solution_caches!(m, algorithm)
 
-                    deriv_moon_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], ADTypes.AutoMooncake(config = nothing), parameter_values)
+                    deriv_moon_last = DifferentiationInterface.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], functionality_test_ad(config = nothing), parameter_values)
                     deriv_zyg_last = Zygote.jacobian(x -> get_irf(m, x, initial_state = initial_state)[:,end,1], parameter_values)[1]
 
                     for i in 1:100
@@ -2861,7 +2872,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
 
             deriv1_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], functionality_test_ad(config = nothing), old_params)
             deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)[1]
                  
@@ -2895,7 +2906,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv2_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                mean = :all_excluding_obc)[:mean], functionality_test_ad(config = nothing), old_params)
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 mean = :all_excluding_obc)[:mean], old_params)[1]
             end
@@ -2928,7 +2939,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv3_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], functionality_test_ad(config = nothing), old_params)
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)[1]
             end                    
@@ -2959,7 +2970,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv4_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                variance = :all_excluding_obc)[:variance], functionality_test_ad(config = nothing), old_params)
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 variance = :all_excluding_obc)[:variance], old_params)[1]
             end
@@ -2990,7 +3001,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv5_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
-                                                                covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                covariance = :all_excluding_obc)[:covariance], functionality_test_ad(config = nothing), old_params)
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(nsss = MacroModelling.NsssTolerances(xtol = 1e-14), second_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14)), third_order = MacroModelling.HigherOrderTolerances(sylvester = MacroModelling.SolverTolerances(acceptance_tol = 1e-14), lyapunov = MacroModelling.SolverTolerances(acceptance_tol = 1e-14))),
                                                                 covariance = :all_excluding_obc)[:covariance], old_params)[1]
@@ -3024,7 +3035,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv6_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], functionality_test_ad(config = nothing), old_params)
                 deriv6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 autocorrelation = :all_excluding_obc)[:autocorrelation], old_params)[1]
             end
@@ -3066,7 +3077,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                 deriv7_moon = DifferentiationInterface.jacobian(x->get_statistics(m, x, algorithm = algorithm,
-                                                                correlation = corr_target_vars_jac)[:correlation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                correlation = corr_target_vars_jac)[:correlation], functionality_test_ad(config = nothing), old_params)
                 deriv7_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                 correlation = corr_target_vars_jac)[:correlation], old_params)[1]
             end
@@ -3099,7 +3110,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     get_statistics(m, x, algorithm = algorithm, autocorrelation = :all_excluding_obc)[:autocorrelation] |> sum
                 end
 
-                var_grad_moon = DifferentiationInterface.gradient(var_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                var_grad_moon = DifferentiationInterface.gradient(var_obj, functionality_test_ad(config = nothing), old_params)
                 var_grad_zyg = Zygote.gradient(var_obj, old_params)[1]
                 var_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), var_obj, old_params)[1]
                 @test all(isfinite, var_grad_moon)
@@ -3108,7 +3119,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 @test ℒ.norm(var_grad_moon - var_grad_fin) / max(ℒ.norm(var_grad_fin), eps()) < 1e-4
                 @test ℒ.norm(var_grad_zyg - var_grad_fin) / max(ℒ.norm(var_grad_fin), eps()) < 1e-4
 
-                autocorr_grad_moon = DifferentiationInterface.gradient(autocorr_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                autocorr_grad_moon = DifferentiationInterface.gradient(autocorr_obj, functionality_test_ad(config = nothing), old_params)
                 autocorr_grad_zyg = Zygote.gradient(autocorr_obj, old_params)[1]
                 autocorr_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), autocorr_obj, old_params)[1]
                 @test all(isfinite, autocorr_grad_moon)
@@ -3122,7 +3133,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     get_statistics(m, x, algorithm = algorithm, correlation = corr_target_vars_jac)[:correlation] |> sum
                 end
 
-                corr_grad_moon = DifferentiationInterface.gradient(corr_obj, ADTypes.AutoMooncake(config = nothing), old_params)
+                corr_grad_moon = DifferentiationInterface.gradient(corr_obj, functionality_test_ad(config = nothing), old_params)
                 corr_grad_zyg = Zygote.gradient(corr_obj, old_params)[1]
                 corr_grad_fin = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3, 1, max_range = 1e-3), corr_obj, old_params)[1]
                 @test all(isfinite, corr_grad_moon)
@@ -3155,7 +3166,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
-                                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                            non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], functionality_test_ad(config = nothing), old_params)
                             DERIV1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                             tol = tol,
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3185,7 +3196,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                mean = :all_excluding_obc)[:mean], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                                mean = :all_excluding_obc)[:mean], functionality_test_ad(config = nothing), old_params)
                                 DERIV2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3214,7 +3225,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], functionality_test_ad(config = nothing), old_params)
                                 DERIV3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3243,7 +3254,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                variance = :all_excluding_obc)[:variance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                                variance = :all_excluding_obc)[:variance], functionality_test_ad(config = nothing), old_params)
                                 DERIV4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3273,7 +3284,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                covariance = :all_excluding_obc)[:covariance], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                                covariance = :all_excluding_obc)[:covariance], functionality_test_ad(config = nothing), old_params)
                                 DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3302,7 +3313,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], ADTypes.AutoMooncake(config = nothing), old_params)
+                                                                                autocorrelation = :all_excluding_obc)[:autocorrelation], functionality_test_ad(config = nothing), old_params)
                                 DERIV6_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,

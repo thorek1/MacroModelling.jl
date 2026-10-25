@@ -16,6 +16,7 @@ include("test_helpers.jl")
 USE_NESSAI = true
 USE_DYNESTY = false
 USE_ULTRANEST = false
+USE_NAUTILUS = true
 USE_FLAT_PRIOR = false
 USE_NONLINEAR_MODEL = false
 
@@ -61,14 +62,20 @@ DYNESTY_WEIGHT_PFRAC = 1.0
 
 ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
+NAUTILUS_NLIVE = 500
+NAUTILUS_N_EFF = 1000
+NAUTILUS_N_LIKE_MAX = 50000
+NAUTILUS_N_NETWORKS = 2
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nested-sampling Python packages into PythonCall's Python environment
 # ──────────────────────────────────────────────────────────────────────────────
 println("Installing nested-sampling Python packages...")
-CondaPkg.add("python=3.14") # Torch wheels used by Nessai do not yet support Python 3.15
-USE_NESSAI    && CondaPkg.add_pip("nessai")
-USE_DYNESTY   && CondaPkg.add_pip("dynesty")
-USE_ULTRANEST && CondaPkg.add_pip("ultranest")
+CondaPkg.add("python"; version = ">=3.14,<3.15", resolve = false) # Torch wheels used by Nessai do not yet support Python 3.15
+USE_NESSAI    && CondaPkg.add_pip("nessai"; resolve = false)
+USE_DYNESTY   && CondaPkg.add_pip("dynesty"; resolve = false)
+USE_ULTRANEST && CondaPkg.add_pip("ultranest"; resolve = false)
+USE_NAUTILUS  && CondaPkg.add_pip("nautilus-sampler"; resolve = false)
 CondaPkg.resolve()
 println("Nested-sampling Python packages installed successfully")
 
@@ -280,7 +287,7 @@ end
 names_py = [string(n) for n in param_names]
 bounds_py = Dict(string(n) => (Float64(minimum(d)), Float64(maximum(d)))
                  for (n, d) in zip(param_names, dists))
-np = (USE_DYNESTY || USE_ULTRANEST) ? pyimport("numpy") : nothing
+np = (USE_DYNESTY || USE_ULTRANEST || USE_NAUTILUS) ? pyimport("numpy") : nothing
 
 # ──────────────────────────────────────────────────────────────────────────────
 # nessai FlowSampler
@@ -513,6 +520,59 @@ if USE_NESSAI
 # ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 # nessai log evidence: -1000.9839809407748
 end # USE_NESSAI
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Nautilus importance nested sampler
+# ──────────────────────────────────────────────────────────────────────────────
+if USE_NAUTILUS
+
+    NautilusSampler = pyimport("nautilus").Sampler
+
+    function nautilus_prior_transform(unit_params_py)
+        transformed_params = sw07_prior_transform(pyconvert(Vector{Float64}, unit_params_py))
+        return np.asarray(pylist(transformed_params), dtype = np.float64)
+    end
+
+    function nautilus_log_likelihood(params_py)
+        return sw07_log_likelihood(pyconvert(Vector{Float64}, params_py))
+    end
+
+    println("Running Nautilus nested sampling on SW07 linear model...")
+    nautilus_sampler = NautilusSampler(
+        pyfunc(nautilus_prior_transform),
+        pyfunc(nautilus_log_likelihood),
+        length(param_names);
+        n_live = NAUTILUS_NLIVE,
+        n_networks = NAUTILUS_N_NETWORKS,
+        seed = 1234,
+    )
+    nautilus_converged = nautilus_sampler.run(
+        n_eff = NAUTILUS_N_EFF,
+        n_like_max = NAUTILUS_N_LIKE_MAX,
+        discard_exploration = true,
+        verbose = true,
+    )
+    println("Nautilus nested sampling completed (converged: $nautilus_converged)")
+
+    nautilus_log_evidence = pyconvert(Float64, nautilus_sampler.log_z)
+    nautilus_posterior = nautilus_sampler.posterior(equal_weight = true)
+    nautilus_posterior_matrix = pyconvert(Matrix{Float64}, nautilus_posterior[0])
+    @assert size(nautilus_posterior_matrix, 2) == length(param_names) "Nautilus samples have $(size(nautilus_posterior_matrix, 2)) columns but expected $(length(param_names))"
+    nautilus_n_posterior, nautilus_posterior_summary = summarize_posterior_matrix(
+        "Nautilus",
+        nautilus_posterior_matrix,
+    )
+
+    println("Nautilus log evidence: $nautilus_log_evidence")
+
+    @testset "Nautilus SW07 linear estimation" begin
+        @test isfinite(nautilus_log_evidence)
+        @test nautilus_n_posterior > 0
+        @test !isnothing(nautilus_posterior_summary)
+        @test pyconvert(Int, nautilus_sampler.n_like) > 0
+    end
+
+end # USE_NAUTILUS
 
 # ──────────────────────────────────────────────────────────────────────────────
 # dynesty DynamicNestedSampler
