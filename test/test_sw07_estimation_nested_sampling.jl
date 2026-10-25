@@ -55,7 +55,10 @@ ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
 NAUTILUS_NLIVE = 500
 NAUTILUS_N_EFF = 1000
-NAUTILUS_N_LIKE_MAX = 50000
+# The SW07 posterior is 36-dimensional; 50k likelihood calls stopped during
+# exploration with only one effective posterior sample. Allow enough calls for
+# Nautilus to finish exploration and satisfy the effective-sample target.
+NAUTILUS_N_LIKE_MAX = 500_000
 NAUTILUS_N_NETWORKS = 2
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -569,6 +572,7 @@ if USE_NAUTILUS
     println("Nautilus log evidence: $nautilus_log_evidence")
 
     @testset "Nautilus SW07 linear estimation" begin
+        @test pyconvert(Bool, nautilus_converged)
         @test isfinite(nautilus_log_evidence)
         @test nautilus_n_posterior > 0
         @test !isnothing(nautilus_posterior_summary)
