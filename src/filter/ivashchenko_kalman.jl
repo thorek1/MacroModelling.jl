@@ -663,6 +663,7 @@ end
 function ivashchenko_third_order_pullback_workspace(sys, scalar_type::Type)
     nout, d, dv = sys.nout, sys.d, sys.dv
     n_pair = sys.n_pair
+    n_random_pair = length(sys.random_pair_indices)
     n_triple = length(sys.triple_indices)
     return (; covariance_bar_symmetric = zeros(scalar_type, nout, nout),
             gΣ = zeros(scalar_type, d, d),
@@ -684,16 +685,16 @@ function ivashchenko_third_order_pullback_workspace(sys, scalar_type::Type)
             tmp_noutpair = zeros(scalar_type, nout, n_pair),
             tmp_pairnout = zeros(scalar_type, n_pair, nout),
             tmp_nouttriple = zeros(scalar_type, nout, n_triple),
-            third_mode_source = zeros(scalar_type, d, n_pair),
-            third_mode_one = zeros(scalar_type, d, n_pair),
-            third_mode_two = zeros(scalar_type, n_pair, d),
-            third_mode_three = zeros(scalar_type, n_pair, d),
+            third_mode_source = zeros(scalar_type, d, n_random_pair),
+            third_mode_one = zeros(scalar_type, d, n_random_pair),
+            third_mode_two = zeros(scalar_type, n_random_pair, d),
+            third_mode_three = zeros(scalar_type, n_random_pair, d),
             third_cross_compressed = zeros(scalar_type, n_triple, nout),
             third_linear_output = zeros(scalar_type, nout, d),
-            gmode_source = zeros(scalar_type, d, n_pair),
-            gmode_one = zeros(scalar_type, d, n_pair),
-            gmode_two = zeros(scalar_type, n_pair, d),
-            gmode_three = zeros(scalar_type, n_pair, d),
+            gmode_source = zeros(scalar_type, d, n_random_pair),
+            gmode_one = zeros(scalar_type, d, n_random_pair),
+            gmode_two = zeros(scalar_type, n_random_pair, d),
+            gmode_three = zeros(scalar_type, n_random_pair, d),
             pair_jacobian = zeros(scalar_type, n_pair, d),
             pair_cotangent_matrix = zeros(scalar_type, n_pair, d),
             pair_cotangent = zeros(scalar_type, n_pair),
@@ -714,8 +715,9 @@ end
 function ivashchenko_third_order_transform_output!(transformed, output, sys,
                                                    third_derivative, Σ, ws)
     d = sys.d
-    pairs = sys.pair_indices
-    triples = sys.triple_indices
+    pairs = sys.random_pair_indices
+    triples = sys.random_triple_indices
+    fill!(view(transformed, :, output), zero(eltype(transformed)))
 
     # Transform the symmetric cubic coefficient through Σ one mode at a time.
     # The intermediates retain a compressed pair index; no d³ tensor or dense
@@ -745,7 +747,7 @@ function ivashchenko_third_order_transform_output!(transformed, output, sys,
     @inbounds for triple in eachindex(triples)
         i, j, k = triples[triple]
         transformed[triple, output] =
-            sys.triple_multiplicities[triple] *
+            sys.random_triple_multiplicities[triple] *
             ws.third_mode_three[compressed_pair_index(i, j, d), k]
     end
     return transformed
@@ -800,9 +802,9 @@ function ivashchenko_third_order_covariance_pullback!(gΣ, gT, sys, third_deriva
     ℒ.mul!(gT, B.gU, transpose(third_linear), 1 / 6, 1.0)
     ℒ.mul!(B.gR_internal, transpose(third_derivative), B.gU, 1 / 6, 0.0)
 
-    @inbounds for triple in eachindex(sys.triple_indices)
-        i, j, k = sys.triple_indices[triple]
-        multiplicity = sys.triple_multiplicities[triple]
+    @inbounds for triple in eachindex(sys.random_triple_indices)
+        i, j, k = sys.random_triple_indices[triple]
+        multiplicity = sys.random_triple_multiplicities[triple]
         for r in 1:sys.d
             value = multiplicity * B.gR_internal[triple, r]
             r == i && (gΣ[j, k] += value)
@@ -817,17 +819,17 @@ function ivashchenko_third_order_covariance_pullback!(gΣ, gT, sys, third_deriva
         ivashchenko_third_order_transform_output!(W, output, sys,
                                                   third_derivative, Σ, B)
         fill!(B.gmode_three, zero(eltype(B.gmode_three)))
-        for triple in eachindex(sys.triple_indices)
-            i, j, k = sys.triple_indices[triple]
+        for triple in eachindex(sys.random_triple_indices)
+            i, j, k = sys.random_triple_indices[triple]
             B.gmode_three[compressed_pair_index(i, j, sys.d), k] +=
-                sys.triple_multiplicities[triple] * B.gW[triple, output]
+                sys.random_triple_multiplicities[triple] * B.gW[triple, output]
         end
         ℒ.mul!(gΣ, transpose(B.gmode_three), B.third_mode_two, 1.0, 1.0)
         ivashchenko_right_input_covariance!(B.gmode_two, B.gmode_three, Σ,
                                             sys.nPast)
         fill!(B.gmode_one, zero(eltype(B.gmode_one)))
-        for pair in eachindex(sys.pair_indices), k in 1:sys.d
-            i, j = sys.pair_indices[pair]
+        for pair in eachindex(sys.random_pair_indices), k in 1:sys.d
+            i, j = sys.random_pair_indices[pair]
             weight = B.gmode_two[pair, k]
             for m in 1:sys.d
                 source_pair = compressed_pair_index(m, k, sys.d)
@@ -838,8 +840,8 @@ function ivashchenko_third_order_covariance_pullback!(gΣ, gT, sys, third_deriva
         ℒ.mul!(gΣ, B.gmode_one, transpose(B.third_mode_source), 1.0, 1.0)
         ivashchenko_left_input_covariance!(B.gmode_source, B.gmode_one, Σ,
                                            sys.nPast)
-        for l in 1:sys.d, pair in eachindex(sys.pair_indices)
-            m, k = sys.pair_indices[pair]
+        for l in 1:sys.d, pair in eachindex(sys.random_pair_indices)
+            m, k = sys.random_pair_indices[pair]
             triple = compressed_triple_index(l, m, k, sys.d)
             gT[output, triple] += B.gmode_source[l, pair]
         end
@@ -1680,7 +1682,7 @@ function ivashchenko_third_order_linearized_covariance_pullback!(gΣ, gL, gT, sy
 
     @inbounds for triple in eachindex(sys.random_triple_indices), r in 1:sys.d
         i, j, k = sys.random_triple_indices[triple]
-        weight = sys.triple_multiplicities[triple] * B.gR_internal[triple, r]
+        weight = sys.random_triple_multiplicities[triple] * B.gR_internal[triple, r]
         r == i && (gΣ[j, k] += weight)
         r == j && (gΣ[i, k] += weight)
         r == k && (gΣ[i, j] += weight)
