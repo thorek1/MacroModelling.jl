@@ -52,7 +52,6 @@
 - [ ] implement forwarddiff for find_shocks
 - [ ] redo inversion filter 1st order rrule based on the higher order ones. the accumulated matmul might not be necessary at all
 - [ ] inversion filter: use subset of observables and states when propagating states (see kalman filter)
-- [x] start filter from initial values provided by user
 - [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
 - [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
 - [ ] check tols throughout. adopt max(abs,rel*norm) tols
@@ -73,9 +72,6 @@
 - [ ] do proper testing of ss solver with random set of params, equal across configs
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
-- [x] implement higher order (pruned) variance decomposition
-- [x] add `marginal_contribution` (Shapley) option to `get_variance_decomposition` for pruned higher-order solutions
-- [x] add `marginal_contribution` (Shapley) option to `get_shock_decomposition`/`plot_shock_decomposition` for pruned higher-order solutions (allocates the `Nonlinearities` term across shocks)
 - [ ] try slicesampler instead of pigeons
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
@@ -103,9 +99,7 @@
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
-- [x] autocorr and corr with derivatives. return 3d array
 - [ ] add pydsge and econpizza to overview
-- [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
@@ -129,6 +123,12 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] start filter from initial values provided by user
+- [x] implement higher order (pruned) variance decomposition
+- [x] add `marginal_contribution` (Shapley) option to `get_variance_decomposition` for pruned higher-order solutions
+- [x] add `marginal_contribution` (Shapley) option to `get_shock_decomposition`/`plot_shock_decomposition` for pruned higher-order solutions (allocates the `Nonlinearities` term across shocks)
+- [x] autocorr and corr with derivatives. return 3d array
+- [x] add for loop parser in @parameters
 - [x] add filter free estimation to one of the estimation tests (think about filter free filtering instead of smoothing)
 - [x] check dispatch doctor coverage in new functions
 - [x] dont use variable, parameter, function names starting with _

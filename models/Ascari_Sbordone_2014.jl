@@ -1,3 +1,6 @@
+# Ascari, G. and Sbordone, A.M. (2014). The macroeconomics of trend inflation.
+# Journal of Economic Literature, 52(3), 679–739. https://doi.org/10.1257/jel.52.3.679
+
 @model Ascari_Sbordone_2014 begin
 	1 / y[0] ^ sigma = beta * (1 + i[0]) / (pi[1] * y[1] ^ sigma)
 

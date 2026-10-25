@@ -1,3 +1,7 @@
+# King, R.G., Plosser, C.I., and Rebelo, S.T. (1988). Production, growth and business cycles:
+# I. The basic neoclassical model. Journal of Monetary Economics, 21(2–3), 195–232.
+# https://doi.org/10.1016/0304-3932(88)90030-X
+
 using MacroModelling
 
 @model RBC_baseline begin

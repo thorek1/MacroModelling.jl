@@ -1,3 +1,6 @@
+# Gali, J. (2015). Monetary Policy, Inflation, and the Business Cycle: An Introduction to the
+# New Keynesian Framework and Its Applications (2nd ed.). Princeton University Press.
+
 @model Gali_2015_chapter_3_obc begin
 	W_real[0] = C[0] ^ σ * N[0] ^ φ
 

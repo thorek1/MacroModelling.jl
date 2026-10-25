@@ -1,3 +1,9 @@
+# Smets, F. and Wouters, R. (2003). An estimated dynamic stochastic general equilibrium model
+# of the euro area. Journal of the European Economic Association, 1(5), 1123–1175.
+# https://doi.org/10.1162/154247603770383415
+#
+# This variant includes an occasionally binding constraint (OBC) on the interest rate.
+
 @model Smets_Wouters_2003_obc begin
     -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c))
     

@@ -187,6 +187,7 @@ function increment_nested_initial_state_rdata!(
     cr_tangent,
 )
     cr_tangent isa ChainRulesCore.AbstractZero && return NoRData()
+    cr_tangent = ChainRulesCore.unthunk(cr_tangent)
     initial_state_fdata = Mooncake.tangent(initial_state_cd)
     @inbounds for i in eachindex(cr_tangent)
         component_tangent = cr_tangent[i]

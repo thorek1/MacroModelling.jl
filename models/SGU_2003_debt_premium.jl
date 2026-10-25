@@ -1,3 +1,7 @@
+# Schmitt-Grohé, S. and Uribe, M. (2003). Closing small open economy models.
+# Journal of International Economics, 61(1), 163–185.
+# https://doi.org/10.1016/S0022-1996(02)00056-9
+
 @model SGU_2003_debt_premium begin
 	d[0] = (1 + r[-1]) * d[-1] - y[0] + c[0] + i[0] + ϕ / 2 * (k[0] - k[-1]) ^ 2
 

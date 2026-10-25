@@ -1,3 +1,7 @@
+# Iacoviello, M. (2005). House prices, borrowing constraints, and monetary policy in the
+# business cycle. American Economic Review, 95(3), 739–764.
+# https://doi.org/10.1257/0002828054201477
+
 @model Iacoviello_2005_linear begin
 	Ŷ[0] = ctoY * ĉ[0] + c1toY * c1̂[0] + c2toY * c2̂[0] + ItoY * Î[0]
 

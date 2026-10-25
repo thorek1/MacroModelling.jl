@@ -1,6 +1,6 @@
 @stable default_mode = "disable" begin
 
-# Available algorithms: 
+# Available algorithms:
 # :doubling     - fast, expensive part: B^2
 # :bartels_stewart    - fast, dense matrices only
 # :bicgstab     - fastest for large problems, might not reach desired precision, warm start not always helpful
@@ -89,7 +89,7 @@
         reached_tol = denom == 0 ? 0.0 : ℒ.norm(res_buf) / denom
 
         if reached_tol < initial_guess_acceptance_tol
-            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol)") end
+            if verbose println("Sylvester equation - $guess_name achieves relative tol of $reached_tol (initial guess tol: $initial_guess_acceptance_tol) [A: $(size(a)) $(typeof(a)), B: $(size(b)) $(typeof(b)), C: $(size(c)) $(typeof(c))]") end
 
             return choose_matrix_format(guess), true
         end
@@ -106,7 +106,7 @@
                                                         verbose = verbose)
 
     if verbose && i != 0
-        println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
+        println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm [A: $(size(a)) $(typeof(a)), B: $(size(b)) $(typeof(b)), C: $(size(c)) $(typeof(c))]")
     end
 
     if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :doubling
@@ -125,7 +125,7 @@
                                                             verbose = verbose)
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling [A: $(size(aa)) $(typeof(aa)), B: $(size(b)) $(typeof(b)), C: $(size(cc)) $(typeof(cc))]")
         end
     end
 
@@ -148,7 +148,7 @@
                                                             verbose = verbose)
 
         if verbose && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart [A: $(size(aa)) $(typeof(aa)), B: $(size(bb)) $(typeof(bb)), C: $(size(cc)) $(typeof(cc))]")
         end
     end
 
@@ -173,7 +173,7 @@
         end
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution) [A: $(size(aa)) $(typeof(aa)), B: $(size(b)) $(typeof(b)), C: $(size(cc)) $(typeof(cc))]")
         end
     end
 
@@ -193,7 +193,7 @@
                                                             verbose = verbose)
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres [A: $(size(aa)) $(typeof(aa)), B: $(size(b)) $(typeof(b)), C: $(size(cc)) $(typeof(cc))]")
         end
     end
 
@@ -205,9 +205,9 @@
         cc = 𝕊ℂ.𝐂¹
         copyto!(cc, C)
 
-        X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
+        X, i, Reached_tol = solve_sylvester_equation(aa, b, cc,
                                                             Val(:dqgmres), 𝕊ℂ,
-                                                            initial_guess = x, 
+                                                            initial_guess = x,
                                                             preconditioner = preconditioner,
                                                             tol = tol, 
                                                             # timer = timer, 
@@ -218,7 +218,7 @@
         end
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution) [A: $(size(aa)) $(typeof(aa)), B: $(size(b)) $(typeof(b)), C: $(size(cc)) $(typeof(cc))]")
         end
     end
 
