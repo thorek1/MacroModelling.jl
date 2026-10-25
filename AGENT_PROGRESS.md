@@ -2,7 +2,7 @@
 
 ## Current task
 
-Fix the latest nested-sampling CI failure and add Nautilus to the SW07 nested-sampling job.
+Fix remaining Mooncake-dependent tests in the Julia prerelease `basic` CI job.
 
 ## Status
 
@@ -764,10 +764,11 @@ require a separate path-selection/derivative design.
 - Added Nautilus (`nautilus-sampler`) to the SW07 nested-sampling job with a
   bounded live-point/effective-sample/likelihood budget and finite-evidence and
   posterior assertions. Julia callbacks are wrapped with `PythonCall.pyfunc`.
-- The latest Julia prerelease `basic` job also failed because CI removes
-  Mooncake before `functionality_tests.jl` imports it. The tests now use
-  ForwardDiff for those reference derivatives when Mooncake is unavailable and
-  retain Mooncake when it is installed.
+- The Julia prerelease `basic` job still failed after the first fallback because
+  `test_standalone_function.jl` directly imported Mooncake and used its backend
+  in two gradient checks. It now uses the shared conditional backend helper, as
+  do the broader functionality tests.
 - Focused checks pass: Julia parsing, the no-Mooncake backend constructor,
   CondaPkg's Python/package specs, and a Julia/PythonCall Nautilus sampling
-  smoke test. Full SW07 CI validation is pending the pushed workflow run.
+  smoke test. The standalone test parses and contains no direct Mooncake
+  dependency; full Julia prerelease CI validation is pending the pushed run.
