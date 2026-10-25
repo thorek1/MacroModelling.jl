@@ -65,6 +65,7 @@ ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 # Install nested-sampling Python packages into PythonCall's Python environment
 # ──────────────────────────────────────────────────────────────────────────────
 println("Installing nested-sampling Python packages...")
+CondaPkg.add("python=3.14") # Torch wheels used by Nessai do not yet support Python 3.15
 USE_NESSAI    && CondaPkg.add_pip("nessai")
 USE_DYNESTY   && CondaPkg.add_pip("dynesty")
 USE_ULTRANEST && CondaPkg.add_pip("ultranest")

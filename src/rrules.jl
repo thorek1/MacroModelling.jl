@@ -9843,7 +9843,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # Shock rescue is optional (opts.rescue_shocks, default off).
                 xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
                     kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v;
-                    verbose = opts.verbose) : (x[i], false)
+                    verbose = opts.verbose) : (x, false)
                 if !matched
                     if opts.verbose println("Inversion filter rrule (pruned 2nd, missing) failed at step $t") end
                     return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -12530,7 +12530,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # Shock rescue is optional (opts.rescue_shocks, default off).
                 xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
                     kron_buffer, kron_buffer2, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, si_v;
-                    verbose = opts.verbose) : (x[i], false)
+                    verbose = opts.verbose) : (x, false)
                 if !matched
                     if opts.verbose println("Inversion filter rrule (2nd, missing) failed at step $t") end
                     return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -13784,7 +13784,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # Shock rescue is optional (opts.rescue_shocks, default off).
                 xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
                     kb1, kb2, kb3, kb4, kb5, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v;
-                    verbose = opts.verbose) : (x[i], false)
+                    verbose = opts.verbose) : (x, false)
                 if !matched
                     if opts.verbose println("Inversion filter rrule (pruned 3rd, missing) failed at step $t") end
                     return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -15440,7 +15440,7 @@ function rrule(::typeof(calculate_loglikelihood_with_missing), ::Val{:inversion}
                 # Shock rescue is optional (opts.rescue_shocks, default off).
                 xr, matched = opts.rescue_shocks ? find_shocks_with_restarts(Val(:LagrangeNewton),
                     kb1, kb2, kb3, kb4, kb5, J, 𝟒𝟗_v, 𝟒𝟗²ᵉ_v, 𝟒𝟗³ᵉ_v, si_v;
-                    verbose = opts.verbose) : (x[i], false)
+                    verbose = opts.verbose) : (x, false)
                 if !matched
                     if opts.verbose println("Inversion filter rrule (3rd, missing) failed at step $t") end
                     return on_failure_loglikelihood, _ -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())

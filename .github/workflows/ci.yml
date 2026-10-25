@@ -256,6 +256,22 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
+      - name: Remove Mooncake from Julia prerelease smoke tests
+        if: startsWith(matrix.version, '~1.14') && (matrix.test_set == 'basic' || startsWith(matrix.test_set, 'jet'))
+        shell: bash
+        run: |
+          # Mooncake 0.5.54 references Compiler.WorldView, removed in Julia 1.14.
+          # These smoke tests do not exercise the Mooncake extension.
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Mooncake"//g' \
+            -e '/^\[targets\]/,$ s/"Mooncake",[[:space:]]*//g' \
+            -e '/^\[compat\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[extras\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[weakdeps\]/,/^\[/ s/^Mooncake[[:space:]]*=.*$//g' \
+            -e '/^\[extensions\]/,/^\[/ s/^MooncakeExt[[:space:]]*=.*$//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
       - name: Remove Turing from non-estimation runs
         if: matrix.test_set == 'basic' || startsWith(matrix.test_set, 'higher_order') || startsWith(matrix.test_set, 'plots') || startsWith(matrix.test_set, 'jet') || matrix.test_set == 'gradient_checks'
         shell: bash
