@@ -295,6 +295,10 @@ jobs:
             Project.toml
           rm -f Project.toml.bak
 
+      - name: Pin PythonCall for Julia 1.10 CondaPkg compatibility
+        if: matrix.version == 'lts' && matrix.test_set == 'basic'
+        run: julia --project=. -e 'using Pkg; Pkg.add(Pkg.PackageSpec(name="PythonCall", version="0.9.36"))'
+
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8

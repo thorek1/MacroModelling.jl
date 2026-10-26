@@ -60,11 +60,9 @@ ULTRANEST_MIN_NUM_LIVE_POINTS = 400
 
 NAUTILUS_NLIVE = 500
 NAUTILUS_N_EFF = 1000
-# The SW07 posterior is 36-dimensional; 50k likelihood calls stopped during
-# exploration with only one effective posterior sample. Allow enough calls for
-# Nautilus to finish exploration and satisfy the effective-sample target.
-NAUTILUS_N_LIKE_MAX = 500_000
-NAUTILUS_N_NETWORKS = 2
+NAUTILUS_ENLARGE_PER_DIM = 1.05
+NAUTILUS_N_NETWORKS = 4
+NAUTILUS_N_LIKE_MAX = Inf
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Install nested-sampling Python packages into PythonCall's Python environment
@@ -554,6 +552,7 @@ if USE_NAUTILUS
         pyfunc(nautilus_log_likelihood),
         length(param_names);
         n_live = NAUTILUS_NLIVE,
+        enlarge_per_dim = NAUTILUS_ENLARGE_PER_DIM,
         n_networks = NAUTILUS_N_NETWORKS,
         seed = 1234,
     )
@@ -577,7 +576,8 @@ if USE_NAUTILUS
     println("Nautilus log evidence: $nautilus_log_evidence")
 
     @testset "Nautilus SW07 linear estimation" begin
-        @test pyconvert(Bool, nautilus_converged)
+        nautilus_converged_bool = pyconvert(String, pyimport("builtins").str(nautilus_converged)) == "True"
+        @test nautilus_converged_bool
         @test isfinite(nautilus_log_evidence)
         @test nautilus_n_posterior > 0
         @test !isnothing(nautilus_posterior_summary)
