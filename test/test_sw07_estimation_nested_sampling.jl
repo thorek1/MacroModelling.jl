@@ -4,10 +4,15 @@ using CondaPkg
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration switches
 # ──────────────────────────────────────────────────────────────────────────────
-USE_NESSAI = true
+const NESTED_SAMPLING_TEST_SET = get(ENV, "TEST_SET", "estimate_sw07_nested_sampling")
+@assert NESTED_SAMPLING_TEST_SET in ("estimate_sw07_nested_sampling", "estimate_sw07_nautilus")
+
+# Keep the two expensive Python samplers in separate CI jobs so each gets the
+# full runner time budget. The older test-set name remains the Nessai job.
+USE_NESSAI = NESTED_SAMPLING_TEST_SET == "estimate_sw07_nested_sampling"
 USE_DYNESTY = false
 USE_ULTRANEST = false
-USE_NAUTILUS = true
+USE_NAUTILUS = NESTED_SAMPLING_TEST_SET == "estimate_sw07_nautilus"
 USE_FLAT_PRIOR = false
 USE_NONLINEAR_MODEL = false
 

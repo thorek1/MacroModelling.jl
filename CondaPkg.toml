@@ -1,0 +1,4 @@
+[deps]
+# Keep the shared PythonCall/SymPy environment's library available to PythonCall.
+# Some clean temporary test environments otherwise install only the interpreter.
+libpython = ""

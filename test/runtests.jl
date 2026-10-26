@@ -2,7 +2,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths", "particle_filter", "higher_order_filters"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimate_sw07_nested_sampling", "estimate_sw07_nautilus", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons", "system_prior_estimation", "gradient_checks", "missing_data", "jet", "jet_hot_paths", "particle_filter", "higher_order_filters"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 
@@ -14,6 +14,8 @@ if test_set == "jet"
 elseif test_set == "estimate_sw07"
     include("test_sw07_estimation.jl")
 elseif test_set == "estimate_sw07_nested_sampling"
+    include("test_sw07_estimation_nested_sampling.jl")
+elseif test_set == "estimate_sw07_nautilus"
     include("test_sw07_estimation_nested_sampling.jl")
 elseif test_set == "estimation"
     include("test_estimation.jl")
