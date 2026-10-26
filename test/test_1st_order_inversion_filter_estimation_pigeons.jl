@@ -36,6 +36,7 @@ dists = [
 ]
 
 const PIGEONS_SEED = 30
+const PIGEONS_N_ROUNDS = parse(Int, get(ENV, "PIGEONS_N_ROUNDS", "10"))
 
 # ---------------------------------------------------------------------------
 # Filter-free estimation via Pigeons (gradient-free MCMC; joint sampling of
@@ -61,7 +62,7 @@ FS2000_ff_lp = Pigeons.TuringLogPotential(
 pt_ff = @time Pigeons.pigeons(target = FS2000_ff_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
-            n_rounds = 10,
+            n_rounds = PIGEONS_N_ROUNDS,
             seed = PIGEONS_SEED,
             multithreaded = false)
 
@@ -128,7 +129,7 @@ pt_missing = Pigeons.pigeons(target = FS2000_lp_missing, n_rounds = 0, n_chains 
 pt_missing = @time Pigeons.pigeons(target = FS2000_lp_missing,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
-            n_rounds = 10,
+            n_rounds = PIGEONS_N_ROUNDS,
             seed = PIGEONS_SEED+1,
             multithreaded = false)
 
@@ -147,7 +148,7 @@ pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1, seed = PIGE
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
-            n_rounds = 10,
+            n_rounds = PIGEONS_N_ROUNDS,
             seed = PIGEONS_SEED,
             multithreaded = false) # tests fail on multithreaded
 
