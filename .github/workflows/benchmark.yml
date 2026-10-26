@@ -21,6 +21,14 @@ jobs:
       with:
         version: "1"
     - uses: julia-actions/cache@v3
+    - name: Configure CondaPkg for PythonCall in benchmark environments
+      run: |
+        global_env="$(julia -e 'print(dirname(Base.active_project()))')"
+        mkdir -p "$global_env"
+        cat > "$global_env/CondaPkg.toml" <<'EOF'
+        [deps]
+        libpython = ""
+        EOF
     - name: Extract Package Name from Project.toml
       id: extract-package-name
       run: |
