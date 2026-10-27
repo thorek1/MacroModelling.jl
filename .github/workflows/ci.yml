@@ -15,7 +15,7 @@ jobs:
       GKSwstype: "nul"
     name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.version == '~1.14.0-0' }}
+    continue-on-error: ${{ matrix.version == '~1.14.0-0' || matrix.allow_failure == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -149,6 +149,11 @@ jobs:
             allow_failure: true
           - version: '1.13'
             os: ubuntu-latest
+            arch: x64
+            test_set: "jet"
+            allow_failure: true
+          - version: 'lts'
+            os: macOS-latest
             arch: x64
             test_set: "jet"
             allow_failure: true
