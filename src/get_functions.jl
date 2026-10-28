@@ -872,7 +872,7 @@ end
 $(SIGNATURES)
 Return the standard deviations of the smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data. For the default settings this function relies on the Kalman filter and therefore keeps smoothing enabled. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
-The Kalman filter reports the square root of the diagonal of its state covariance, which is exact for a first order solution. The particle filters (`filter = :bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`) instead report the weighted spread of the particle cloud, which is a Monte-Carlo estimate of the same quantity but valid at every perturbation order — so this is the way to get estimation uncertainty for a nonlinear solution. The inversion filter identifies the state exactly and therefore has no dispersion to report.
+The Kalman and Ivashchenko filters report the square root of the diagonal of their state covariance. The particle filters (`filter = :bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`, `:guided_particle`; also `:particle`) instead report the weighted spread of the particle cloud, which is a Monte-Carlo estimate of the same quantity but valid at every perturbation order — so this is the way to get estimation uncertainty for a nonlinear solution. The inversion filter identifies the state exactly and therefore has no dispersion to report.
 
 Note that the *smoothed* particle spread (`smooth = true`) understates uncertainty in the early part of the sample: the smoother traces the filter's genealogy, and repeated resampling means the surviving ancestral lines coalesce, so few distinct trajectories remain that far back. Raise `n_particles`, or read the filtered spread (`smooth = false`), if the early periods matter.
 
@@ -971,7 +971,7 @@ And data, 4×40 Matrix{Float64}:
     # The inversion filter recovers the state exactly, so it has no dispersion to
     # report. Everything else (Kalman, particle) does.
     if filter == :inversion || (algorithm != :first_order && filter ∉ PARTICLE_FILTERS && filter ∉ (:kalman, :ivashchenko_kalman))
-        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty. The inversion filter identifies the state exactly and has none. Use `filter = :kalman` or `filter = :ivashchenko_kalman` for Gaussian filters, or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`).")
+        error("`get_estimated_variable_standard_deviations` needs a filter that reports estimation uncertainty. The inversion filter identifies the state exactly and has none. Use `filter = :kalman` or `filter = :ivashchenko_kalman` for Gaussian filters, or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`, `:guided_particle`).")
     end
 
     filter, smooth, algorithm, _, _, _ = normalize_filtering_options(filter, smooth, algorithm, false, 0)
@@ -1059,6 +1059,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+- $RESCUE_SHOCKS®
 
 # Returns
 - `KeyedArray` (from the `AxisKeys` package) with variables  and shocks in rows, and periods in columns.
@@ -4572,9 +4573,9 @@ end
 
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the Kalman filter, inversion filter, Ivashchenko Gaussian moment-closure filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is calculated with the filter selected by the `filter` keyword argument: the linear Kalman filter, inversion filter, quadratic and cubic Kalman filters for pruned higher-order solutions, Ivashchenko Gaussian moment-closure filter, or one of the particle filters. By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
-The Kalman, inversion, and Ivashchenko likelihoods are differentiable. The Ivashchenko likelihood has analytical reverse-mode rules for its raw and pruned second- and third-order moment recursions. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
+The Kalman, inversion, quadratic, cubic, and Ivashchenko likelihoods are differentiable. The higher-order Gaussian filters have analytical reverse-mode rules for their second- and third-order recursions. The particle filters are stochastic Monte-Carlo estimators and are not differentiable; use them with gradient-free samplers. See the Filters section of the documentation for a comparison.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -4591,6 +4592,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_COVARIANCE®
 - $INITIAL_STATE®
 - $ON_FAILURE_LOGLIKELIHOOD®
+- $RESCUE_SHOCKS®
 - `ivashchenko_gaussian_closure` [Default: `:exact`, Type: `Symbol`]: Gaussian covariance closure used by `filter = :ivashchenko_kalman`. `:linearized` retains the exact nonlinear mean and effective Jacobian covariance; `:diagonal` additionally retains second-order curvature variances while discarding their cross-covariances.
 $PARTICLE_FILTER_KEYWORDS®
 - $QME®
@@ -4856,13 +4858,13 @@ function get_loglikelihood(𝓂::ℳ,
 
     # Gaussian measurement-error covariance H: `nothing` when no measurement error
     # is active, a vector of per-observable variances (in data-row order) when H is
-    # diagonal, or a full covariance matrix. Supported by the Kalman and particle
-    # filters; the inversion filter recovers shocks exactly and does not admit
-    # measurement error. `:auto` resolves per filter.
+    # diagonal, or a full covariance matrix. Supported by the Gaussian and
+    # particle filters; the inversion filter recovers shocks exactly and does
+    # not admit measurement error. `:auto` resolves per filter.
     measurement_error_H = resolve_measurement_error(filter, measurement_error, data_in_deviations)
 
     if filter == :inversion && measurement_error_H !== nothing
-        error("`measurement_error` is not supported by the inversion filter (`filter = :inversion`). Use `filter = :kalman` (linear) or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`).")
+        error("`measurement_error` is not supported by the inversion filter (`filter = :inversion`). Use a Gaussian filter that supports measurement error (`:kalman`, `:quadratic_kalman`, `:cubic_kalman`, or `:ivashchenko_kalman`, subject to its algorithm restrictions), or a particle filter (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`, `:guided_particle`; `:particle` aliases `:guided_particle`).")
     end
     if is_particle_filter
         if measurement_error_H === nothing
@@ -5052,6 +5054,7 @@ The filter-free primal path and its analytical reverse-mode `rrule` are implemen
 - `warmup_iterations` [Default: `DEFAULT_WARMUP_ITERATIONS`, Type: `Int`]: Number of filter-style warmup iterations. In the filter-free case this prepends `max(warmup_iterations - 1, 0)` latent-shock periods before the first scored observation.
 - $INITIAL_STATE®
 - `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails (e.g. solution did not converge or measurement-error std-dev is non-positive).
+- $RESCUE_SHOCKS®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®

@@ -124,6 +124,10 @@ state. The point-state recursion is an additional assumption for the full dynami
 rectangular pseudo-inverse cases are described below. The filter is deterministic and
 differentiable, which makes it the default at higher order. It provides no smoothed estimates.
 
+### Rescuing a failed shock solve
+
+For a difficult nonlinear inversion or conditional forecast, set `rescue_shocks = true` to try bounded restarts and continuation steps after the primary shock solve fails. It is disabled by default, does not change the filter's identification assumptions, and cannot recover a solution when no feasible shock path exists. The final large-radius restart uses Julia's global random-number generator, so a result found by that stage may not be bit-reproducible across calls.
+
 **References:** Fair & Taylor (1983); Cuba-Borda, Guerrieri, Iacoviello & Zhong (2019).
 
 ### More shocks than observables

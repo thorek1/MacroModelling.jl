@@ -401,10 +401,10 @@ function normalize_filtering_options(filter::Symbol,
                                       shock_decomposition::Bool,
                                       warmup_iterations::Int;
                                       maxlog::Int = DEFAULT_MAXLOG)
-    # `:particle` is a convenience alias for the bootstrap particle filter.
+    # `:particle` is a convenience alias for the guided particle filter.
     filter = get(PARTICLE_FILTER_ALIASES, filter, filter)
 
-    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose the Kalman filter (`:kalman`, linear models), the inversion filter (`:inversion`, linear and nonlinear models), the Ivashchenko Gaussian moment-closure filter (`:ivashchenko_kalman`, raw or pruned second- and third-order models), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`; linear and nonlinear models). `:particle` is accepted as an alias for `:bootstrap_particle`."
+    @assert filter ∈ SUPPORTED_FILTERS "Unsupported `filter = :$(filter)`. Choose `:kalman` (linear models), `:inversion` (linear and nonlinear models), `:quadratic_kalman` (pruned second order), `:cubic_kalman` (pruned third order), `:ivashchenko_kalman` (raw or pruned second and third order), or one of the particle filters (`:bootstrap_particle`, `:auxiliary_particle`, `:tempered_particle`, `:guided_particle`; linear and nonlinear models). `:particle` is an alias for `:guided_particle`."
 
     is_particle = filter ∈ PARTICLE_FILTERS
 

@@ -774,3 +774,16 @@ require a separate path-selection/derivative design.
 - Focused checks pass: Julia parsing and CondaPkg resolution followed by
   PythonCall successfully imports `sympy.tensor.tensor` under Python 3.14.9 and
   SymPy 1.14. Full CI validation is pending the pushed run.
+
+## Release review follow-up (2026-10-28)
+
+- Documented `rescue_shocks` in the inversion/conditional-forecast guide and
+  public keyword docs, including its default-off behavior and nondeterministic
+  final restart; clarified that it has no effect on filter-free likelihoods.
+- Corrected filter registry help to list all filters and the `:particle` to
+  `:guided_particle` alias. Updated the shared filter, smoothing, and
+  measurement-error API descriptions for the quadratic, cubic, and Ivashchenko
+  filters.
+- Added quadratic/cubic restart recovery tests, no-root failure coverage, and a
+  public inversion-likelihood keyword check. `test/test_filter_convergence.jl`
+  passes 80/80 in an isolated Julia 1.13 environment; `git diff --check` passes.

@@ -169,6 +169,44 @@ end
     @test !matched
 end
 
+@testset "Opt-in shock-solve rescue" begin
+    J = LA.Diagonal([true])
+    A = reshape([0.01], 1, 1)
+    Q = reshape([1.0], 1, 1)
+    target = [1.0]
+
+    # The primary zero-start Newton solve exhausts its one-iteration budget;
+    # the deterministic restart path finds the nearby quadratic root.
+    _, primary_matched = MacroModelling.find_shocks(
+        Val(:LagrangeNewton), [0.0], zeros(1), zeros(1, 1), J, A, Q, target;
+        max_iter = 1)
+    @test !primary_matched
+    rescued, rescue_matched = MacroModelling.find_shocks_with_restarts(
+        Val(:LagrangeNewton), zeros(1), zeros(1, 1), J, A, Q, target;
+        restart_max_iter = 100)
+    @test rescue_matched
+    @test rescued[1] ≈ (-0.01 + sqrt(4.0001)) / 2
+
+    # Exercise the cubic restart method on the same ill-scaled first step.
+    C = reshape([0.1], 1, 1)
+    _, cubic_primary_matched = MacroModelling.find_shocks(
+        Val(:LagrangeNewton), [0.0], zeros(1), zeros(1), zeros(1, 1),
+        zeros(1, 1), zeros(1, 1), J, A, Q, C, target; max_iter = 1)
+    @test !cubic_primary_matched
+    cubic_rescued, cubic_rescue_matched = MacroModelling.find_shocks_with_restarts(
+        Val(:LagrangeNewton), zeros(1), zeros(1), zeros(1, 1), zeros(1, 1),
+        zeros(1, 1), J, A, Q, C, target; restart_max_iter = 100)
+    @test cubic_rescue_matched
+    @test A[1] * cubic_rescued[1] + Q[1] * cubic_rescued[1]^2 +
+          C[1] * cubic_rescued[1]^3 ≈ target[1]
+
+    # A quadratic with no real preimage remains a visible failure after rescue.
+    _, impossible_matched = MacroModelling.find_shocks_with_restarts(
+        Val(:LagrangeNewton), zeros(1), zeros(1, 1), J, zeros(1, 1), Q, [-1.0];
+        n_restarts = 0, restart_max_iter = 10, rescue_newton = false)
+    @test !impossible_matched
+end
+
 @testset "Public higher-order square inversion" begin
     values = reshape([0.01, -0.02, 0.0, 0.03, -0.01], 1, :)
     data = KeyedArray(values; Variable = [:y], Time = 1:5)
@@ -179,6 +217,12 @@ end
             ConvergenceSquareInversion, data, candidate;
             filter = :inversion, algorithm = algorithm)
         @test isfinite(likelihood(parameters))
+        if algorithm == :second_order
+            rescued_likelihood = get_loglikelihood(
+                ConvergenceSquareInversion, data, parameters;
+                filter = :inversion, algorithm = algorithm, rescue_shocks = true)
+            @test rescued_likelihood ≈ likelihood(parameters)
+        end
         forward_gradient = ForwardDiff.gradient(likelihood, parameters)
         reverse_gradient = only(Zygote.gradient(likelihood, parameters))
         @test all(isfinite, forward_gradient)
