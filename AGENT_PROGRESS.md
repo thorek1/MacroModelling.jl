@@ -21,6 +21,7 @@ Rust implementation (`thorek1/MacroModelling`, `crates/dsge-core`).
 ## Verification
 
 - `test/test_symbolic_engine.jl` (added to the `basic` set) passes 47/47.
+- `TEST_SET=basic` passes (770 tests, no failures).
 - Old-vs-new comparison on the model catalogue (steady state, first/second/third-order solutions, steady-state
   derivatives) on 34 models: all match (mostly within 1e-12), setup is 2-5x faster.
 
