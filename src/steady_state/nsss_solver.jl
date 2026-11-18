@@ -16,30 +16,16 @@ const EMPTY_NSSS_STEP_CACHE = Vector{Vector{Float64}}()
 const NOOP_NSSS_FUNC! = (_out, _sol_vec, _params_vec) -> nothing
 const NOOP_NSSS_EVAL! = (_out, _sol_vec, _params_vec) -> nothing
 
-@unstable function normalize_symbolic_solution(sol::SPyPyC.Sym{PythonCall.Core.Py})
-    if sol.is_number == true
-        return sol
-    end
-    num, _ = sol.as_numer_denom()
-    return num.is_zero == true ? SPyPyC.Sym(0) : sol
-end
-
-@unstable function symbolic_solution_atoms(sol::SPyPyC.Sym{PythonCall.Core.Py})
-    sol.is_number == true && return Symbol[]
-    atoms = Symbol[]
-    for a in sol.atoms()
-        if a.is_number != true
-            push!(atoms, Symbol(a))
-        end
-    end
-    return atoms
+@unstable function symbolic_solution_atoms(sol::SymbolicExpression)
+    sol isa Number && return Symbol[]
+    return Symbol[a for a in get_symbols(sol) if a isa Symbol]
 end
 
 """
 Return `true` if the Julia `Expr`/`Symbol` contains a call that
 `make_equation_robust_to_domain_errors` would rewrite with a `➕` auxiliary
 variable. Used to gate the rewrite: when no hazard is present the rewrite is
-a no-op and can be skipped entirely, saving allocations and SymPy simplify
+a no-op and can be skipped entirely, saving allocations and symbolic simplify
 calls on log-linear models.
 """
 @unstable function expression_has_domain_hazards(expr)
@@ -349,11 +335,11 @@ end
         end
     end
 
-    other_vrs_eliminated_by_sympy = Set{Symbol}()
+    other_vrs_eliminated_symbolically = Set{Symbol}()
     for (i,val) in enumerate(solved_vals[end])
         if eq_idx_in_block_to_solve[i] ∈ 𝓂.constants.post_model_macro.ss_equations_with_aux_variables
             val = vcat(𝓂.equations.steady_state_aux, 𝓂.equations.calibration)[eq_idx_in_block_to_solve[i]]
-            push!(other_vrs_eliminated_by_sympy, val.args[2])
+            push!(other_vrs_eliminated_symbolically, val.args[2])
         end
     end
 
@@ -365,7 +351,7 @@ end
     other_vars_input = Symbol[]
     other_vrs = intersect( setdiff( union(𝓂.constants.post_model_macro.var, 𝓂.equations.calibration_parameters, 𝓂.constants.post_model_macro.➕_vars),
                                         sort(solved_vars[end]) ),
-                                union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+                                union(syms_in_eqs, other_vrs_eliminated_symbolically ) )
 
     for var in other_vrs
         push!(other_vars_input,:($(var)))
@@ -379,21 +365,19 @@ end
     nd = length(ss_and_aux_equations_dep)
     nx = iii - 1
 
-    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
+    𝔊 = symbolic_placeholders("𝔊", ng)
+    𝔓 = symbolic_placeholders("𝔓", np)
 
     parameter_dict = Dict{Symbol, Symbol}()
-    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
     aux_vars = Symbol[]
     aux_expr = []
 
     for (i,v) in enumerate(sorted_vars)
-        push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
+        push!(parameter_dict, v => 𝔊[i])
     end
 
     for (i,v) in enumerate(parameters_and_solved_vars)
-        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        push!(parameter_dict, v => 𝔓[i])
     end
 
     for (i,v) in enumerate(ss_and_aux_equations_dep)
@@ -413,27 +397,15 @@ end
     replaced_solved_vals = solved_vals_local |>
         x -> replace_symbols.(x, Ref(aux_replacements)) |>
         x -> replace_symbols.(x, Ref(parameter_dict)) |>
-        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
-        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+        x -> SymbolicNode[to_symbolic(e) for e in x]
 
     lennz = length(replaced_solved_vals)
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
-                                                cse = cse,
-                                                skipzeros = skipzeros,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    calc_block! = build_symbolic_function(replaced_solved_vals, [𝔊, 𝔓])
 
-    ϵˢ = zeros(Symbolics.Num, ng)
     ϵ = zeros(ng)
 
-    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊)
+    ∂block_∂parameters_and_solved_vars = symbolic_sparse_jacobian(replaced_solved_vals, 𝔊)
 
     lennz = nnz(∂block_∂parameters_and_solved_vars)
     if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
@@ -455,36 +427,21 @@ end
     prob = 𝒮.LinearProblem(buffer, ϵ)
     lu_buffer = 𝒮.init(prob, lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
-                                                cse = cse,
-                                                skipzeros = skipzeros,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    func_exprs = build_symbolic_function(derivatives_mat, [𝔊, 𝔓])
 
-    Symbolics.@variables 𝔊[1:ng+nx]
+    𝔊 = symbolic_placeholders("𝔊", ng + nx)
 
-    ext_diff = Symbolics.Num[]
+    ext_diff = SymbolicNode[]
     for i in 1:nx
-        push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
+        push!(ext_diff, symbolic_difference(symbolic_symbol(𝔓[i]), symbolic_symbol(𝔊[ng + i])))
     end
     replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
 
-    _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
-                                                cse = cse,
-                                                skipzeros = skipzeros,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    calc_ext_block! = build_symbolic_function(replaced_solved_vals_ext, [𝔊, 𝔓])
 
     ϵᵉ = zeros(ng + nx)
-    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊)
+    ∂ext_block_∂parameters_and_solved_vars = symbolic_sparse_jacobian(replaced_solved_vals_ext, 𝔊)
 
     lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
     if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
@@ -506,18 +463,8 @@ end
     prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
     ext_lu_buffer = 𝒮.init(prob, ext_lu_factorization, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
-                                                cse = cse,
-                                                skipzeros = skipzeros,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    ext_func_exprs = build_symbolic_function(derivatives_mat_ext, [𝔊, 𝔓])
 
     push!(nsss_solver_cache_init_tmp, [haskey(𝓂.constants.post_parameters_macro.guess, v) ? 𝓂.constants.post_parameters_macro.guess[v] : Inf for v in sorted_vars])
     push!(nsss_solver_cache_init_tmp, [Inf])
@@ -577,7 +524,7 @@ end
             for var_combo in combinations(var_indices_to_select_from, n)
                 remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
                 if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n
-                    if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
+                    if avoid_solve || sum(count_ops, eqs_to_solve[eq_combo]) > 15
                         soll = nothing
                     else
                         soll = solve_symbolically(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
@@ -968,36 +915,13 @@ end
     return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
 end
 
-@unstable function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict;
-                                cse = true, skipzeros = true, nnz_parallel_threshold::Int = 1000000)
-    sym_exprs = Symbolics.Num[]
-    for expr in exprs
-        if expr isa Number
-            push!(sym_exprs, Symbolics.Num(expr))
-        else
-            clean_expr = postwalk(x -> x isa Expr && length(x.args) >= 2 && x.args[1] == :conjugate ? x.args[2] : x, expr)
-            replaced = replace_symbols(clean_expr, placeholder_dict)
-            sym = Symbolics.parse_expr_to_symbolic(replaced, @__MODULE__)
-            sym = Symbolics.substitute(sym, back_to_array_dict)
-            push!(sym_exprs, sym)
-        end
-    end
-
-    lennz = length(sym_exprs)
-    parallel = lennz > nnz_parallel_threshold ?
-        Symbolics.ShardedForm(1500, 4) : Symbolics.SerialForm()
-
-    _, func! = Symbolics.build_function(sym_exprs, 𝔖, 𝔓_ext,
-        cse = cse, skipzeros = skipzeros,
-        parallel = parallel,
-        expression_module = @__MODULE__,
-        expression = Val(false))::Tuple{<:Function, <:Function}
-
-    return func!
+@unstable function compile_exprs_to_func(exprs::Vector, 𝔖, 𝔓_ext, placeholder_dict)
+    sym_exprs = SymbolicNode[expr isa Number ? symbolic_number(expr) : to_symbolic(replace_symbols(expr, placeholder_dict)) for expr in exprs]
+    return build_symbolic_function(sym_exprs, [𝔖, 𝔓_ext])
 end
 
 @unstable function append_numerical_step!(builder::NSSSSolverBuilder, block_meta, sol_name_to_index, ext_param_to_index,
-                               𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict,
+                               𝔖, 𝔓_ext, placeholder_dict,
                                global_solvetime_aux_sub::Dict{Symbol, Union{Symbol, Expr}} = Dict{Symbol, Union{Symbol, Expr}}())
     write_indices = [sol_name_to_index[v] for v in block_meta.sorted_vars]
     param_gather_indices = [ext_param_to_index[p] for p in block_meta.calib_pars_input]
@@ -1029,7 +953,7 @@ end
         end
         if !isempty(model_aux_rhs)
             aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
-            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
+            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, placeholder_dict)
         end
     end
 
@@ -1037,7 +961,7 @@ end
         inlined_errors = isempty(global_solvetime_aux_sub) ? block_meta.ss_and_aux_equations_error : [replace_symbols(e, global_solvetime_aux_sub) for e in block_meta.ss_and_aux_equations_error]
         aux_error_size = length(inlined_errors)
         aux_error_func! = compile_exprs_to_func(inlined_errors,
-                                                 𝔖, 𝔓_ext, placeholder_dict, back_to_array_dict)
+                                                 𝔖, 𝔓_ext, placeholder_dict)
     end
 
     desc = "Numerical block $(block_meta.n_block): $(join(string.(block_meta.sorted_vars), ", "))"
@@ -1121,8 +1045,8 @@ end
         end
     end
 
-    # Precomputed per-equation symbol sets used as a cheap Julia-side filter for
-    # SymPy solve/subs calls in the analytical branch. Aligned with ss_equations.
+    # Precomputed per-equation symbol sets used as a cheap filter for
+    # symbolic solve/substitution calls in the analytical branch. Aligned with ss_equations.
     eq_symbol_sets = [Set{Symbol}(Symbol.(collect(e))) for e in eq_list]
 
     Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
@@ -1226,29 +1150,21 @@ end
     end
 
     n_sol_max = n_sol + 2 * length(ss_equations)
-    MacroModelling.Symbolics.@variables 𝔖[1:n_sol_max] 𝔓_ext[1:n_ext_params]
+    𝔖 = symbolic_placeholders("𝔖", n_sol_max)
+    𝔓_ext = symbolic_placeholders("𝔓e", n_ext_params)
 
     global_placeholder = Dict{Symbol, Symbol}()
-    global_back_to_array = Dict{MacroModelling.Symbolics.Num, MacroModelling.Symbolics.Num}()
 
     for (name, idx) in sol_name_to_index
         sym = Symbol("𝔖_$idx")
         global_placeholder[name] = sym
-        global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
     end
     for (name, idx) in ext_param_to_index
         sym = Symbol("𝔓e_$idx")
         global_placeholder[name] = sym
-        global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔓_ext[idx]
     end
 
-    MacroModelling.Symbolics.@variables P_raw[1:n_raw_params]
-
-    pp_back = Dict{MacroModelling.Symbolics.Num, MacroModelling.Symbolics.Num}()
-    for i in 1:n_raw_params
-        sym = Symbol("Praw_$i")
-        pp_back[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = P_raw[i]
-    end
+    P_raw = symbolic_placeholders("Praw", n_raw_params)
 
     bounded_param_exprs_for_sub = Dict{Symbol, Union{Symbol, Expr}}()
     for (i, par) in enumerate(raw_param_names)
@@ -1260,14 +1176,9 @@ end
         end
     end
 
-    ext_param_sym_exprs = MacroModelling.Symbolics.Num[]
+    ext_param_sym_exprs = SymbolicNode[]
     for (i, par) in enumerate(raw_param_names)
-        if haskey(𝓂.constants.post_parameters_macro.bounds, par)
-            lb, ub = 𝓂.constants.post_parameters_macro.bounds[par]
-            push!(ext_param_sym_exprs, min(max(P_raw[i], lb), ub))
-        else
-            push!(ext_param_sym_exprs, P_raw[i])
-        end
+        push!(ext_param_sym_exprs, to_symbolic(bounded_param_exprs_for_sub[par]))
     end
 
     calib_expr_replacements = Dict{Symbol, Union{Symbol, Expr}}()
@@ -1278,16 +1189,10 @@ end
         rhs_final = replace_symbols(rhs_expanded, bounded_param_exprs_for_sub)
         calib_expr_replacements[lhs] = rhs_final
 
-        sym_expr = MacroModelling.Symbolics.parse_expr_to_symbolic(rhs_final, @__MODULE__)
-        sym_expr = MacroModelling.Symbolics.substitute(sym_expr, pp_back)
-        push!(ext_param_sym_exprs, sym_expr)
+        push!(ext_param_sym_exprs, to_symbolic(rhs_final))
     end
 
-    _, param_prep_func! = MacroModelling.Symbolics.build_function(ext_param_sym_exprs, P_raw,
-        cse = true, skipzeros = true,
-        parallel = MacroModelling.Symbolics.SerialForm(),
-        expression_module = @__MODULE__,
-        expression = Val(false))::Tuple{<:Function, <:Function}
+    param_prep_func! = build_symbolic_function(ext_param_sym_exprs, [P_raw])
 
     atoms_in_equations = Set{Symbol}()
     atoms_in_equations_list = []
@@ -1366,13 +1271,11 @@ end
             else
                 var_sym = Symbol(var_to_solve_for)
                 eq_idx_for_filter = eqs[:,eqs[2,:] .== n][1]
-                # Option A: skip SymPy solve when the variable is not a free symbol of the equation
+                # skip the symbolic solve when the variable is not a free symbol of the equation
                 if 1 <= eq_idx_for_filter <= length(eq_symbol_sets) && !(var_sym in eq_symbol_sets[eq_idx_for_filter])
                     soll = nothing
-                elseif eq_to_solve isa SPyPyC.Sym{PythonCall.Core.Py} && var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py}
-                    soll = solve_symbolically(eq_to_solve, var_to_solve_for)
                 else
-                    soll = nothing
+                    soll = solve_symbolically(eq_to_solve, var_sym, positive = var_sym ∈ symbolics_data.positive_symbols)
                 end
             end
 
@@ -1396,34 +1299,29 @@ end
                             sol_name_to_index[pv] = idx
                             sym = Symbol("𝔖_$idx")
                             global_placeholder[pv] = sym
-                            global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
                         end
                     end
                     plus_var_count_at_start = current_plus_count
                 end
 
                 append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
-                                       𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
+                                       𝔖, 𝔓_ext, global_placeholder, global_solvetime_aux_sub)
 
             else
-                sol_expr = normalize_symbolic_solution(soll[1])
+                sol_expr = soll[1]
 
-                if sol_expr.is_number == true
-                    if var_to_solve_for isa SPyPyC.Sym{PythonCall.Core.Py} && sol_expr isa SPyPyC.Sym{PythonCall.Core.Py}
-                        var_sym_for_sub = Symbol(var_to_solve_for)
-                        # Only do the expensive SymPy substitution on equations that actually
-                        # contain the variable (per the precomputed symbol sets).
-                        ss_equations = [
-                            (eq isa SPyPyC.Sym{PythonCall.Core.Py} &&
-                             k <= length(eq_symbol_sets) &&
-                             (var_sym_for_sub in eq_symbol_sets[k])) ?
-                                replace_symbolic(eq, var_to_solve_for, sol_expr) : eq
-                            for (k, eq) in enumerate(ss_equations)
-                        ]
-                    end
+                if sol_expr isa Number
+                    var_sym_for_sub = Symbol(var_to_solve_for)
+                    # Only substitute in equations that actually contain the variable
+                    # (per the precomputed symbol sets).
+                    ss_equations = [
+                        (k <= length(eq_symbol_sets) && (var_sym_for_sub in eq_symbol_sets[k])) ?
+                            substitute_symbolic(eq, var_sym_for_sub, sol_expr) : eq
+                        for (k, eq) in enumerate(ss_equations)
+                    ]
 
                     push!(solved_vars, Symbol(var_to_solve_for))
-                    push!(solved_vals, Meta.parse(string(sol_expr)))
+                    push!(solved_vals, sol_expr)
                     push!(atoms_in_equations_list, [])
 
                     var_name = solved_vars[end]
@@ -1432,7 +1330,7 @@ end
 
                     if var_name ∈ 𝓂.constants.post_model_macro.➕_vars
                         step_expr = :(max(eps(), $val))
-                        eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                        eval_func! = compile_exprs_to_func([step_expr], 𝔖, 𝔓_ext, global_placeholder)
                     else
                         constant_value = Float64(sol_expr)
                         eval_func! = let constant_value = constant_value
@@ -1451,7 +1349,7 @@ end
 
                 else
                     push!(solved_vars, Symbol(var_to_solve_for))
-                    push!(solved_vals, Meta.parse(string(sol_expr)))
+                    push!(solved_vals, sol_expr)
 
                     for a in symbolic_solution_atoms(sol_expr)
                         push!(atoms_in_equations, a)
@@ -1466,7 +1364,7 @@ end
                         bounds_tuple = get(𝓂.constants.post_parameters_macro.bounds, var_name, (eps(), 1e12))
                         lb, ub = Float64(bounds_tuple[1]), Float64(bounds_tuple[2])
 
-                        eval_func! = compile_exprs_to_func([val_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                        eval_func! = compile_exprs_to_func([val_expr], 𝔖, 𝔓_ext, global_placeholder)
 
                         push_analytical_step!(builder;
                             eval_func! = eval_func!,
@@ -1501,7 +1399,6 @@ end
                                     sol_name_to_index[pv] = idx
                                     sym = Symbol("𝔖_$idx")
                                     global_placeholder[pv] = sym
-                                    global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
                                 end
                             end
                             plus_var_count_at_start = current_plus_count
@@ -1537,16 +1434,16 @@ end
 
                         if !isempty(model_aux_rhs)
                             aux_write_indices = [sol_name_to_index[v] for v in model_aux_names]
-                            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                            aux_func! = compile_exprs_to_func(model_aux_rhs, 𝔖, 𝔓_ext, global_placeholder)
                         end
 
                         main_expr = isempty(global_solvetime_aux_sub) ? rewritten_eqs[1] : replace_symbols(rewritten_eqs[1], global_solvetime_aux_sub)
-                        eval_func! = compile_exprs_to_func([main_expr], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                        eval_func! = compile_exprs_to_func([main_expr], 𝔖, 𝔓_ext, global_placeholder)
 
                         if !isempty(all_aux_errors)
                             inlined_errors = isempty(global_solvetime_aux_sub) ? all_aux_errors : [replace_symbols(e, global_solvetime_aux_sub) for e in all_aux_errors]
                             error_size = length(inlined_errors)
-                            error_func! = compile_exprs_to_func(inlined_errors, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                            error_func! = compile_exprs_to_func(inlined_errors, 𝔖, 𝔓_ext, global_placeholder)
                         end
 
                         has_user_bounds = haskey(𝓂.constants.post_parameters_macro.bounds, var_name) && var_name ∉ 𝓂.constants.post_model_macro.➕_vars
@@ -1586,19 +1483,19 @@ end
             numerical_sol = false
 
             if symbolic_enabled
-                if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
+                if avoid_solve || sum(count_ops, eqs_to_solve) > 15
                     soll = nothing
                 else
-                    soll = solve_symbolically(eqs_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, vars_to_solve::Vector{SPyPyC.Sym{PythonCall.Core.Py}})
+                    soll = solve_symbolically(eqs_to_solve, vars_to_solve, positive_symbols = symbolics_data.positive_symbols)
                 end
 
-                if isnothing(soll) || isempty(soll) || length(intersect((union(SPyPyC.free_symbols.(collect(values(soll)))...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                if isnothing(soll) || isempty(soll)
                     if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
                     numerical_sol = true
                 else
                     if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
 
-                    normalized_solutions = Dict(v => normalize_symbolic_solution(soll[v]) for v in vars_to_solve)
+                    normalized_solutions = Dict(v => soll[Symbol(v)] for v in vars_to_solve)
                     for sol_expr in values(normalized_solutions), a in symbolic_solution_atoms(sol_expr)
                         push!(atoms_in_equations, a)
                     end
@@ -1609,13 +1506,13 @@ end
                     for v in vars_to_solve
                         sol_expr = normalized_solutions[v]
                         push!(solved_vars, Symbol(v))
-                        push!(solved_vals, Meta.parse(string(sol_expr)))
+                        push!(solved_vals, sol_expr)
                         push!(atoms_in_equations_list, Set(symbolic_solution_atoms(sol_expr)))
                         push!(step_exprs, solved_vals[end])
                         push!(step_write_indices, sol_name_to_index[Symbol(v)])
                     end
 
-                    eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+                    eval_func! = compile_exprs_to_func(step_exprs, 𝔖, 𝔓_ext, global_placeholder)
 
                     push_analytical_step!(builder;
                         eval_func! = eval_func!,
@@ -1647,14 +1544,13 @@ end
                                 sol_name_to_index[pv] = idx
                                 sym = Symbol("𝔖_$idx")
                                 global_placeholder[pv] = sym
-                                global_back_to_array[MacroModelling.Symbolics.parse_expr_to_symbolic(sym, @__MODULE__)] = 𝔖[idx]
                             end
                         end
                         plus_var_count_at_start = current_plus_count
                     end
 
                     append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
-                                           𝔖, 𝔓_ext, global_placeholder, global_back_to_array, global_solvetime_aux_sub)
+                                           𝔖, 𝔓_ext, global_placeholder, global_solvetime_aux_sub)
                 end
 
                 if !symbolic_enabled && verbose
@@ -1682,12 +1578,12 @@ end
 
     push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.constants.post_complete_parameters.parameters))
     if !isempty(min_max_error_exprs)
-        minmax_error_func! = compile_exprs_to_func(min_max_error_exprs, 𝔖, 𝔓_ext, global_placeholder, global_back_to_array)
+        minmax_error_func! = compile_exprs_to_func(min_max_error_exprs, 𝔖, 𝔓_ext, global_placeholder)
         n_errors = length(min_max_error_exprs)
         push_analytical_step!(builder;
             error_func! = minmax_error_func!,
             error_size = n_errors,
-            eval_func! = compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder, global_back_to_array),
+            eval_func! = compile_exprs_to_func([0.0], 𝔖, 𝔓_ext, global_placeholder),
             write_indices = Int[],
             description = "Min/Max validation",
         )
@@ -1789,9 +1685,8 @@ end
 # ============================================================================
 # Block solver helpers (moved from MacroModelling.jl — used only in NSSS pipeline)
 
-@unstable function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    # equation.subs(variable, replacement)
-    return SPyPyC.subs(equation, variable, replacement)
+@unstable function replace_symbolic(equation::SymbolicExpression, variable::Symbol, replacement::SymbolicExpression)::SymbolicExpression
+    return substitute_symbolic(equation, variable, replacement)
 end
 
 function update_init_buf!(init_buf::AbstractVector{T}, lbs, ubs, n_guess, ssv_val, sv_val, guess, use_ssv::Bool) where {T}

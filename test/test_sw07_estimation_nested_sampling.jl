@@ -76,8 +76,7 @@ USE_NAUTILUS  && CondaPkg.add_pip("nautilus-sampler"; resolve = false)
 CondaPkg.resolve()
 println("Nested-sampling Python packages installed successfully")
 
-# Configure CondaPkg before importing MacroModelling/PythonCall: the package
-# precompile initializes PythonCall through SymPyPythonCall.
+# Configure CondaPkg before importing PythonCall.
 using MacroModelling
 import Turing
 using PythonCall

@@ -55,6 +55,6 @@ Common files in `src/`:
 ## Design Considerations
 
 - Performance is critical (type stability and allocations matter)
-- Symbolic stack uses Symbolics.jl and SymPyPythonCall
+- Symbolic stack is native (`src/symbolic/`): interned expression nodes, canonical simplification, differentiation, closed-form isolation and code generation
 - Supports forward/reverse AD for parameter gradients
 - Thread safety matters for estimation workloads

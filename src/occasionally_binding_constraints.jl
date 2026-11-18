@@ -142,21 +142,16 @@ end
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
-    for symbs in get_symbols(transformed_expr)
-        sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
-    end
+    eq = simplify_symbolic(transformed_expr)
 
-    eq = Core.eval(SymPyWorkspace, transformed_expr)
-
-    if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
+    if avoid_solve || count_ops(eq) > 15
         soll = nothing
     else
-        soll = solve_symbolically(eq, Core.eval(SymPyWorkspace, :minmax__P))
+        soll = solve_symbolically(eq, :minmax__P)
     end
 
-    if !isempty(soll)
-        sorted_minmax = Expr(:call, reverse_dict[:minmax__P].args[1], :($(reverse_dict[:minmax__P].args[2]) - $(Meta.parse(string(soll[1])))),  :($(reverse_dict[:minmax__P].args[3]) - $(Meta.parse(string(soll[1])))))
+    if !isnothing(soll) && !isempty(soll)
+        sorted_minmax = Expr(:call, reverse_dict[:minmax__P].args[1], :($(reverse_dict[:minmax__P].args[2]) - $(soll[1])),  :($(reverse_dict[:minmax__P].args[3]) - $(soll[1])))
         return reverse_transformation(sorted_minmax, reverse_dict)
     else
         @error "Occasionally binding constraint not well-defined. See documentation for examples."

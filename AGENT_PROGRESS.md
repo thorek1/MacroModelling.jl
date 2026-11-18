@@ -2,9 +2,33 @@
 
 ## Current task
 
-Fix the latest nested-sampling and Julia prerelease `basic` CI failures.
+Replace SymPy (SymPyPythonCall/PythonCall) and Symbolics.jl with a native symbolic engine modelled on the
+Rust implementation (`thorek1/MacroModelling`, `crates/dsge-core`).
 
 ## Status
+
+- `src/symbolic/expressions.jl`: interned `SymbolicNode` trees with canonical sums/products/powers, exact
+  rationals, numeric folding, conversion from and to Julia `Expr`, substitution and symbol queries.
+- `src/symbolic/derivatives.jl`: memoized symbolic differentiation and sparse Jacobians.
+- `src/symbolic/solve.jl`: closed-form isolation, linear and two-power solutions, redundancy detection and
+  successive elimination for small systems (replaces `sympy.solve`).
+- `src/symbolic/codegen.jl`: in-place function generation with common subexpression elimination and NaN-safe
+  domain functions (replaces `Symbolics.build_function`).
+- All former SymPy/Symbolics call sites (steady-state setup, redundant variables, OBC transformation,
+  perturbation derivatives, NSSS block functions) use the native engine. The dependencies are removed.
+- The Julia macro front end is unchanged; Rust-only language features are not ported in this change.
+
+## Verification
+
+- `test/test_symbolic_engine.jl` (added to the `basic` set) passes 47/47.
+- Old-vs-new comparison on the model catalogue (steady state, first/second/third-order solutions, steady-state
+  derivatives) on 34 models: all match (mostly within 1e-12), setup is 2-5x faster.
+
+## Previous task
+
+Fix the latest nested-sampling and Julia prerelease `basic` CI failures.
+
+## Previous status
 
 - Parent branch `origin/particle-filter` was merged and its particle registry/defaults and documentation were retained alongside the Ivashchenko changes.
 - Quadratic and cubic Kollmann-style conditional covariance corrections remain implemented entirely in compressed symmetric pair/triple coordinates.

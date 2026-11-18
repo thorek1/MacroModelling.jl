@@ -5,11 +5,8 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 import ThreadedSparseArrays
 using PrecompileTools
-import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
+import SpecialFunctions: erfcinv, erfc
 import SpecialFunctions
-import SymPyPythonCall as SPyPyC
-import PythonCall
-import Symbolics
 import Accessors
 # import TimerOutputs
 # import TimerOutputs: TimerOutput, @timeit, @timeit_debug
@@ -72,40 +69,9 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
-# Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
-module SymPyWorkspace
-    # Import SpecialFunctions
-    using ..SpecialFunctions: erfcinv, erfc
-    
-    # Define density-related functions directly in the workspace
-    # These need to be available for symbolic expressions
-    function norminvcdf(p::T)::T where T
-        -erfcinv(2*p) * 1.4142135623730951
-    end
-    norminv(p) = norminvcdf(p)
-    qnorm(p) = norminvcdf(p)
-
-    function normlogpdf(z::T)::T where T
-        -(abs2(z) + 1.8378770664093453) / 2
-    end
-
-    function normpdf(z::T)::T where T
-        exp(-abs2(z)/2) * 0.3989422804014327
-    end
-
-    function normcdf(z::T)::T where T
-        erfc(-z * 0.7071067811865475) / 2
-    end
-    pnorm(p) = normcdf(p)
-    dnorm(p) = normpdf(p)
-
-    Max = max
-    Min = min
-end
-
 # Reserved names that cannot be used as variables, shocks, or parameters
-# These are functions and operators available in SymPyWorkspace
-const SYMPYWORKSPACE_RESERVED_NAMES = Set([
+# These are functions and operators understood by the symbolic engine
+const RESERVED_FUNCTION_NAMES = Set([
     # Mathematical functions
     :exp, :exp2, :exp10, :log, :log2, :log10, :sin, :cos, :tan, :asin, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
     :sum, :prod, :length, :abs2,
@@ -162,6 +128,10 @@ using DispatchDoctor
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
+include("./symbolic/expressions.jl")
+include("./symbolic/derivatives.jl")
+include("./symbolic/solve.jl")
+include("./symbolic/codegen.jl")
 include("structures.jl")
 include("./steady_state/solver_parameters.jl")
 include("options_and_caches.jl")
@@ -290,74 +260,6 @@ function normcdf(z::T)::T where T
 end
 pnorm(p) = normcdf(p)
 dnorm(p) = normpdf(p)
-
-Symbolics.@register_symbolic norminvcdf(p)
-Symbolics.@register_symbolic norminv(p)
-Symbolics.@register_symbolic qnorm(p)
-Symbolics.@register_symbolic normlogpdf(z)
-Symbolics.@register_symbolic normpdf(z)
-Symbolics.@register_symbolic normcdf(z)
-Symbolics.@register_symbolic pnorm(p)
-Symbolics.@register_symbolic dnorm(p)
-
-
-# ── norminvcdf, norminv & qnorm ──
-# d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
-@static if isdefined(Symbolics, Symbol("@register_derivative"))
-    Symbolics.@register_derivative norminvcdf(p) 1 1 / normpdf(norminvcdf(p))
-    # norminv and qnorm are aliases of norminvcdf, so they share the same rule:
-    Symbolics.@register_derivative norminv(p) 1 1 / normpdf(norminvcdf(p))
-    Symbolics.@register_derivative qnorm(p) 1 1 / normpdf(norminvcdf(p))
-
-    # ── normlogpdf ──
-    # d/dz (normlogpdf(z)) = −z
-    Symbolics.@register_derivative normlogpdf(z) 1 -z
-
-    # ── normpdf & dnorm ──
-    # normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
-    Symbolics.@register_derivative normpdf(z) 1 -z * normpdf(z)
-    # alias:
-    Symbolics.@register_derivative dnorm(z) 1 -z * normpdf(z)
-
-    # ── normcdf & pnorm ──
-    # d/dz (normcdf(z)) = normpdf(z)
-    Symbolics.@register_derivative normcdf(z) 1 normpdf(z)
-    # alias:
-    Symbolics.@register_derivative pnorm(z) 1 normpdf(z)
-else
-    function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
-        p = args[1]
-        1 / normpdf(norminvcdf(p))
-    end
-    Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) =
-        Symbolics.derivative(norminvcdf, args, Val{1}())
-    Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
-        Symbolics.derivative(norminvcdf, args, Val{1}())
-
-    # ── normlogpdf ──
-    function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
-        z = args[1]
-        -z
-    end
-
-    # ── normpdf & dnorm ──
-    function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
-        z = args[1]
-        -z * normpdf(z)
-    end
-    Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) =
-        Symbolics.derivative(normpdf, args, Val{1}())
-
-    # ── normcdf & pnorm ──
-    function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
-        z = args[1]
-        normpdf(z)
-    end
-    Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) =
-        Symbolics.derivative(normcdf, args, Val{1}())
-end
-
-
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
