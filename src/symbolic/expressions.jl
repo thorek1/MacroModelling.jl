@@ -374,7 +374,7 @@ function symbolic_product(factors::AbstractVector{SymbolicNode})::SymbolicNode
         is_symbolic_one(coefficient) && coefficient.exact && return single
         if single.kind == SYMBOLIC_SUM
             # distribute a numeric coefficient over a sum, as computer algebra systems do
-            return symbolic_sum([symbolic_product(SymbolicNode[coefficient, t]) for t in single.args])
+            return symbolic_sum(SymbolicNode[symbolic_product(SymbolicNode[coefficient, t]) for t in single.args])
         end
     end
 
@@ -407,7 +407,7 @@ function symbolic_power(base::SymbolicNode, exponent::SymbolicNode)::SymbolicNod
         if base.kind == SYMBOLIC_POWER
             return symbolic_power(base.args[1], symbolic_product(base.args[2], exponent))
         elseif base.kind == SYMBOLIC_PRODUCT
-            return symbolic_product([symbolic_power(f, exponent) for f in base.args])
+            return symbolic_product(SymbolicNode[symbolic_power(f, exponent) for f in base.args])
         end
     end
     if base.kind == SYMBOLIC_CALL && base.name == :exp && length(base.args) == 1

@@ -76,7 +76,7 @@ function remove_common_variable_factor(eq::SymbolicNode, variable::Symbol)::Symb
         end
         minimum_power === nothing && return eq
         divisor = symbolic_power(symbolic_symbol(variable), symbolic_negate(minimum_power))
-        return symbolic_sum([symbolic_product(t, divisor) for t in eq.args])
+        return symbolic_sum(SymbolicNode[symbolic_product(t, divisor) for t in eq.args])
     end
     if variable_power(eq, variable) !== nothing
         return symbolic_one()
@@ -106,18 +106,18 @@ function clear_variable_denominators(eq::SymbolicNode, variable::Symbol)::Symbol
         end
     end
     isempty(denominators) && return eq
-    return symbolic_sum([expand_variable_products(symbolic_product(vcat(t, denominators)), variable) for t in eq.args])
+    return symbolic_sum(SymbolicNode[expand_variable_products(symbolic_product(vcat(t, denominators)), variable) for t in eq.args])
 end
 
 """Distribute products over sums that contain the variable."""
 function expand_variable_products(node::SymbolicNode, variable::Symbol)::SymbolicNode
     if node.kind == SYMBOLIC_SUM
-        return symbolic_sum([expand_variable_products(t, variable) for t in node.args])
+        return symbolic_sum(SymbolicNode[expand_variable_products(t, variable) for t in node.args])
     elseif node.kind == SYMBOLIC_PRODUCT
         expanded = SymbolicNode[symbolic_one()]
         for f in node.args
             if f.kind == SYMBOLIC_SUM && contains_symbol(f, variable)
-                terms = [expand_variable_products(t, variable) for t in f.args]
+                terms = SymbolicNode[expand_variable_products(t, variable) for t in f.args]
                 expanded = SymbolicNode[symbolic_product(e, t) for e in expanded for t in terms]
             else
                 expanded = SymbolicNode[symbolic_product(e, f) for e in expanded]
@@ -160,10 +160,10 @@ function numerator_and_denominator(node::SymbolicNode)::Tuple{SymbolicNode, Symb
     if node.kind == SYMBOLIC_POWER && is_exact_integer(node.args[2]) && node.args[2].value < 0
         return symbolic_one(), symbolic_power(node.args[1], symbolic_negate(node.args[2]))
     elseif node.kind == SYMBOLIC_PRODUCT
-        parts = [numerator_and_denominator(f) for f in node.args]
+        parts = Tuple{SymbolicNode, SymbolicNode}[numerator_and_denominator(f) for f in node.args]
         return symbolic_product(SymbolicNode[p[1] for p in parts]), symbolic_product(SymbolicNode[p[2] for p in parts])
     elseif node.kind == SYMBOLIC_SUM
-        parts = [numerator_and_denominator(t) for t in node.args]
+        parts = Tuple{SymbolicNode, SymbolicNode}[numerator_and_denominator(t) for t in node.args]
         denominators = SymbolicNode[]
         for (_, d) in parts
             is_symbolic_one(d) || d ∈ denominators || push!(denominators, d)

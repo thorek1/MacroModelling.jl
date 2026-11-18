@@ -70,7 +70,7 @@ function differentiate(d::SymbolicDifferentiator, node::SymbolicNode)::SymbolicN
     haskey(d.memo, node) && return d.memo[node]
 
     result = if node.kind == SYMBOLIC_SUM
-        symbolic_sum([differentiate(d, t) for t in node.args])
+        symbolic_sum(SymbolicNode[differentiate(d, t) for t in node.args])
     elseif node.kind == SYMBOLIC_PRODUCT
         terms = SymbolicNode[]
         for (i, f) in enumerate(node.args)
