@@ -124,7 +124,7 @@ end
         @test Matrix(buffer) ≈ [2 * 2.0 * 0.5 + 1 / 2.0  4.0; exp(0.5) * 2 * 2.0 * 0.5  exp(0.5) * 4 * (1 + 0.5)]
 
         dense! = build_symbolic_function(Matrix(jacobian), [[:input_a, :input_b]])
-        dense = zeros(2, 2)
+        dense = fill(NaN, 2, 2)
         dense!(dense, [2.0, 0.5])
         @test dense ≈ Matrix(buffer)
     end
