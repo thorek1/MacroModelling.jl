@@ -166,8 +166,9 @@ end
 Compile `outputs` (a vector, a dense matrix or a sparse matrix of symbolic
 nodes) into an in-place function `f!(out, input_1, input_2, ...)`. Each entry
 of `arguments` lists the symbols that are read from the corresponding input
-vector, by position. A dense matrix is zeroed and then filled at its nonzero
-entries; a sparse matrix output writes the stored values of `out`, which must
+vector, by position. For a dense matrix only the entries that are not
+identically zero are written, so `out` must hold zeros elsewhere (as with
+`skipzeros` in Symbolics); a sparse matrix output writes the stored values of `out`, which must
 share the sparsity pattern of `outputs`.
 """
 function build_symbolic_function(outputs::AbstractVector{SymbolicNode}, arguments::Vector{Vector{Symbol}})
@@ -191,7 +192,6 @@ end
 function build_symbolic_function(outputs::AbstractMatrix{SymbolicNode}, arguments::Vector{Vector{Symbol}})
     entries = Tuple{Int, Int, SymbolicNode}[(i, j, outputs[i, j]) for j in axes(outputs, 2) for i in axes(outputs, 1) if !is_symbolic_zero(outputs[i, j])]
     w = symbolic_code_writer([e[3] for e in entries], arguments)
-    push!(w.statements, :(fill!(out, zero(eltype(out)))))
     for (i, j, o) in entries
         push!(w.statements, :(out[$i, $j] = $(code_expression(w, o))))
     end
