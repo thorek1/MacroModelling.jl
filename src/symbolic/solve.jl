@@ -53,7 +53,7 @@ to be nonzero.
 """
 function remove_common_variable_factor(eq::SymbolicNode, variable::Symbol)::SymbolicNode
     if eq.kind == SYMBOLIC_PRODUCT
-        kept = SymbolicNode[f for f in eq.args if variable_power(f, variable) === nothing && contains_symbol(f, variable)]
+        kept = SymbolicNode[f for f in eq.args if variable_power_general(f, variable) === nothing && contains_symbol(f, variable)]
         isempty(kept) && return symbolic_one()
         return symbolic_product(kept)
     elseif eq.kind == SYMBOLIC_SUM
@@ -61,12 +61,17 @@ function remove_common_variable_factor(eq::SymbolicNode, variable::Symbol)::Symb
         for t in eq.args
             p = nothing
             for f in factors_of(t)
-                fp = variable_power(f, variable)
+                fp = variable_power_general(f, variable)
                 fp === nothing || (p = fp)
             end
             p === nothing && return eq
-            if minimum_power === nothing || p.value < minimum_power.value
+            if minimum_power === nothing
                 minimum_power = p
+            elseif p.kind == SYMBOLIC_NUMBER && minimum_power.kind == SYMBOLIC_NUMBER
+                p.value < minimum_power.value && (minimum_power = p)
+            elseif p !== minimum_power
+                # symbolic exponents are only divided out when they are identical
+                return eq
             end
         end
         minimum_power === nothing && return eq
@@ -77,6 +82,16 @@ function remove_common_variable_factor(eq::SymbolicNode, variable::Symbol)::Symb
         return symbolic_one()
     end
     return eq
+end
+
+"""Return `true` if every factor containing the variable is `variable ^ p` with a numeric p > 0."""
+function variable_enters_with_positive_powers(eq::SymbolicNode, variable::Symbol)::Bool
+    for term in terms_of(eq), f in factors_of(term)
+        contains_symbol(f, variable) || continue
+        p = variable_power(f, variable)
+        (p === nothing || p.value <= 0) && return false
+    end
+    return true
 end
 
 """Multiply a sum by every denominator of its terms that contains the variable."""
@@ -114,6 +129,67 @@ function expand_variable_products(node::SymbolicNode, variable::Symbol)::Symboli
         return expand_variable_products(symbolic_product(fill(node.args[1], Int(node.args[2].value))), variable)
     end
     return node
+end
+
+"""Distribute all products over sums, giving up (returning `nothing`) beyond `max_terms` terms."""
+function expand_all_products(node::SymbolicNode, max_terms::Int)::Union{Nothing, SymbolicNode}
+    if node.kind == SYMBOLIC_SUM
+        terms = SymbolicNode[]
+        for t in node.args
+            e = expand_all_products(t, max_terms)
+            e === nothing && return nothing
+            append!(terms, terms_of(e))
+            length(terms) > max_terms && return nothing
+        end
+        return symbolic_sum(terms)
+    elseif node.kind == SYMBOLIC_PRODUCT
+        expanded = SymbolicNode[symbolic_one()]
+        for f in node.args
+            fe = f.kind == SYMBOLIC_SUM ? expand_all_products(f, max_terms) : f
+            fe === nothing && return nothing
+            expanded = SymbolicNode[symbolic_product(e, t) for e in expanded for t in terms_of(fe)]
+            length(expanded) > max_terms && return nothing
+        end
+        return symbolic_sum(expanded)
+    end
+    return node
+end
+
+"""Write `node` as a numerator and a denominator, combining the terms of sums over a common denominator."""
+function numerator_and_denominator(node::SymbolicNode)::Tuple{SymbolicNode, SymbolicNode}
+    if node.kind == SYMBOLIC_POWER && is_exact_integer(node.args[2]) && node.args[2].value < 0
+        return symbolic_one(), symbolic_power(node.args[1], symbolic_negate(node.args[2]))
+    elseif node.kind == SYMBOLIC_PRODUCT
+        parts = [numerator_and_denominator(f) for f in node.args]
+        return symbolic_product(SymbolicNode[p[1] for p in parts]), symbolic_product(SymbolicNode[p[2] for p in parts])
+    elseif node.kind == SYMBOLIC_SUM
+        parts = [numerator_and_denominator(t) for t in node.args]
+        denominators = SymbolicNode[]
+        for (_, d) in parts
+            is_symbolic_one(d) || d ∈ denominators || push!(denominators, d)
+        end
+        isempty(denominators) && return node, symbolic_one()
+        common = symbolic_product(denominators)
+        numerator = symbolic_sum(SymbolicNode[symbolic_product(n, common, symbolic_power(d, symbolic_number(-1))) for (n, d) in parts])
+        return numerator, common
+    end
+    return node, symbolic_one()
+end
+
+"""
+Return the simpler of `node` and its form over a common denominator with an
+expanded numerator, so that e.g. `x - x * (1 + a) / (1 + a)` becomes `0`.
+"""
+function simplify_rational_expression(node::SymbolicNode; max_operations::Int = 80, max_terms::Int = 64)::SymbolicNode
+    node.kind ∈ (SYMBOLIC_NUMBER, SYMBOLIC_SYMBOL) && return node
+    operations = count_symbolic_operations(node)
+    operations > max_operations && return node
+    numerator, denominator = numerator_and_denominator(node)
+    expanded = expand_all_products(numerator, max_terms)
+    expanded === nothing && return node
+    is_symbolic_zero(expanded) && return expanded
+    candidate = symbolic_quotient(expanded, denominator)
+    return count_symbolic_operations(candidate) < operations ? candidate : node
 end
 
 """
@@ -204,20 +280,14 @@ Return the closed-form solution of `eq = 0` for `variable`, or `nothing` if
 none is found. `positive` states that the variable is known to be positive,
 which selects the principal root of even powers.
 """
-function solve_for_variable(eq::SymbolicNode, variable::Symbol; positive::Bool = false)::Union{Nothing, SymbolicNode}
+function solve_for_variable(eq::SymbolicNode, variable::Symbol; positive::Bool = false, through_subexpression::Bool = true)::Union{Nothing, SymbolicNode}
     contains_symbol(eq, variable) || return nothing
 
-    # a single term `c * x ^ p` with p > 0 has the root x = 0
-    if eq.kind != SYMBOLIC_SUM
-        variable_factors = SymbolicNode[f for f in factors_of(eq) if contains_symbol(f, variable)]
-        powers = [variable_power(f, variable) for f in variable_factors]
-        if all(p -> p !== nothing && p.kind == SYMBOLIC_NUMBER && p.value > 0, powers)
-            return symbolic_zero()
-        end
-    end
-
     reduced = remove_common_variable_factor(eq, variable)
-    contains_symbol(reduced, variable) || return nothing
+    if !contains_symbol(reduced, variable)
+        # `x ^ p * g = 0` with g free of x and p > 0 in every term has the root x = 0
+        return variable_enters_with_positive_powers(eq, variable) ? symbolic_zero() : nothing
+    end
 
     for candidate in (reduced, clear_variable_denominators(reduced, variable))
         solution = isolate_variable(candidate, symbolic_zero(), variable, positive)
@@ -231,10 +301,44 @@ function solve_for_variable(eq::SymbolicNode, variable::Symbol; positive::Bool =
             end
         end
         if solution !== nothing && !contains_symbol(solution, variable)
-            return solution
+            return simplify_rational_expression(solution)
         end
     end
-    return nothing
+    through_subexpression || return nothing
+    return solve_through_common_subexpression(eq, variable, positive)
+end
+
+const SYMBOLIC_SUBEXPRESSION_NAME = Symbol("subexpression⁺")
+
+"""
+If every term of `eq` contains the variable only through one shared factor
+`g(variable)` (e.g. `log(m) * (1 - ρ) - log(mst) * (1 - ρ)`), solve for `g`
+first and then solve `g(variable) = solution` for the variable.
+"""
+function solve_through_common_subexpression(eq::SymbolicNode, variable::Symbol, positive::Bool)::Union{Nothing, SymbolicNode}
+    shared = nothing
+    for term in terms_of(eq)
+        for f in factors_of(term)
+            contains_symbol(f, variable) || continue
+            base = f.kind == SYMBOLIC_POWER && !contains_symbol(f.args[2], variable) ? f.args[1] : f
+            base.kind == SYMBOLIC_SYMBOL && return nothing
+            if shared === nothing
+                shared = base
+            elseif shared !== base
+                return nothing
+            end
+        end
+    end
+    shared === nothing && return nothing
+    placeholder = symbolic_symbol(SYMBOLIC_SUBEXPRESSION_NAME)
+    replaced = symbolic_sum(SymbolicNode[symbolic_product(SymbolicNode[
+                    f === shared ? placeholder :
+                    f.kind == SYMBOLIC_POWER && f.args[1] === shared ? symbolic_power(placeholder, f.args[2]) : f
+                    for f in factors_of(term)]) for term in terms_of(eq)])
+    contains_symbol(replaced, variable) && return nothing
+    inner = solve_for_variable(replaced, SYMBOLIC_SUBEXPRESSION_NAME, positive = positive, through_subexpression = false)
+    inner === nothing && return nothing
+    return solve_for_variable(symbolic_difference(shared, inner), variable, positive = positive, through_subexpression = false)
 end
 
 """
@@ -245,7 +349,11 @@ common multiplicative power so that the equation does not determine it.
 """
 function variable_is_redundant(eq::SymbolicNode, variable::Symbol)::Bool
     contains_symbol(eq, variable) || return true
-    return !contains_symbol(remove_common_variable_factor(eq, variable), variable)
+    contains_symbol(remove_common_variable_factor(eq, variable), variable) || return true
+    # the variable may also cancel once the terms are put over a common denominator
+    numerator, _ = numerator_and_denominator(eq)
+    expanded = expand_all_products(numerator, 64)
+    return expanded !== nothing && !contains_symbol(remove_common_variable_factor(expanded, variable), variable)
 end
 
 """

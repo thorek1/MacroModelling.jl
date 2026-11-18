@@ -318,6 +318,7 @@ function symbolic_product(factors::AbstractVector{SymbolicNode})::SymbolicNode
     coefficient = symbolic_one()
     exponents = Dict{SymbolicNode, Vector{SymbolicNode}}()
     order = SymbolicNode[]
+    has_sum_base = false
 
     stack = collect(factors)
     while !isempty(stack)
@@ -330,7 +331,12 @@ function symbolic_product(factors::AbstractVector{SymbolicNode})::SymbolicNode
             base, exponent = f.kind == SYMBOLIC_POWER ? (f.args[1], f.args[2]) : (f, symbolic_one())
             if haskey(exponents, base)
                 push!(exponents[base], exponent)
+            elseif base.kind == SYMBOLIC_SUM && is_exact_integer(exponent) && has_sum_base && haskey(exponents, symbolic_negate(base))
+                # (-s) ^ k = (-1) ^ k * s ^ k, so that e.g. (a - 1) / (1 - a) becomes -1
+                isodd(numerator(exponent.rational)) && (coefficient = multiply_numbers(coefficient, symbolic_number(-1)))
+                push!(exponents[symbolic_negate(base)], exponent)
             else
+                has_sum_base |= base.kind == SYMBOLIC_SUM
                 exponents[base] = SymbolicNode[exponent]
                 push!(order, base)
             end

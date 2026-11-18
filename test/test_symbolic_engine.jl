@@ -26,6 +26,8 @@ end
         @test simplify_symbolic(:(1 / 2 + 1 / 2)) == 1
         @test simplify_symbolic(:(2.0 * 3)) == 6.0
         @test to_symbolic(:(x + y)) === to_symbolic(:(y + x))
+        @test simplify_symbolic(:((α - 1) / (1 - α))) == -1
+        @test simplify_symbolic(:((x - y) ^ 2 / (y - x))) == simplify_symbolic(:(y - x))
         for ex in (:(x ^ α * y ^ (1 - α) - δ * x / y), :(1 / (1 + x) - exp(-z) * sqrt(y)), :(normcdf(x - y) + log(β / x)))
             @test evaluate_expression(simplify_symbolic(ex), point) ≈ evaluate_expression(ex, point)
             @test evaluate_expression(Meta.parse(string(simplify_symbolic(ex))), point) ≈ evaluate_expression(ex, point)
@@ -76,6 +78,14 @@ end
         # a single power of the variable has the root zero, a negative power has none
         @test from_symbolic(solve_for_variable(to_symbolic(:(0 - x)), :x)) == 0
         @test solve_for_variable(to_symbolic(:(y / x)), :x) === nothing
+        @test from_symbolic(solve_for_variable(to_symbolic(:(a - ρ * a)), :a)) == 0
+        @test solve_for_variable(to_symbolic(:(1 / c - β * R / c)), :c) === nothing
+
+        # the variable enters only through one shared subexpression
+        @test from_symbolic(solve_for_variable(to_symbolic(:(log(m) - ((1 - ρ) * log(mst) + ρ * log(m)))), :m)) == :mst
+
+        # solutions are combined over a common denominator when that is simpler
+        @test from_symbolic(solve_for_variable(to_symbolic(:(x - (c * b * x + p / (c ^ 2 * s) + x) / (c * b + 1))), :p)) == 0
 
         # no closed form
         @test solve_for_variable(to_symbolic(:(x + exp(x) - y)), :x) === nothing
@@ -84,6 +94,9 @@ end
         @test variable_is_redundant(to_symbolic(:(z - ρ * z)), :z)
         @test variable_is_redundant(to_symbolic(:(1 / c - β * R / c)), :c)
         @test !variable_is_redundant(to_symbolic(:(c - w)), :c)
+        @test variable_is_redundant(to_symbolic(:(x - (b * x + p + x) / (b + 1))), :x)
+        @test variable_is_redundant(to_symbolic(:(c ^ -σ - β * c ^ -σ * R)), :c)
+        @test !variable_is_redundant(to_symbolic(:(c ^ -σ - c ^ -α)), :c)
 
         system = solve_system_for_variables(SymbolicNode[to_symbolic(:(x + y - 3)), to_symbolic(:(x - y - 1))], [:x, :y])
         @test from_symbolic(system[:x]) == 2
