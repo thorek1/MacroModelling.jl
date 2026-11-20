@@ -1,0 +1,70 @@
+using Test
+using MacroModelling
+import LinearAlgebra as ℒ
+import SparseArrays: sparse, sparsevec, findnz
+using Random
+
+const MMschur = MacroModelling
+
+# Dense reference for the compressed second-order equation X = A X B + C and
+# its adjoint, with the structure of the perturbation problem:
+# A has nonzero columns only at i₊, B = 𝐔₂ (s ⊗ s + 𝛔) 𝐂₂, s = [hx 0 hu; 0 1 0; 0 0 0].
+function schur_reference_problem(n, i₊, n₋, nₑ)
+    nₑ₋ = n₋ + 1 + nₑ
+    s = zeros(nₑ₋, nₑ₋)
+    hx = randn(n₋, n₋)
+    hx .*= 0.8 / maximum(abs.(ℒ.eigvals(hx)))
+    s[1:n₋, 1:n₋] = hx
+    s[1:n₋, n₋+2:end] = randn(n₋, nₑ)
+    s[n₋+1, n₋+1] = 1
+    Ā = randn(n, length(i₊))
+    Ā .*= 0.7 / maximum(abs.(ℒ.eigvals(Ā[i₊, :])))
+    A = zeros(n, n)
+    A[:, i₊] = Ā
+    colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
+    𝐂₂ = sparse(colls2, 1:length(colls2), 1.0)
+    𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1.0)
+    redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
+    redu_idxs = findnz(ℒ.kron(redu, redu))[1]
+    𝛔 = sparse(redu_idxs[Int.(range(1, nₑ^2, nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1.0, nₑ₋^2, nₑ₋^2)
+    B = Matrix(𝐔₂ * (ℒ.kron(s, s) + 𝛔) * 𝐂₂)
+    return Ā, A, s, B
+end
+
+@testset "State-block Schur second-order solver" begin
+    Random.seed!(7)
+    for (n, i₊, n₋, nₑ) in [(8, [2, 4, 5, 7], 3, 2), (12, [1, 3, 6, 9, 10], 5, 3), (6, [2, 3], 1, 1)]
+        Ā, A, s, B = schur_reference_problem(n, i₊, n₋, nₑ)
+        nc = size(B, 1)
+        C = randn(n, nc)
+        Xref = reshape((ℒ.I - ℒ.kron(B', A)) \ vec(C), n, nc)
+        X, ok, Z = MMschur.second_order_schur_solve(Ā, s, C, i₊, n₋, nₑ)
+        @test ok
+        @test isapprox(X, Xref, rtol = 1e-10)
+        @test isapprox(Z, X[i₊, :] * B, rtol = 1e-10)
+
+        G = randn(n, nc)
+        Zref = reshape((ℒ.I - ℒ.kron(B, A')) \ vec(G), n, nc)
+        ∂C, ok2 = MMschur.second_order_schur_adjoint(Ā, s, G, i₊, n₋, nₑ)
+        @test ok2
+        @test isapprox(∂C, Zref, rtol = 1e-10)
+    end
+end
+
+@testset "Dense per-equation Hessian forcing" begin
+    Random.seed!(8)
+    N, q, n = 7, 5, 4
+    np = N * (N + 1) ÷ 2
+    ∇₂ = sparse([1, 1, 2, 3, 4, 4], [1, 5, 9, 12, 20, 28], randn(6), n, np)
+    M = randn(N, q)
+    @test isapprox(MMschur.second_order_hessian_forcing(∇₂, M), Matrix(∇₂ * MMschur.compressed_kron²(M)), rtol = 1e-12)
+end
+
+@testset "Schur and doubling give the same second-order solution" begin
+    include("../models/RBC_baseline.jl")
+    MMschur.clear_solution_caches!(RBC_baseline, :second_order)
+    a = get_solution(RBC_baseline, algorithm = :second_order)
+    MMschur.clear_solution_caches!(RBC_baseline, :second_order)
+    b = get_solution(RBC_baseline, algorithm = :second_order, sylvester_algorithm = :doubling)
+    @test isapprox(collect(a), collect(b), rtol = 1e-10)
+end

@@ -38,6 +38,11 @@
     # The doubling retry path still uses collect() because the doubling method modifies
     # its workspace copies of A/B internally (squaring) and reads the original A/B/C
     # arguments for the final residual—passing workspace aliases would corrupt those reads.
+    # :schur is the structured second-order path (second_order_schur.jl); for a
+    # generic Sylvester equation it means the default doubling solver.
+    if sylvester_algorithm == :schur
+        sylvester_algorithm = :doubling
+    end
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)

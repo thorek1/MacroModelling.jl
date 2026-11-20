@@ -6130,30 +6130,50 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
 
+    # State-block Schur path (see second_order_schur.jl) for the forward solve
+    # and the adjoint solve in the pullback. It never forms B.
+    schur_used_2nd = false
+    Ā_schur = zeros(0, 0)
+    s_schur = zeros(0, 0)
+    Z_schur = zeros(0, 0)
+    if S === Float64 && opts.sylvester_algorithm² == :schur && n₋ > 0
+        Ā_schur = Matrix{Float64}(A[:, i₊])
+        s_schur = Matrix{Float64}(𝐒₁₋╱𝟏ₑ)
+        𝐒₂, schur_used_2nd, Z_schur = second_order_schur_solve(Ā_schur, s_schur, Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                        tol = opts.tol.second_order.ad.sylvester.acceptance_tol)
+        if opts.verbose println("Second order solution: state-block Schur solve - solved: $schur_used_2nd") end
+    end
+
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
+    B = schur_used_2nd ? spzeros(S, 0, 0) : compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
 
     # end # timeit_debug    
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
+    sylv_alg_2nd = opts.sylvester_algorithm² == :schur ? :doubling : opts.sylvester_algorithm²
 
     # Doubling power-cache: enable capture so the pullback's adjoint solve can
     # reuse A^(2^k), B^(2^k) from this forward pass.
-    cache_eligible_2nd = opts.sylvester_algorithm² == :doubling
-    if cache_eligible_2nd
+    cache_eligible_2nd = !schur_used_2nd && sylv_alg_2nd == :doubling
+    pow_iters_captured_2nd = 0
+    if schur_used_2nd
+        solved = true
+    else
+        if cache_eligible_2nd
+            ℂ.sylvester_workspace.pow_iters = 0
+            ℂ.sylvester_workspace.pow_capture = true
+            ℂ.sylvester_workspace.pow_transposed = true
+        end
+        𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                            initial_guess = initial_guess,
+                                            sylvester_algorithm = sylv_alg_2nd,
+                                            preconditioner = opts.sylvester_preconditioner,
+                                            tol = opts.tol.second_order.ad.sylvester,
+                                            verbose = opts.verbose)
+        ℂ.sylvester_workspace.pow_capture = false
+        pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
         ℂ.sylvester_workspace.pow_iters = 0
-        ℂ.sylvester_workspace.pow_capture = true
-        ℂ.sylvester_workspace.pow_transposed = true
     end
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                        initial_guess = initial_guess,
-                                        sylvester_algorithm = opts.sylvester_algorithm²,
-                                        preconditioner = opts.sylvester_preconditioner,
-                                        tol = opts.tol.second_order.ad.sylvester,
-                                        verbose = opts.verbose)
-    ℂ.sylvester_workspace.pow_capture = false
-    pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
-    ℂ.sylvester_workspace.pow_iters = 0
     𝐒₂_stable = copy(𝐒₂)
 
     # end # timeit_debug
@@ -6175,9 +6195,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐂₂t = M₂.𝐂₂ᵀ
 
-    Bt = choose_matrix_format(B', density_threshold = 1.0)
-    At = choose_matrix_format(A', density_threshold = 1.0)
-    𝐒₂_stable_t = choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
+    Bt = schur_used_2nd ? B : choose_matrix_format(B', density_threshold = 1.0)
+    At = schur_used_2nd ? A : choose_matrix_format(A', density_threshold = 1.0)
+    𝐒₂_stable_t = schur_used_2nd ? 𝐒₂_stable : choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
@@ -6236,22 +6256,29 @@ function rrule(::typeof(calculate_second_order_solution),
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
-        ws = ℂ.sylvester_workspace
-        cache_valid = cache_eligible_2nd &&
-                      pow_iters_captured_2nd >= 1 &&
-                      ws.pow_transposed
-        saved_capture = ws.pow_capture
-        if cache_valid
-            ws.pow_iters = pow_iters_captured_2nd
-            ws.pow_capture = false
+        solved = false
+        if schur_used_2nd
+            ∂C, solved = second_order_schur_adjoint(Ā_schur, s_schur, Matrix{Float64}(∂𝐒₂), i₊, n₋, nₑ,
+                                                    tol = opts.tol.second_order.ad.sylvester.acceptance_tol)
         end
-        ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
-                                              sylvester_algorithm = opts.sylvester_algorithm²,
-                                              preconditioner = opts.sylvester_preconditioner,
-                                              tol = opts.tol.second_order.ad.sylvester,
-                                              verbose = opts.verbose)
-        ws.pow_capture = saved_capture
-        ws.pow_iters = 0
+        if !solved
+            ws = ℂ.sylvester_workspace
+            cache_valid = cache_eligible_2nd &&
+                          pow_iters_captured_2nd >= 1 &&
+                          ws.pow_transposed
+            saved_capture = ws.pow_capture
+            if cache_valid
+                ws.pow_iters = pow_iters_captured_2nd
+                ws.pow_capture = false
+            end
+            ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
+                                                  sylvester_algorithm = sylv_alg_2nd,
+                                                  preconditioner = opts.sylvester_preconditioner,
+                                                  tol = opts.tol.second_order.ad.sylvester,
+                                                  verbose = opts.verbose)
+            ws.pow_capture = saved_capture
+            ws.pow_iters = 0
+        end
 
         if !solved
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -6263,18 +6290,30 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C = choose_matrix_format(∂C) # Dense
 
-        ∂A = ∂C * Bt * 𝐒₂_stable_t
+        if schur_used_2nd
+            # Structured form of the two products below, without B:
+            #   ∂A[:, i₊] = ∂C (𝐒₂[i₊, :] B)'  with  𝐒₂[i₊, :] B = Z_schur,
+            #   ⟨∂B, B(s)⟩ = ⟨Ā' ∂C 𝐂₂', 𝐒₂[i₊, :] 𝐔₂ (s ⊗ s)⟩.
+            # Only the i₊ columns of ∂A reach ∇₁₊ and spinv.
+            ∂A = zeros(S, n, n)
+            ∂A[:, i₊] = ∂C * Z_schur'
+            L_full = (Ā_schur' * ∂C) * 𝐂₂t
+            Y_full = 𝐒₂_stable[i₊, :] * M₂.𝐔₂
+            kron_right_pullback!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, L_full, Y_full, s_schur, s_schur)
+        else
+            ∂A = ∂C * Bt * 𝐒₂_stable_t
 
-        ∂B = 𝐒₂_stable_t * At * ∂C
+            ∂B = 𝐒₂_stable_t * At * ∂C
 
-        # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-        ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
+            # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
+            ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
 
-        # end # timeit_debug
+            # end # timeit_debug
 
-        # @timeit_debug timer "Kron adjoint" begin
+            # @timeit_debug timer "Kron adjoint" begin
 
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+            fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+        end
 
         # end # timeit_debug
 
@@ -8562,6 +8601,10 @@ function rrule(::typeof(solve_sylvester_equation),
     # The solver overloads populate 𝕊ℂ.𝐀_pow / 𝐁_pow during forward iteration so
     # the pullback can skip squaring. With pow_transposed=true, powers are stored
     # in transposed form directly, saving a post-hoc transpose pass.
+    # (:schur means :doubling for a generic Sylvester equation.)
+    if sylvester_algorithm == :schur
+        sylvester_algorithm = :doubling
+    end
     cache_eligible = sylvester_algorithm == :doubling
     if cache_eligible
         𝕊ℂ.pow_iters = 0
