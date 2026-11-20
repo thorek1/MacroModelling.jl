@@ -291,7 +291,8 @@ end
                                 skipzeros = true,
                                 density_threshold::Float64 = .1,
                                 nnz_parallel_threshold::Int = 1000000,
-                                min_length::Int = 10000)
+                                min_length::Int = 10000,
+                                eliminated_eq_indices::Vector{Int} = Int[])
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
 
@@ -322,7 +323,7 @@ end
 
     calib_pars_input = Symbol[]
 
-    relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.constants.post_model_macro.par_list_aux_SS, 𝓂.constants.post_parameters_macro.par_calib_list)[vcat(eq_idx_in_block_to_solve, eliminated_eq_indices)]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.constants.post_model_macro.➕_vars))
     union!(relevant_pars_across, relevant_pars)
 
     sorted_vars = sort(Symbol.(vars_to_solve))
@@ -554,6 +555,158 @@ end
     end
 
     return PartialSolveResult(T[], T[], E[], E[], Int[], Int[], Int[], Int[])
+end
+
+"""
+    eliminate_block_aliases(eqs, vars, eq_indices; excluded_vars, max_solution_ops, max_equation_ops, max_passes)
+
+Tear a numerical steady state block (alias elimination, as in the Rust
+`simplify_nsss_system`). Repeatedly take an equation that has a unique closed
+form solution `v = rhs` for one block variable `v`, with `v` not in `rhs`, and
+substitute `rhs` for `v` in the other block equations. The block becomes
+smaller, and `v` is recovered from `rhs` after the block solve.
+
+The rules keep the numerical problem safe:
+- `v` is not in `excluded_vars` (bounded variables and `➕` auxiliaries keep their domain),
+  and `v` is not inside a `log`/`sqrt`/`exp` argument, a non-integer or negative power, or a denominator.
+- `v` enters linearly and its coefficient has no block variable and no symbol in
+  `variable_symbols` (a variable coefficient can be zero at the steady state).
+- `rhs` has no domain hazards (`log`, `sqrt`, non-integer powers, ...), and neither the
+  defining equation nor an equation that receives `rhs` has `max`/`min`.
+- `rhs` is short: at most `max_solution_ops` operations and `max_block_vars_in_solution`
+  block variables. Longer aliases make the cold start (no previous solution) of the block
+  harder, e.g. Guerrieri_Iacoviello_2017 then finds no steady state.
+- The substituted equations stay below `max_equation_ops`.
+- At least one variable stays in the block.
+
+Return `(remaining_eqs, remaining_vars, remaining_eq_indices, eliminated)` where
+`eliminated` lists `(variable, rhs, eq_index)` in elimination order. Recover the
+eliminated variables in reverse order.
+"""
+@unstable function eliminate_block_aliases(eqs::AbstractVector,
+                                            vars::AbstractVector,
+                                            eq_indices::AbstractVector{Int};
+                                            excluded_vars::Set{Symbol} = Set{Symbol}(),
+                                            variable_symbols::Set{Symbol} = Set{Symbol}(),
+                                            max_solution_ops::Int = 10,
+                                            max_block_vars_in_solution::Int = 2,
+                                            max_equation_ops::Int = 200,
+                                            max_passes::Int = 16)
+    remaining_eqs = SymbolicExpression[e for e in eqs]
+    remaining_vars = Symbol[Symbol(v) for v in vars]
+    remaining_eq_indices = collect(Int, eq_indices)
+    eliminated = Tuple{Symbol, SymbolicExpression, Int}[]
+
+    symbols_of(ex) = ex isa Expr ? get_symbols(ex) : ex isa Symbol ? Set{Symbol}((ex,)) : Set{Symbol}()
+
+    has_minmax(ex) = begin
+        found = false
+        postwalk(x -> begin
+            if x isa Expr && x.head == :call && x.args[1] ∈ (:Max, :Min, :max, :min)
+                found = true
+            end
+            x
+        end, ex)
+        found
+    end
+
+    # symbols that sit in a domain-restricted position (log/sqrt/exp argument, base or
+    # exponent of a non-integer or negative power, denominator): the block solver keeps
+    # these in range, an alias that can cross zero would not
+    domain_restricted_symbols(ex) = begin
+        restricted = Set{Symbol}()
+        postwalk(x -> begin
+            if x isa Expr && x.head == :call && length(x.args) >= 2
+                op = x.args[1]
+                if op ∈ (:log, :sqrt, :exp, :norminvcdf, :norminv, :qnorm, :erfcinv)
+                    union!(restricted, symbols_of(x.args[2]))
+                elseif op === :^ && length(x.args) >= 3 && !(x.args[3] isa Int && x.args[3] >= 0)
+                    union!(restricted, symbols_of(x.args[2]), symbols_of(x.args[3]))
+                elseif op === :/ && length(x.args) >= 3
+                    union!(restricted, symbols_of(x.args[3]))
+                end
+            end
+            x
+        end, ex)
+        restricted
+    end
+
+    for _ in 1:max_passes
+        length(remaining_vars) <= 1 && break
+        restricted_vars = mapreduce(domain_restricted_symbols, union, remaining_eqs, init = Set{Symbol}())
+        changed = false
+
+        e = 1
+        while e <= length(remaining_eqs) && length(remaining_vars) > 1
+            eq = remaining_eqs[e]
+            eq isa Expr || (e += 1; continue)
+            if count_ops(eq) > max_equation_ops || has_minmax(eq)
+                e += 1
+                continue
+            end
+
+            eq_symbols = get_symbols(eq)
+            accepted = false
+
+            for v in remaining_vars
+                (v ∈ eq_symbols && v ∉ excluded_vars && v ∉ restricted_vars) || continue
+
+                # v must enter linearly with a coefficient free of variables,
+                # so that solving for v never divides by a quantity that can be zero
+                coefficient = from_symbolic(differentiate(to_symbolic(eq), v))
+                (coefficient isa Number && !iszero(coefficient)) || continue
+
+                solutions = solve_symbolically(eq, v)
+                length(solutions) == 1 || continue
+                rhs = solutions[1]
+
+                rhs isa Number && continue
+                v ∈ symbols_of(rhs) && continue
+                rhs isa Expr && count_ops(rhs) > max_solution_ops && continue
+                expression_has_domain_hazards(rhs) && continue
+                count(w -> w ∈ symbols_of(rhs), remaining_vars) > max_block_vars_in_solution && continue
+
+                new_eqs = SymbolicExpression[]
+                too_large = false
+                for (k, other) in enumerate(remaining_eqs)
+                    k == e && continue
+                    if other isa Expr && v ∈ get_symbols(other)
+                        if has_minmax(other)
+                            too_large = true
+                            break
+                        end
+                        substituted = substitute_symbolic(other, v, rhs)
+                        substituted_symbols = symbols_of(substituted)
+                        if substituted isa Number ||
+                            (substituted isa Expr && count_ops(substituted) > max_equation_ops) ||
+                            !any(w -> w != v && w ∈ substituted_symbols, remaining_vars)
+                            too_large = true
+                            break
+                        end
+                        push!(new_eqs, substituted)
+                    else
+                        push!(new_eqs, other)
+                    end
+                end
+                too_large && continue
+
+                push!(eliminated, (v, rhs, remaining_eq_indices[e]))
+                remaining_eqs = new_eqs
+                deleteat!(remaining_eq_indices, e)
+                filter!(x -> x != v, remaining_vars)
+                restricted_vars = mapreduce(domain_restricted_symbols, union, remaining_eqs, init = Set{Symbol}())
+                accepted = true
+                changed = true
+                break
+            end
+
+            accepted || (e += 1)
+        end
+
+        changed || break
+    end
+
+    return remaining_eqs, remaining_vars, remaining_eq_indices, eliminated
 end
 
 @unstable function make_equation_robust_to_domain_errors(eqs,
@@ -1529,9 +1682,27 @@ end
                 vars_to_solve_reduced = vars_to_solve
                 eqs_to_solve_reduced = eqs_to_solve
                 eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
+                eliminated_aliases = Tuple{Symbol, SymbolicExpression, Int}[]
+
+                if symbolics_data !== nothing && !avoid_solve && length(vars_to_solve) > 1
+                    alias_excluded_vars = union(Set{Symbol}(keys(𝓂.constants.post_parameters_macro.bounds)),
+                                                Set{Symbol}(𝓂.constants.post_model_macro.➕_vars),
+                                                symbolics_data.positive_symbols)
+
+                    eqs_to_solve_reduced, vars_to_solve_reduced, eq_idx_in_block_to_solve_reduced, eliminated_aliases =
+                        eliminate_block_aliases(eqs_to_solve, vars_to_solve, eq_idx_in_block_to_solve,
+                                                excluded_vars = alias_excluded_vars,
+                                                variable_symbols = union(Set{Symbol}(Symbol.(𝓂.constants.post_model_macro.var)),
+                                                                         Set{Symbol}(Symbol.(𝓂.equations.calibration_parameters)),
+                                                                         Set{Symbol}(𝓂.constants.post_model_macro.➕_vars)))
+
+                    if verbose && !isempty(eliminated_aliases)
+                        println("Eliminated ", length(eliminated_aliases), " of ", length(vars_to_solve), " variables from numerical block: ", first.(eliminated_aliases))
+                    end
+                end
 
                 numerical_block_count += 1
-                block_meta = write_block_solution!(𝓂, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count)
+                block_meta = write_block_solution!(𝓂, vars_to_solve_reduced, eqs_to_solve_reduced, relevant_pars_across, nsss_solver_cache_init_tmp, eq_idx_in_block_to_solve_reduced, atoms_in_equations_list, solved_vars, solved_vals, block_index = numerical_block_count, eliminated_eq_indices = Int[x[3] for x in eliminated_aliases])
 
                 if !isnothing(block_meta)
                     current_plus_count = length(𝓂.constants.post_model_macro.➕_vars)
@@ -1551,6 +1722,24 @@ end
 
                     append_numerical_step!(builder, block_meta, sol_name_to_index, ext_param_to_index,
                                            𝔖, 𝔓_ext, global_placeholder, global_solvetime_aux_sub)
+                end
+
+                # recover eliminated block variables, last eliminated first
+                for (alias_var, alias_rhs, _) in Iterators.reverse(eliminated_aliases)
+                    push!(solved_vars, alias_var)
+                    push!(solved_vals, alias_rhs)
+                    push!(atoms_in_equations_list, Set(symbolic_solution_atoms(alias_rhs)))
+                    for a in symbolic_solution_atoms(alias_rhs)
+                        push!(atoms_in_equations, a)
+                    end
+
+                    alias_expr = isempty(global_solvetime_aux_sub) ? alias_rhs : replace_symbols(alias_rhs, global_solvetime_aux_sub)
+
+                    push_analytical_step!(builder;
+                        eval_func! = compile_exprs_to_func([alias_expr], 𝔖, 𝔓_ext, global_placeholder),
+                        write_indices = [sol_name_to_index[alias_var]],
+                        description = "Block alias: $alias_var",
+                    )
                 end
 
                 if !symbolic_enabled && verbose

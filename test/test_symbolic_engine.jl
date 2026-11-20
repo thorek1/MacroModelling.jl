@@ -128,4 +128,35 @@ end
         dense!(dense, [2.0, 0.5])
         @test dense ≈ Matrix(buffer)
     end
+
+    @testset "Block alias elimination" begin
+        # x = a * y, y = b * z + x / 2, z^2 = y + c: x and y are eliminated, z stays
+        eqs = Any[:(x - a * y), :(y - (b * z + x / 2)), :(z ^ 2 - (y + c))]
+        remaining_eqs, remaining_vars, remaining_idx, eliminated =
+            MacroModelling.eliminate_block_aliases(eqs, [:x, :y, :z], [1, 2, 3])
+        @test remaining_vars == [:z]
+        @test remaining_idx == [3]
+        @test first.(eliminated) == [:x, :y]
+
+        sol = Dict(:a => 0.5, :b => 2.0, :c => 1.0)
+        # positive root of the reduced equation by bisection
+        g(zv) = evaluate_expression(remaining_eqs[1], merge(sol, Dict(:z => zv)))
+        lo, hi = 0.0, 10.0
+        for _ in 1:200
+            mid = (lo + hi) / 2
+            sign(g(mid)) == sign(g(lo)) ? (lo = mid) : (hi = mid)
+        end
+        sol[:z] = (lo + hi) / 2
+        for (v, rhs, _) in Iterators.reverse(eliminated)
+            sol[v] = evaluate_expression(rhs, sol)
+        end
+        for eq in eqs
+            @test abs(evaluate_expression(eq, sol)) < 1e-10
+        end
+
+        # an excluded (bounded) variable and a solution with a domain hazard both stay in the block
+        kept = MacroModelling.eliminate_block_aliases(Any[:(x - y ^ 0.3), :(y + x ^ 2 - 5)], [:x, :y], [1, 2], excluded_vars = Set([:y]))
+        @test isempty(kept[4])
+        @test kept[2] == [:x, :y]
+    end
 end
