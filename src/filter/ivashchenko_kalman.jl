@@ -876,8 +876,9 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         copyto!(view(ws.linear, :, column),
                 view(sys.S1, :, sys.random_indices[column]))
     end
-    # linear = S₁[:, random] + 1/2 * S₂ * D₂(v).
-    ℒ.mul!(ws.linear, sys.S2, ws.pair_jacobian, 0.5, 1.0)
+    # D₂(v) is half the Jacobian of c(v) = [vᵢ²; 2vᵢvⱼ], so the ½ of the
+    # second-order term cancels: linear = S₁[:, random] + S₂ * D₂(v).
+    ℒ.mul!(ws.linear, sys.S2, ws.pair_jacobian, 1.0, 1.0)
     if sys.order == :third_order
         ivashchenko_triple_jacobian!(ws.triple_jacobian, sys, ws.vbar, ws.basis)
         # linear += 1/2 * S₃ * D₃(v).
@@ -1646,9 +1647,9 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
             gS1[output, solution_column] += gL[output, column]
         end
     end
-    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
-    ℒ.mul!(gS2, gL, transpose(buffers.pair_jacobian), 0.5, 1.0)
-    ℒ.mul!(buffers.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
+    # gS₂ += gL * D₂(v)'; pair_cotangent = S₂' * gL.
+    ℒ.mul!(gS2, gL, transpose(buffers.pair_jacobian), 1.0, 1.0)
+    ℒ.mul!(buffers.pair_cotangent_matrix, transpose(sys.S2), gL, 1.0, 0.0)
     ivashchenko_selected_pair_identity_vjp!(gv,
                                             buffers.pair_cotangent_matrix, sys)
 
@@ -1849,9 +1850,9 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
             gS1[output, solution_column] += gL[output, column]
         end
     end
-    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
-    ℒ.mul!(gS2, gL, transpose(B.pair_jacobian), 0.5, 1.0)
-    ℒ.mul!(B.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
+    # gS₂ += gL * D₂(v)'; pair_cotangent = S₂' * gL.
+    ℒ.mul!(gS2, gL, transpose(B.pair_jacobian), 1.0, 1.0)
+    ℒ.mul!(B.pair_cotangent_matrix, transpose(sys.S2), gL, 1.0, 0.0)
     ivashchenko_selected_pair_identity_vjp!(gv, B.pair_cotangent_matrix, sys)
 
     if third !== nothing

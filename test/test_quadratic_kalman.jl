@@ -121,6 +121,25 @@ import Zygote
         @test rel(pred[2sys.nr+1:end], aq) < tol
     end
 
+    @testset "shock loading is the exact derivative of the pruned recursion" begin
+        # The innovation's linear-in-ε loading G(z) must be the derivative of
+        # the pruned one-step map at ε = 0. A factor error here leaves the
+        # conditional mean intact but biases the innovation covariance.
+        Random.seed!(11)
+        x1 = randn(sys.nr) * 0.05
+        x2 = randn(sys.nr) * 0.005
+        z  = vcat(x1, x2, compressed_pair(sys.P * x1))
+        step(ε) = begin
+            aug1 = sys.Ea * vcat(sys.P * x1, 1.0) + sys.S * ε
+            n1 = sys.S1 * aug1
+            n2 = sys.S1 * (sys.Ea * vcat(sys.P * x2, 0.0)) +
+                 sys.S2 * MacroModelling.compressed_kron²_power(aug1) / 2
+            vcat(n1, n2, compressed_pair(sys.P * n1))
+        end
+        G = MacroModelling.quadratic_kalman_G(sys, z)
+        @test G ≈ ForwardDiff.jacobian(step, zeros(sys.nExo)) rtol = 1e-10 atol = 1e-12
+    end
+
     @testset "matches the particle filter on a nonlinear model" begin
         # the particle filter is reliable here: two observables, so the weights do
         # not degenerate, and 60,000 particles put its Monte-Carlo error well below

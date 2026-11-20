@@ -352,7 +352,9 @@ end
 function quadratic_kalman_G(sys, z::AbstractVector{<:Real})
     ā = sys.Ea * vcat(sys.P * view(z, sys.r1), one(eltype(z)))
     ū = sys.PS1 * ā
-    G2 = sys.S2 * compressed_pair_mixed_matrix(ā, sys.S) / 2
+    # x₂ = ½ S₂ c(aug) with c(a) = [aᵢ²; 2aᵢaⱼ]. The ε-linear part of c(ā + Sε)
+    # is 2 · compressed_pair_mixed_matrix(ā, S) ε, so the ½ cancels.
+    G2 = sys.S2 * compressed_pair_mixed_matrix(ā, sys.S)
     Gq = sys.pair_reorder * raw_pair_mixed_matrix(ū, sys.V)
     return vcat(sys.G1, G2, Gq)
 end
@@ -1198,7 +1200,7 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
         ā = sys.Ea * vcat(sys.P * view(z, r1), 1.0)
         ū = sys.PS1 * ā
         S̄1 .+= Ḡ[r1, :] * sys.S'
-        S̄2 .+= Ḡ[r2, :] * compressed_pair_mixed_matrix(ā, sys.S)' / 2
+        S̄2 .+= Ḡ[r2, :] * compressed_pair_mixed_matrix(ā, sys.S)'
         ū̄ = zeros(nP); V̄local = zeros(size(sys.V))
         raw_pair_mixed_pullback!(ū̄, V̄local, ū, sys.V,
                                  sys.pair_reorder' * Ḡ[rq, :])
