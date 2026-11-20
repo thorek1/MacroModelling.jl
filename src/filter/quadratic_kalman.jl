@@ -805,7 +805,8 @@ function run_quadratic_kalman(sys,
                               on_failure_loglikelihood::Real = -Inf,
                               workspaces = nothing,
                               lyapunov_algorithm::Symbol = :doubling,
-                              initial_covariance_out::Union{Nothing,Base.RefValue} = nothing)
+                              initial_covariance_out::Union{Nothing,Base.RefValue} = nothing,
+                              reduce_state::Bool = true)
     nz = sys.nz
     𝒜, c, 𝒞, QH = sys.𝒜, sys.c, sys.𝒞, sys.QH
     n_obs, nT = size(data_in_deviations)
@@ -824,24 +825,123 @@ function run_quadratic_kalman(sys,
         Matrix{Tv}(ℒ.Diagonal(collect(measurement_error)))
     end
 
-    z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
-
     # The first-order block supplies the only covariance needed by the
     # state-dependent loading at the stationary initialization.
     g0, Λ = quadratic_kalman_affine_G(sys)
-    Pz = sys.P * [Matrix{Tv}(ℒ.I(sys.nr)) zeros(Tv, sys.nr, nz - sys.nr)]
-    Σ, Σ1 = quadratic_kalman_initial_covariance(sys, z̄, g0, Λ, Pz;
+
+    # Run the recursion on the reachable part of the pair block when it is
+    # smaller. The result is the same likelihood (see
+    # `quadratic_kalman_reduced_system`).
+    reduced = reduce_state ? quadratic_kalman_reduced_system(sys, g0, Λ) : nothing
+    fsys, g0, Λ, Wq = reduced === nothing ? (sys, g0, Λ, nothing) : reduced
+    nz = fsys.nz
+    𝒜, c, 𝒞, QH = fsys.𝒜, fsys.c, fsys.𝒞, fsys.QH
+
+    z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
+    Pz = fsys.P * [Matrix{Tv}(ℒ.I(fsys.nr)) zeros(Tv, fsys.nr, nz - fsys.nr)]
+    Σ, Σ1 = quadratic_kalman_initial_covariance(fsys, z̄, g0, Λ, Pz;
                                                 workspaces = workspaces,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
     # The reverse pass needs this exact matrix again. Handing it back lets the
     # pullback skip a second identical Lyapunov solve (a residual check on an
-    # exact guess instead of a full doubling run).
-    initial_covariance_out === nothing || (initial_covariance_out[] = Σ)
+    # exact guess instead of a full doubling run). The pullback works on the
+    # full system, so lift a reduced covariance back first.
+    if initial_covariance_out !== nothing && eltype(Σ) === Float64
+        initial_covariance_out[] = Wq === nothing ? Σ :
+                                   quadratic_kalman_lift_covariance(sys, Σ, Wq)
+    end
 
     return quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Matrix(data_in_deviations),
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
                                       presample_periods, on_failure_loglikelihood)
+end
+
+# Reachable pair block (exact state reduction, as in the Rust port).
+#
+# From the first period on, the first-order past state is
+# x₁ₚ = PS1 [x₁ₚ₋₁; 1; ε], so it stays in U = range(PS1): A·range(PS1) ⊂ range(A)
+# for the past-state columns A of PS1. The pair block q = vech(x₁ₚ x₁ₚ') then
+# stays in range(Wq) with Wq an orthonormal basis of {vech(U S U') : S = S'}.
+# The q rows of the transition, the constant, the shock loadings and the
+# constant noise all map into range(Wq), and so do the stationary mean and
+# covariance that start the filter. With W = blkdiag(I, I, Wq) the filter on
+# z̃ = W'z gives the same likelihood as the filter on z, with a pair block of
+# d(d+1)/2 instead of nPast(nPast+1)/2 coordinates (d = rank PS1).
+#
+# The basis is built with generic QR, so ForwardDiff duals follow the
+# parameter dependence of the subspace. Returns `nothing` when the rank is full
+# or the check below fails; the caller then runs the full system.
+function quadratic_kalman_reduced_system(sys, g0, Λ; rank_tolerance::Real = 1e-10,
+                                         check_tolerance::Real = 1e-9)
+    nPast, nr, nz, nq, nExo = sys.nPast, sys.nr, sys.nz, sys.nq, sys.nExo
+    nPast > 1 || return nothing
+    M = sys.PS1
+    pivoted = ℒ.qr(primal.(M), ℒ.ColumnNorm())
+    Rdiag = abs.(ℒ.diag(pivoted.R))
+    isempty(Rdiag) && return nothing
+    scale = maximum(Rdiag)
+    scale > 0 || return nothing
+    d = count(>(rank_tolerance * scale), Rdiag)
+    d < nPast || return nothing
+    U = Matrix(ℒ.qr(M[:, pivoted.p[1:d]]).Q)[:, 1:d]
+    K = sys.pair_reorder * raw_pair_power_matrix(U)
+    nq̃ = d * (d + 1) ÷ 2
+    Wq = Matrix(ℒ.qr(K).Q)[:, 1:nq̃]
+
+    r12 = 1:2nr
+    rq = sys.rq
+    nz̃ = 2nr + nq̃
+    rq̃ = 2nr+1:nz̃
+    Tv = promote_type(eltype(sys.𝒜), eltype(Wq), eltype(g0), eltype(Λ))
+
+    # Exactness check: every map into the pair block must stay in range(Wq).
+    leak(X) = maximum(abs, primal.(X - Wq * (Wq' * X)); init = 0.0)
+    size_of(X) = max(1.0, maximum(abs, primal.(X); init = 0.0))
+    G0 = reshape(g0, nz, nExo)
+    Λ3 = reshape(Λ, nz, nExo * nPast)
+    pair_rows_ok = leak(sys.𝒜[rq, :] * blockdiag_rows(Wq, nr, nz)) <= check_tolerance * size_of(sys.𝒜[rq, :]) &&
+                   leak(sys.c[rq]) <= check_tolerance * size_of(sys.c[rq]) &&
+                   leak(sys.QH[rq, rq]) <= check_tolerance * size_of(sys.QH[rq, rq]) &&
+                   leak(G0[rq, :]) <= check_tolerance * size_of(G0[rq, :]) &&
+                   leak(Λ3[rq, :]) <= check_tolerance * size_of(Λ3[rq, :])
+    pair_rows_ok || return nothing
+
+    𝒜̃ = zeros(Tv, nz̃, nz̃)
+    𝒜̃[r12, r12] = sys.𝒜[r12, r12]
+    𝒜̃[r12, rq̃] = sys.𝒜[r12, rq] * Wq
+    𝒜̃[rq̃, r12] = Wq' * sys.𝒜[rq, r12]
+    𝒜̃[rq̃, rq̃] = Wq' * sys.𝒜[rq, rq] * Wq
+    c̃ = vcat(sys.c[r12], Wq' * sys.c[rq])
+    QH̃ = zeros(Tv, nz̃, nz̃)
+    QH̃[r12, r12] = sys.QH[r12, r12]
+    QH̃[r12, rq̃] = sys.QH[r12, rq] * Wq
+    QH̃[rq̃, r12] = Wq' * sys.QH[rq, r12]
+    QH̃[rq̃, rq̃] = Wq' * sys.QH[rq, rq] * Wq
+    QH̃ = (QH̃ + QH̃') / 2
+    𝒞̃ = hcat(sys.𝒞[:, r12], zeros(eltype(sys.𝒞), size(sys.𝒞, 1), nq̃))
+    g̃0 = vec(vcat(G0[r12, :], Wq' * G0[rq, :]))
+    Λ̃ = reshape(vcat(Λ3[r12, :], Wq' * Λ3[rq, :]), nz̃ * nExo, nPast)
+
+    rsys = merge(sys, (; 𝒜 = 𝒜̃, c = c̃, QH = QH̃, 𝒞 = 𝒞̃, nz = nz̃, nq = nq̃, rq = rq̃))
+    return rsys, g̃0, Λ̃, Wq
+end
+
+# W restricted to the columns that multiply the pair rows of 𝒜: blkdiag(I, I, Wq).
+function blockdiag_rows(Wq, nr::Int, nz::Int)
+    nq̃ = size(Wq, 2)
+    W = zeros(eltype(Wq), nz, 2nr + nq̃)
+    @inbounds for i in 1:2nr
+        W[i, i] = one(eltype(Wq))
+    end
+    W[2nr+1:end, 2nr+1:end] = Wq
+    return W
+end
+
+function quadratic_kalman_lift_covariance(sys, Σ̃, Wq)
+    W = blockdiag_rows(primal.(Wq), sys.nr, sys.nz)
+    Σ = W * primal.(Σ̃) * W'
+    return (Σ + Σ') / 2
 end
 
 function quadratic_kalman_filter_data_with_model(𝓂::ℳ,
