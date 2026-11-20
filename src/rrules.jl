@@ -2768,15 +2768,35 @@ function rrule(::typeof(calculate_covariance),
     end
 
     # ── Step 5: Lyapunov ──
-    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
+    # Without unit roots, solve on the state block and lift (see
+    # `first_order_covariance_from_states`): Y = B Y B' + CC[past, past] with
+    # B = sol[past, 1:nPast], then Σ = Ps Y Ps' + CC with Ps = sol[:, 1:nPast].
+    compact = !𝓂.caches.has_unit_roots && nPast > 0
+    if compact
+        Ps = sol[:, 1:nPast]
+        B_states = Ps[past_idx, :]
+        cached = 𝓂.caches.covariance_first_order
+        guess = size(cached) == size(CC) ? cached[past_idx, past_idx] : zeros(0, 0)
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, nPast, :first_order)
+        lyap_out, lyap_pb = rrule(solve_lyapunov_equation, B_states, CC[past_idx, past_idx], lyap_ws;
+                                    initial_guess = guess,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.first_order.ad.lyapunov,
+                                    verbose = opts.verbose)
+        Y_states = Matrix(lyap_out[1])
+        covar_raw = Ps * Y_states * Ps' + CC
+        covar_raw = (covar_raw + covar_raw') / 2
+    else
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
 
-    lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
-                                initial_guess = 𝓂.caches.covariance_first_order,
-                                lyapunov_algorithm = opts.lyapunov_algorithm,
-                                tol = opts.tol.first_order.ad.lyapunov,
-                                verbose = opts.verbose,
-                                has_unit_roots = 𝓂.caches.has_unit_roots)
-    covar_raw = lyap_out[1]
+        lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
+                                    initial_guess = 𝓂.caches.covariance_first_order,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.first_order.ad.lyapunov,
+                                    verbose = opts.verbose,
+                                    has_unit_roots = 𝓂.caches.has_unit_roots)
+        covar_raw = lyap_out[1]
+    end
     solved_lyap = lyap_out[2]
 
     # Cache the Lyapunov result for reuse
@@ -2819,7 +2839,21 @@ function rrule(::typeof(calculate_covariance),
         end
 
         # Backprop through Lyapunov equation
-        if !(Δcovar isa AbstractZero)
+        if !(Δcovar isa AbstractZero) && compact
+            # Σ = (S + S')/2 with S = Ps Y Ps' + CC.
+            Σ̄ = (Δcovar + Δcovar') / 2
+            # ∂Ps from both Ps factors; Ȳ = Ps' Σ̄ Ps.
+            ∂Ps = Σ̄ * Ps * Y_states' + Σ̄' * Ps * Y_states
+            Ȳ = Ps' * Σ̄ * Ps
+            lyap_grad = lyap_pb((Ȳ, NoTangent()))
+            ∂Ps[past_idx, :] .+= lyap_grad[2]          # B = Ps[past, :]
+            ΔCC = Matrix(Σ̄)
+            ΔCC[past_idx, past_idx] .+= lyap_grad[3]    # CC[past, past]
+
+            ΔC = (ΔCC + ΔCC') * C
+            ∂sol_total[:, 1:nPast] .+= ∂Ps
+            ∂sol_total[:, nPast+1:end] .+= ΔC
+        elseif !(Δcovar isa AbstractZero)
             lyap_grad = lyap_pb((Δcovar, NoTangent()))
             ΔA  = lyap_grad[2]   # ∂A
             ΔCC = lyap_grad[3]   # ∂CC

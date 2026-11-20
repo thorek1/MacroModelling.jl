@@ -134,6 +134,43 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
 end
 
 
+"""
+First-order covariance from the state block only (as in the Rust port).
+
+With `A = P E` (`P = sol[:, 1:nPast]`, `E` selects the past states), the
+Lyapunov equation `Σ = A Σ A' + CC` reduces exactly to
+
+    Y = B Y B' + CC[past, past],   B = P[past, :]
+    Σ = P Y P' + CC,
+
+so only an `nPast × nPast` equation is solved and the full covariance is
+lifted once. Use it only without unit roots: the deflated unit-root solve
+needs the full system to place its NaN masks.
+"""
+function first_order_covariance_from_states(sol::AbstractMatrix{R},
+                                            CC::AbstractMatrix{R},
+                                            nPast::Int,
+                                            past_idx,
+                                            lyap_ws;
+                                            initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0, 0),
+                                            lyapunov_algorithm::Symbol = :doubling,
+                                            tol = SolverTolerances(),
+                                            verbose::Bool = false) where R <: Real
+    nPast == 0 && return Matrix{R}(CC), true
+    P = sol[:, 1:nPast]
+    B = P[past_idx, :]
+    CCs = CC[past_idx, past_idx]
+    guess = size(initial_guess) == size(CC) ? initial_guess[past_idx, past_idx] : zeros(0, 0)
+    Y, solved = solve_lyapunov_equation(B, CCs, lyap_ws,
+                                        initial_guess = guess,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        tol = tol,
+                                        verbose = verbose)
+    Σ = P * Matrix(Y) * P' + CC
+    return (Σ + Σ') / 2, solved
+end
+
+
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
@@ -181,15 +218,23 @@ function calculate_covariance(parameters::Vector{R},
         return cached_covar, sol, ∇₁, SS_and_pars, true
     end
 
-    # Ensure lyapunov workspace is properly sized and get it
-    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
-
-    covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
-                            initial_guess = cached_covar,
-                            lyapunov_algorithm = opts.lyapunov_algorithm, 
-                            tol = opts.tol.first_order.lyapunov,
-                            verbose = opts.verbose,
-                            has_unit_roots = 𝓂.caches.has_unit_roots)
+    covar_raw, solved = if 𝓂.caches.has_unit_roots
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
+        solve_lyapunov_equation(A, CC, lyap_ws,
+                                initial_guess = cached_covar,
+                                lyapunov_algorithm = opts.lyapunov_algorithm,
+                                tol = opts.tol.first_order.lyapunov,
+                                verbose = opts.verbose,
+                                has_unit_roots = true)
+    else
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nPast_not_future_and_mixed, :first_order)
+        first_order_covariance_from_states(sol, CC, T.nPast_not_future_and_mixed,
+                                           T.past_not_future_and_mixed_idx, lyap_ws;
+                                           initial_guess = cached_covar,
+                                           lyapunov_algorithm = opts.lyapunov_algorithm,
+                                           tol = opts.tol.first_order.lyapunov,
+                                           verbose = opts.verbose)
+    end
 
     # Safety net: if Lyapunov result contains NaN (deflation was used),
     # ensure the flag is set for subsequent calls even if QME didn't detect it

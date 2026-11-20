@@ -3076,12 +3076,17 @@ And data, 13×2 Matrix{Float64}:
     lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, 𝓂.constants.post_model_macro.nVars, :first_order)
 
     if !has_unit_roots
-        # Standard path: no unit roots, solve each shock directly
+        # Standard path: no unit roots, solve each shock on the state block
+        # and lift (see `first_order_covariance_from_states`).
+        nPast_vd = 𝓂.constants.post_model_macro.nPast_not_future_and_mixed
+        lyap_ws_states = ensure_lyapunov_workspace!(𝓂.workspaces, nPast_vd, :first_order)
         for i in 1:𝓂.constants.post_model_macro.nExo
-            C = @views sol[:, 𝓂.constants.post_model_macro.nPast_not_future_and_mixed + i]
+            C = @views sol[:, nPast_vd + i]
             CC = C * C'
-            covar_raw, _ = solve_lyapunov_equation(A, CC, lyap_ws,
-                                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+            covar_raw, _ = first_order_covariance_from_states(sol, CC, nPast_vd,
+                                                    𝓂.constants.post_model_macro.past_not_future_and_mixed_idx,
+                                                    lyap_ws_states,
+                                                    lyapunov_algorithm = opts.lyapunov_algorithm,
                                                     tol = opts.tol.first_order.lyapunov,
                                                     verbose = opts.verbose)
             variances_by_shock[:,i] = ℒ.diag(covar_raw)
