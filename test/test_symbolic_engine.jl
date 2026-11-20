@@ -134,8 +134,10 @@ end
         eqs = Any[:(x - a * y), :(y - (b * z + x / 2)), :(z ^ 2 - (y + c))]
         remaining_eqs, remaining_vars, remaining_idx, eliminated =
             MacroModelling.eliminate_block_aliases(eqs, [:x, :y, :z], [1, 2, 3])
+        # after x is gone, y has the parameter coefficient 1 - a / 2 in the second
+        # equation, so y is taken from the third equation (constant coefficient)
         @test remaining_vars == [:z]
-        @test remaining_idx == [3]
+        @test remaining_idx == [2]
         @test first.(eliminated) == [:x, :y]
 
         sol = Dict(:a => 0.5, :b => 2.0, :c => 1.0)
