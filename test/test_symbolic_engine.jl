@@ -160,5 +160,18 @@ end
         kept = MacroModelling.eliminate_block_aliases(Any[:(x - y ^ 0.3), :(y + x ^ 2 - 5)], [:x, :y], [1, 2], excluded_vars = Set([:y]))
         @test isempty(kept[4])
         @test kept[2] == [:x, :y]
+
+        # ss_symbolic_mode = :full removes aliases from numerical blocks; the steady state is unchanged
+        model_source = read(joinpath(@__DIR__, "..", "models", "Baxter_King_1993.jl"), String)
+        full_source = replace(model_source, "@parameters Baxter_King_1993 begin" => "@parameters Baxter_King_1993 ss_symbolic_mode = :full begin")
+        @test full_source != model_source
+        block_sizes(m) = [length(split(d, ",")) for (t, d) in zip(m.constants.nsss_solver.step_types, m.constants.nsss_solver.descriptions) if t == 0x02]
+        include_string(@__MODULE__, model_source)
+        default_ss = get_steady_state(Baxter_King_1993, derivatives = false)
+        default_blocks = block_sizes(Baxter_King_1993)
+        include_string(@__MODULE__, full_source)
+        full_ss = get_steady_state(Baxter_King_1993, derivatives = false)
+        @test sum(block_sizes(Baxter_King_1993)) < sum(default_blocks)
+        @test isapprox(collect(full_ss), collect(default_ss), rtol = 1e-10)
     end
 end

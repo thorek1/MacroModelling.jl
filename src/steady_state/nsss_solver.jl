@@ -1684,7 +1684,7 @@ end
                 eq_idx_in_block_to_solve_reduced = eq_idx_in_block_to_solve
                 eliminated_aliases = Tuple{Symbol, SymbolicExpression, Int}[]
 
-                if symbolics_data !== nothing && !avoid_solve && length(vars_to_solve) > 1
+                if symbolic_enabled && !avoid_solve && length(vars_to_solve) > 1
                     alias_excluded_vars = union(Set{Symbol}(keys(𝓂.constants.post_parameters_macro.bounds)),
                                                 Set{Symbol}(𝓂.constants.post_model_macro.➕_vars),
                                                 symbolics_data.positive_symbols)
