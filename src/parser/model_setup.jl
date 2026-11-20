@@ -1,42 +1,25 @@
-function replace_with_one(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    # equation.subs(variable, 1).replace(SPyPyC.Sym(ℯ), exp(1))
-    tmp = SPyPyC.subs(equation, variable, 1)
+"""
+    solve_symbolically(equation, variable; positive = false)
 
-    return replace_e(tmp)
+Return the closed-form solutions of `equation = 0` for `variable` (empty if no
+closed form is found).
+"""
+function solve_symbolically(equation::SymbolicExpression, variable::Symbol; positive::Bool = false)::Vector{SymbolicExpression}
+    solution = solve_for_variable(to_symbolic(equation), variable, positive = positive)
+    solution === nothing && return SymbolicExpression[]
+    return SymbolicExpression[from_symbolic(solution)]
 end
 
-function replace_e(equation::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    outraw =  SPyPyC.subs(equation, SPyPyC.Sym(ℯ), exp(1))
+"""
+    solve_symbolically(equations, variables; positive_symbols = Set{Symbol}())
 
-    if outraw isa SPyPyC.Sym{PythonCall.Core.Py}
-        out = outraw
-    else
-        out = collect(outraw)[1]
-    end
-    
-    return out
-end
-
-function solve_symbolically(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::Union{Nothing,Vector{SPyPyC.Sym{PythonCall.Core.Py}}}
-    soll =  try SPyPyC.solve(equation, variable)
-            catch
-            end
-
-    return soll
-end
-
-function solve_symbolically(equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, variables::Vector{SPyPyC.Sym{PythonCall.Core.Py}})::Union{Nothing,Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}}
-    soll =  try SPyPyC.solve(equations, variables)
-            catch
-            end
-
-    if soll == Any[]
-        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}()
-    elseif soll isa Vector
-        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}(variables .=> soll[1])
-    end
-    
-    return soll
+Return the closed-form solution of the system `equations = 0` for `variables`
+as a dictionary, or `nothing` if no closed form is found.
+"""
+function solve_symbolically(equations::AbstractVector, variables::AbstractVector; positive_symbols::Set{Symbol} = Set{Symbol}())::Union{Nothing,Dict{Symbol, SymbolicExpression}}
+    solutions = solve_system_for_variables(SymbolicNode[to_symbolic(e) for e in equations], Symbol[Symbol(v) for v in variables], positive = positive_symbols)
+    solutions === nothing && return nothing
+    return Dict{Symbol, SymbolicExpression}(v => from_symbolic(sol) for (v, sol) in solutions)
 end
 
 
@@ -86,25 +69,11 @@ function get_relevant_steady_states(𝓂::ℳ,
     return reference_steady_state, NSSS, SSS_delta
 end
 
-# compatibility with SymPy
 Max = max
 Min = min
 
-function simplify(ex::Expr)::Union{Expr,Symbol,Int}
-    ex_ss = convert_to_ss_equation(ex)
-
-    for x in get_symbols(ex_ss)
-        sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($x = $sym_value))
-    end
-
-    parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
-
-    postwalk(x ->   x isa Expr ? 
-                        x.args[1] == :conjugate ? 
-                            x.args[2] : 
-                        x : 
-                    x, parsed)
+function simplify(ex::Expr)::SymbolicExpression
+    return simplify_symbolic(convert_to_ss_equation(ex))
 end
 
 function convert_to_ss_equation(eq::Expr)::Expr
@@ -120,7 +89,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
                     x.args[2] isa Int ?
                         x.args[3] isa Int ?
                             x :
-                        :($(x.args[3]) * $(x.args[2])) : # avoid 2X syntax. doesn't work with sympy
+                        :($(x.args[3]) * $(x.args[2])) : # avoid 2X syntax
                     x :
                 x :
             unblock(x) : 
@@ -174,7 +143,6 @@ end
 
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
-    # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
     symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.equations.dynamic))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
@@ -186,144 +154,72 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                                 𝓂.constants.post_parameters_macro.parameters_as_function_of_parameters,
                                 symbols_in_dynamic_equations,
                                 symbols_in_dynamic_equations_wo_subscripts,
-                                symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
+                                symbols_in_ss_equations)
 
-    symbols_pos = []
-    symbols_neg = []
-    symbols_none = []
+    # symbols with a nonnegative lower bound are treated as positive when solving symbolically
+    positive_symbols = Set{Symbol}()
 
     for symb in symbols_in_equation
-        if haskey(𝓂.constants.post_parameters_macro.bounds, symb)
-            if 𝓂.constants.post_parameters_macro.bounds[symb][1] >= 0
-                push!(symbols_pos, symb)
-            elseif 𝓂.constants.post_parameters_macro.bounds[symb][2] <= 0
-                push!(symbols_neg, symb)
-            else 
-                push!(symbols_none, symb)
-            end
-        else
-            push!(symbols_none, symb)
+        if symb isa Symbol && haskey(𝓂.constants.post_parameters_macro.bounds, symb) && 𝓂.constants.post_parameters_macro.bounds[symb][1] >= 0
+            push!(positive_symbols, symb)
         end
     end
 
-    # Create symbols in SymPyWorkspace instead of MacroModelling namespace
-    for pos in symbols_pos
-        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
-        Core.eval(SymPyWorkspace, :($pos = $sym_value))
-    end
-
-    for neg in symbols_neg
-        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
-        Core.eval(SymPyWorkspace, :($neg = $sym_value))
-    end
-
-    for none in symbols_none
-        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($none = $sym_value))
-    end
+    to_symbol_sets(lists) = [Set{Symbol}(Symbol.(collect(x))) for x in lists]
 
     symbolics(
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.steady_state_aux),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_future_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_past_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_future_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_exo_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_future_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_present_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_past_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_future_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.ss_list_aux_SS),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.var_list_aux_SS),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.par_list_aux_SS),
-
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.calibration),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.equations.calibration_parameters),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.constants.post_complete_parameters.parameters),
-
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_present...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_past...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_future...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.vars_in_ss_equations...)]))),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.ss_calib_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_parameters_macro.par_calib_list),
-
-                [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
-                # [Set() for _ in 1:length(𝓂.calibration_equations)],
-                # [Set() for _ in 1:length(𝓂.equations.steady_state_aux)],
-                # [Set() for _ in 1:length(𝓂.calibration_equations)]
+                SymbolicExpression[x for x in 𝓂.equations.steady_state_aux],
+                to_symbol_sets(𝓂.constants.post_model_macro.var_present_list_aux_SS),
+                to_symbol_sets(𝓂.constants.post_model_macro.var_past_list_aux_SS),
+                to_symbol_sets(𝓂.constants.post_model_macro.var_future_list_aux_SS),
+                to_symbol_sets(𝓂.constants.post_model_macro.ss_list_aux_SS),
+                to_symbol_sets(𝓂.constants.post_model_macro.var_list_aux_SS),
+                to_symbol_sets(𝓂.constants.post_model_macro.par_list_aux_SS),
+                SymbolicExpression[x for x in 𝓂.equations.calibration],
+                Symbol.(𝓂.equations.calibration_parameters),
+                Set{Symbol}(Symbol.(collect(𝓂.constants.post_model_macro.vars_in_ss_equations))),
+                to_symbol_sets(𝓂.constants.post_parameters_macro.ss_calib_list),
+                to_symbol_sets(𝓂.constants.post_parameters_macro.par_calib_list),
+                [Set{Symbol}() for _ in 1:length(𝓂.equations.steady_state_aux)],
+                positive_symbols,
                 )
 end
 
 
 
-function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
-    ss_equations = Symbolics.ss_equations
+function remove_redundant_SS_vars!(𝓂::ℳ, symbolics_data::symbolics; avoid_solve::Bool = false)
+    ss_equations = symbolics_data.ss_equations
 
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_present_list_aux_SS),
-            intersect.(Symbolics.var_future_list_aux_SS, Symbolics.var_past_list_aux_SS),
-            intersect.(Symbolics.var_present_list_aux_SS, Symbolics.var_past_list_aux_SS),
-            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_present_list_aux_SS),
-            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_past_list_aux_SS),
-            intersect.(Symbolics.ss_list_aux_SS, Symbolics.var_future_list_aux_SS)
+            intersect.(symbolics_data.var_future_list_aux_SS, symbolics_data.var_present_list_aux_SS),
+            intersect.(symbolics_data.var_future_list_aux_SS, symbolics_data.var_past_list_aux_SS),
+            intersect.(symbolics_data.var_present_list_aux_SS, symbolics_data.var_past_list_aux_SS),
+            intersect.(symbolics_data.ss_list_aux_SS, symbolics_data.var_present_list_aux_SS),
+            intersect.(symbolics_data.ss_list_aux_SS, symbolics_data.var_past_list_aux_SS),
+            intersect.(symbolics_data.ss_list_aux_SS, symbolics_data.var_future_list_aux_SS)
         ),
-    Symbolics.var_list_aux_SS)
+    symbolics_data.var_list_aux_SS)
 
-    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list_aux_SS) .> 1))
+    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(symbolics_data.var_list_aux_SS) .> 1))
     for i in redundant_idx
-        # Cheap Julia-side symbol set for this equation, used to skip SymPy work
-        # when a candidate variable does not actually appear in the equation.
-        eq_symbols = Set{Symbol}(get_symbols(Meta.parse(string(ss_equations[i]))))
         for var_to_solve_for in redundant_vars[i]
-            var_sym_candidate = Symbol(var_to_solve_for)
-            if !(var_sym_candidate in eq_symbols)
+            if var_to_solve_for ∉ get_symbols(ss_equations[i])
                 # variable already absent (e.g. previous redundancy rewrites removed it)
-                if var_to_solve_for ∉ Symbolics.var_redundant_list[i]
-                    push!(Symbolics.var_redundant_list[i], var_to_solve_for)
-                end
+                push!(symbolics_data.var_redundant_list[i], var_to_solve_for)
                 continue
             end
 
-            if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
-                soll = nothing
-            else
-                soll = solve_symbolically(ss_equations[i],var_to_solve_for)
-            end
-
-            if isnothing(soll)
+            if avoid_solve || count_ops(ss_equations[i]) > 15
                 continue
             end
-            
-            if isempty(soll) || isequal(soll, SPyPyC.Sym{PythonCall.Core.Py}[0]) # take out variable if it is redundant from that euation only
-                push!(Symbolics.var_redundant_list[i],var_to_solve_for)
-                ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for) # replace euler constant as it is not translated to julia properly
-                # refresh symbol set since the equation was rewritten
-                eq_symbols = Set{Symbol}(get_symbols(Meta.parse(string(ss_equations[i]))))
-            end
 
+            # the variable is redundant if the equation does not determine it, e.g. because it only enters as a common factor
+            if variable_is_redundant(to_symbolic(ss_equations[i]), var_to_solve_for)
+                push!(symbolics_data.var_redundant_list[i], var_to_solve_for)
+                ss_equations[i] = substitute_symbolic(ss_equations[i], var_to_solve_for, 1)
+            end
         end
     end
 
@@ -347,29 +243,25 @@ function write_ss_check_function!(𝓂::ℳ;
     nu = length(unknowns)
     # nc = length(𝓂.calibration_equations_no_var)
 
-    Symbolics.@variables 𝔓[1:np] 𝔘[1:nu]# ℭ[1:nc]
+    𝔓 = symbolic_placeholders("𝔓", np)
+    𝔘 = symbolic_placeholders("𝔘", nu)
 
     parameter_dict = Dict{Symbol, Symbol}()
-    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
     calib_vars = Symbol[]
     calib_expr = []
 
 
     for (i,v) in enumerate(𝓂.constants.post_complete_parameters.parameters)
-        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        push!(parameter_dict, v => 𝔓[i])
     end
 
     for (i,v) in enumerate(unknowns)
-        push!(parameter_dict, v => :($(Symbol("𝔘_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
+        push!(parameter_dict, v => 𝔘[i])
     end
 
     for (i,v) in enumerate(𝓂.equations.calibration_no_var)
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
-        # push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
-        # push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
     end
 
     calib_replacements = Dict{Symbol, Union{Expr, Symbol, Number}}()
@@ -385,25 +277,13 @@ function write_ss_check_function!(𝓂::ℳ;
     ss_equations_sub = ss_equations |> 
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
-        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
-        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+        x -> SymbolicNode[to_symbolic(e) for e in x]
 
 
     lennz = length(ss_equations_sub)
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, func_exprs = Symbolics.build_function(ss_equations_sub, 𝔓, 𝔘,
-                                                cse = cse, 
-                                                skipzeros = skipzeros,
-                                                # nanmath = false, 
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    func_exprs = build_symbolic_function(ss_equations_sub, [𝔓, 𝔘])
 
 
     𝓂.functions.NSSS_check = func_exprs
@@ -439,7 +319,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
     # 𝓂.functions.NSSS_check(ϵˢ, 𝔓, 𝔘, calib_vals)
 
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ss_equations_sub, 𝔓) # nϵ x nx
+    ∂SS_equations_∂parameters = symbolic_sparse_jacobian(ss_equations_sub, 𝔓) # nϵ x nx
 
     lennz = nnz(∂SS_equations_∂parameters)
 
@@ -452,26 +332,15 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
     
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
-                                                cse = cse, 
-                                                skipzeros = skipzeros,
-                                                # nanmath = false, 
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    func_exprs = build_symbolic_function(derivatives_mat, [𝔓, 𝔘])
 
     𝓂.caches.NSSS_∂equations_∂parameters = buffer
     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ss_equations_sub, 𝔘) # nϵ x nx
+    ∂SS_equations_∂SS_and_pars = symbolic_sparse_jacobian(ss_equations_sub, 𝔘) # nϵ x nx
 
     lennz = nnz(∂SS_equations_∂SS_and_pars)
 
@@ -484,19 +353,8 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                # nanmath = false,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    func_exprs = build_symbolic_function(derivatives_mat, [𝔓, 𝔘])
 
     𝓂.caches.NSSS_∂equations_∂SS_and_pars = buffer
     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
@@ -589,14 +447,14 @@ end
 
 function take_nth_order_derivatives(
     dyn_equations::Vector{T},
-    𝔙::Symbolics.Arr,
-    𝔓::Symbolics.Arr,
-    SS_mapping::Dict{T, T},
+    𝔙::Vector{Symbol},
+    𝔓::Vector{Symbol},
+    SS_mapping::Dict{Symbol, T},
     nps::Int,
     nxs::Int;
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
-)::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
+)::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: SymbolicNode
     
     nx = BigInt(length(𝔙)::Int)
     # np = length(𝔓)::BigInt
@@ -610,17 +468,17 @@ function take_nth_order_derivatives(
 
     # --- Order 1 ---
     # Compute the 1st order derivative with respect to X (Jacobian)
-    spX_order_1 = Symbolics.sparsejacobian(dyn_equations, 𝔙) # nϵ x nx
+    spX_order_1 = symbolic_sparse_jacobian(dyn_equations, 𝔙) # nϵ x nx
 
 
     spX_order_1_sub = copy(spX_order_1)
 
-    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔙))
-    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, SS_mapping)
+    steady_state_memo = IdDict{SymbolicNode, SymbolicNode}()
+    spX_order_1_sub.nzval .= [substitute_symbolic(x, SS_mapping, steady_state_memo) for x in spX_order_1_sub.nzval]
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = symbolic_sparse_jacobian(spX_order_1_sub.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
@@ -631,7 +489,7 @@ function take_nth_order_derivatives(
     # Build the Order 1 P matrix (dimensions nϵ*nx x np)
     sparse_rows_1_P = Int[] # Row index in the flattened space of spX_order_1
     sparse_cols_1_P = Int[] # Column index for parameters (1 to np)
-    sparse_vals_1_P = Symbolics.Num[]
+    sparse_vals_1_P = SymbolicNode[]
 
     # Map linear index in spX_order_1.nzval to its (row, col) in spX_order_1
     nz_lin_to_rc_1 = Dict{Int, Tuple{Int, Int}}()
@@ -697,11 +555,11 @@ function take_nth_order_derivatives(
             # Compute the Jacobian of the previous level's nzval w.r.t. 𝔛
             # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
             # and columns correspond to the n-th variable we differentiate by (x_vn).
-            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝔙) # nnz(spX_order_(n-1)) x nx
+            sp_flat_curr_X_rn = symbolic_sparse_jacobian(nzvals_prev, 𝔙) # nnz(spX_order_(n-1)) x nx
 
             sp_flat_curr_X = copy(sp_flat_curr_X_rn)
 
-            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, SS_mapping)
+            sp_flat_curr_X.nzval .= [substitute_symbolic(x, SS_mapping, steady_state_memo) for x in sp_flat_curr_X.nzval]
 
             # Build the nz_to_indices map for the *current* level (order n)
             # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
@@ -734,7 +592,7 @@ function take_nth_order_derivatives(
                 # COMPRESSED output: nϵ x binomial(nx + n - 1, n)
                 sparse_rows_n = Int[]
                 sparse_cols_n = Int[] # This will store the compressed column index
-                sparse_vals_n = Symbolics.Num[]
+                sparse_vals_n = SymbolicNode[]
 
                 # Calculate the total number of compressed columns for order n
                 X_ncols_n = Int(binomial(nx + n - 1, n))
@@ -786,7 +644,7 @@ function take_nth_order_derivatives(
                 # UNCOMPRESSED output: nϵ x nx^n
                 sparse_rows_n_uncomp = Int[]
                 sparse_cols_n_uncomp = Int[] # Uncompressed column index (1 to nx^n)
-                sparse_vals_n_uncomp = Symbolics.Num[]
+                sparse_vals_n_uncomp = SymbolicNode[]
 
                 # Total number of uncompressed columns
                 X_ncols_n = nx^n # Use BigInt for the power calculation, cast to Int
@@ -838,7 +696,7 @@ function take_nth_order_derivatives(
             # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = symbolic_sparse_jacobian(sp_flat_curr_X.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
@@ -847,7 +705,7 @@ function take_nth_order_derivatives(
 
             sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
             sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
-            sparse_vals_n_P = Symbolics.Num[]
+            sparse_vals_n_P = SymbolicNode[]
 
             # Iterate through the non-zero entries of spP_of_flatX_nzval_curr
             # Its rows correspond to the non-zeros in sp_flat_curr_X
@@ -950,8 +808,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
                                     nnz_parallel_threshold::Int = 1000000,
-                                    # parallel = Symbolics.SerialForm(),
-                                    # parallel = Symbolics.ShardedForm(1500,4),
                                     cse = true,
                                     skipzeros = true)
 
@@ -1000,34 +856,32 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     nps = length(𝓂.constants.post_complete_parameters.parameters)
     nxs = maximum(dyn_var_idxs) + nc
 
-    Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+    𝔓 = symbolic_placeholders("𝔓", np)
+    𝔙 = symbolic_placeholders("𝔙", nv)
 
     parameter_dict = Dict{Symbol, Symbol}()
-    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
     calib_vars = Symbol[]
     calib_expr = []
-    SS_mapping = Dict{Symbolics.Num, Symbolics.Num}()
+    SS_mapping = Dict{Symbol, SymbolicNode}()
 
 
     for (i,v) in enumerate(parameters_and_SS)
-        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        push!(parameter_dict, v => 𝔓[i])
         if i > nps
             if i > length(pars_ext)
-                push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+                push!(SS_mapping, 𝔓[i] => symbolic_symbol(𝔙[dyn_ss_idx[i-length(pars_ext)]]))
             else
-                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps - nc])
+                push!(SS_mapping, 𝔓[i] => symbolic_symbol(𝔙[nxs + i - nps - nc]))
             end
         end
     end
 
     for (i,v) in enumerate(vars_raw)
-        push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
+        push!(parameter_dict, v => 𝔙[i])
         if i <= length(dyn_var_idxs)
-            push!(SS_mapping, 𝔙[i] => 𝔙[dyn_var_idxs[i]])
+            push!(SS_mapping, 𝔙[i] => symbolic_symbol(𝔙[dyn_var_idxs[i]]))
         else
-            push!(SS_mapping, 𝔙[i] => 0)
+            push!(SS_mapping, 𝔙[i] => symbolic_zero())
         end
     end
 
@@ -1051,8 +905,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     dyn_equations = 𝓂.equations.dynamic |> 
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
-        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
-        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+        x -> SymbolicNode[to_symbolic(e) for e in x]
 
     derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
 
@@ -1085,57 +938,24 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer.nzval .= 0
     end
     
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
     
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
-                                            cse = cse, 
-                                            skipzeros = skipzeros, 
-                                            parallel = parallel,
-                                            # nanmath = false,
-                                            expression_module = @__MODULE__,
-                                            expression = Val(false))::Tuple{<:Function, <:Function}
+    func_exprs = build_symbolic_function(derivatives_mat, [𝔓, 𝔙])
 
     𝓂.caches.jacobian = buffer
 
 
     ∇₁_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,1:nps])
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓, 𝔙, 
-                                                        cse = cse, 
-                                                        skipzeros = skipzeros, 
-                                                        parallel = parallel,
-                                                        # nanmath = false,
-                                                        expression_module = @__MODULE__,
-                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+    func_∇₁_parameters = build_symbolic_function(∇₁_parameters_mat, [𝔓, 𝔙])
 
     𝓂.caches.jacobian_parameters = buffer_parameters
  
 
     ∇₁_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[1][2][:,nps+1:end])
 
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
 
-    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝔓, 𝔙, 
-                                                        cse = cse, 
-                                                        skipzeros = skipzeros, 
-                                                        parallel = parallel,
-                                                        # nanmath = false,
-                                                        expression_module = @__MODULE__,
-                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+    func_∇₁_SS_and_pars = build_symbolic_function(∇₁_SS_and_pars_mat, [𝔓, 𝔙])
 
     𝓂.caches.jacobian_SS_and_pars = buffer_SS_and_pars
     
@@ -1168,7 +988,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     
     #     𝓂.functions.NSSS_check(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
     # println(ϵˢ)
-    #     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
+    #     ∂SS_equations_∂parameters = symbolic_sparse_jacobian(ϵˢ, 𝔛¹) # nϵ x nx
     
     #     lennz = nnz(∂SS_equations_∂parameters)
 
@@ -1187,19 +1007,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         parallel = Symbolics.SerialForm()
     #     end
         
-    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
-    #                                                 cse = cse, 
-    #                                                 skipzeros = skipzeros, 
-    #                                                 parallel = parallel,
-    #                                                 # nanmath = false,
-    #                                                 expression_module = @__MODULE__,
-    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
+    #     func_exprs = build_symbolic_function(derivatives_mat, [𝔛¹, 𝔓¹])
 
     #     𝓂.functions.NSSS_∂equations_∂parameters = func_exprs
 
 
 
-    #     ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔓¹) # nϵ x nx
+    #     ∂SS_equations_∂SS_and_pars = symbolic_sparse_jacobian(ϵˢ, 𝔓¹) # nϵ x nx
     
     #     lennz = nnz(∂SS_equations_∂SS_and_pars)
 
@@ -1218,13 +1032,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         parallel = Symbolics.SerialForm()
     #     end
 
-    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
-    #                                                 cse = cse, 
-    #                                                 skipzeros = skipzeros, 
-    #                                                 parallel = parallel,
-    #                                                 # nanmath = false,
-    #                                                 expression_module = @__MODULE__,
-    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
+    #     func_exprs = build_symbolic_function(derivatives_mat, [𝔛¹, 𝔓¹])
 
     #     𝓂.functions.NSSS_∂equations_∂SS_and_pars = func_exprs
     # end
@@ -1250,57 +1058,24 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
-                                                        cse = cse, 
-                                                        skipzeros = skipzeros, 
-                                                        parallel = parallel,
-                                                        # nanmath = false,
-                                                        expression_module = @__MODULE__,
-                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+            func_exprs = build_symbolic_function(derivatives_mat, [𝔓, 𝔙])
 
             𝓂.caches.hessian = buffer
 
 
             ∇₂_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,1:nps])
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝔓, 𝔙, 
-                                                                cse = cse, 
-                                                                skipzeros = skipzeros, 
-                                                                parallel = parallel,
-                                                                # nanmath = false,
-                                                                expression_module = @__MODULE__,
-                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+            func_∇₂_parameters = build_symbolic_function(∇₂_parameters_mat, [𝔓, 𝔙])
 
             𝓂.caches.hessian_parameters = buffer_parameters
         
 
             ∇₂_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[2][2][:,nps+1:end])
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝔓, 𝔙, 
-                                                                cse = cse, 
-                                                                skipzeros = skipzeros, 
-                                                                parallel = parallel,
-                                                                # nanmath = false,
-                                                                expression_module = @__MODULE__,
-                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+            func_∇₂_SS_and_pars = build_symbolic_function(∇₂_SS_and_pars_mat, [𝔓, 𝔙])
 
             𝓂.caches.hessian_SS_and_pars = buffer_SS_and_pars
             
@@ -1329,57 +1104,24 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
-                                                        cse = cse, 
-                                                        skipzeros = skipzeros, 
-                                                        parallel = parallel,
-                                                        # nanmath = false,
-                                                        expression_module = @__MODULE__,
-                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+            func_exprs = build_symbolic_function(derivatives_mat, [𝔓, 𝔙])
 
             𝓂.caches.third_order_derivatives = buffer
 
 
             ∇₃_parameters_mat, buffer_parameters, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,1:nps])
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝔓, 𝔙, 
-                                                                cse = cse, 
-                                                                skipzeros = skipzeros, 
-                                                                parallel = parallel,
-                                                                # nanmath = false,
-                                                                expression_module = @__MODULE__,
-                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+            func_∇₃_parameters = build_symbolic_function(∇₃_parameters_mat, [𝔓, 𝔙])
 
             𝓂.caches.third_order_derivatives_parameters = buffer_parameters
         
 
             ∇₃_SS_and_pars_mat, buffer_SS_and_pars, lennz = prepare_sensitivity_buffer(derivatives[3][2][:,nps+1:end])
 
-            if lennz > nnz_parallel_threshold
-                parallel = Symbolics.ShardedForm(1500,4)
-            else
-                parallel = Symbolics.SerialForm()
-            end
 
-            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓, 𝔙, 
-                                                                cse = cse, 
-                                                                skipzeros = skipzeros, 
-                                                                # nanmath = false,
-                                                                parallel = parallel,
-                                                                expression_module = @__MODULE__,
-                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+            func_∇₃_SS_and_pars = build_symbolic_function(∇₃_SS_and_pars_mat, [𝔓, 𝔙])
 
             𝓂.caches.third_order_derivatives_SS_and_pars = buffer_SS_and_pars
             

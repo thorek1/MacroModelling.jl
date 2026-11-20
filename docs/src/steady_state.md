@@ -18,7 +18,7 @@ The reduced system is partitioned into independent blocks that can be solved sep
 
 ### Step 3: Attempt Symbolic Solution
 
-For each block, the algorithm attempts a full or partial symbolic solution using computer algebra (using `sympy`). When possible, closed-form solutions are obtained, which:
+For each block, the algorithm attempts a full or partial symbolic solution with the package's native symbolic engine. A variable is solved for in closed form when it can be isolated by inverting the operations around it, or when the equation is linear in it (after dividing out common powers of the variable and multiplying out denominators that contain it). When possible, closed-form solutions are obtained, which:
 
 - Provide exact solutions
 - Enable faster computation

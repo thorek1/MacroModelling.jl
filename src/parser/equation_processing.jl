@@ -645,10 +645,10 @@ function process_model_equations(model_block_in::Expr, max_obc_horizon::Int, pre
 
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
-    # Check that no variable, shock, or parameter names conflict with SymPyWorkspace reserved names
-    reserved_conflicts_vars = intersect(var, SYMPYWORKSPACE_RESERVED_NAMES)
-    reserved_conflicts_exo = intersect(exo, SYMPYWORKSPACE_RESERVED_NAMES)
-    reserved_conflicts_params = intersect(parameters_in_equations, SYMPYWORKSPACE_RESERVED_NAMES)
+    # Check that no variable, shock, or parameter names conflict with reserved function names
+    reserved_conflicts_vars = intersect(var, RESERVED_FUNCTION_NAMES)
+    reserved_conflicts_exo = intersect(exo, RESERVED_FUNCTION_NAMES)
+    reserved_conflicts_params = intersect(parameters_in_equations, RESERVED_FUNCTION_NAMES)
     
     @assert length(reserved_conflicts_vars) == 0 "The following variable names are reserved and cannot be used: " * repr(sort([reserved_conflicts_vars...]))
     @assert length(reserved_conflicts_exo) == 0 "The following shock names are reserved and cannot be used: " * repr(sort([reserved_conflicts_exo...]))
@@ -938,9 +938,9 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
-    # Check that no parameter names conflict with SymPyWorkspace reserved names
+    # Check that no parameter names conflict with reserved function names
     all_params = union(calib_parameters, calib_parameters_no_var, calib_eq_parameters)
-    reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
+    reserved_conflicts_params = intersect(all_params, RESERVED_FUNCTION_NAMES)
     @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
     
     # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to become a Float64)
@@ -1002,7 +1002,7 @@ function process_parameter_definitions(parameter_block_in::Expr, pmm::post_model
                         x.args[2] isa Int ?
                             x.args[3] isa Int ?
                                 x :
-                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
+                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2
                         x :
                     x :
                 unblock(x) : 

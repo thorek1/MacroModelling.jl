@@ -703,7 +703,7 @@ Wrap non-collection arguments in `Ref` when broadcasting:
 
 ```julia
 replace_symbols.(expressions, Ref(parameter_dict))
-Symbolics.substitute.(x, Ref(back_to_array_dict))
+substitute_symbolic.(nodes, Ref(replacements))
 ```
 
 ### `push!` and `append!`

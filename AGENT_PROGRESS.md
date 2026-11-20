@@ -2,9 +2,40 @@
 
 ## Current task
 
-Fix the latest nested-sampling and Julia prerelease `basic` CI failures.
+Replace SymPy (SymPyPythonCall/PythonCall) and Symbolics.jl with a native symbolic engine modelled on the
+Rust implementation (`thorek1/MacroModelling`, `crates/dsge-core`).
 
 ## Status
+
+- `src/symbolic/expressions.jl`: interned `SymbolicNode` trees with canonical sums/products/powers, exact
+  rationals, numeric folding, conversion from and to Julia `Expr`, substitution and symbol queries.
+- `src/symbolic/derivatives.jl`: memoized symbolic differentiation and sparse Jacobians.
+- `src/symbolic/solve.jl`: closed-form isolation, linear and two-power solutions, redundancy detection and
+  successive elimination for small systems (replaces `sympy.solve`).
+- `src/symbolic/codegen.jl`: in-place function generation with common subexpression elimination and NaN-safe
+  domain functions (replaces `Symbolics.build_function`).
+- All former SymPy/Symbolics call sites (steady-state setup, redundant variables, OBC transformation,
+  perturbation derivatives, NSSS block functions) use the native engine. The dependencies are removed.
+- The Julia macro front end is unchanged; Rust-only language features are not ported in this change.
+- `eliminate_block_aliases` (`src/steady_state/nsss_solver.jl`) ports the Rust NSSS alias elimination:
+  short definition-form aliases inside numerical BTF blocks are substituted out and recovered after the block
+  solve. Safety rules: constant coefficient, no log/sqrt/exp/non-integer or negative power/denominator
+  positions, no bounded or `➕` variables, no max/min, at most 10 operations and 2 block variables.
+
+## Verification
+
+- `test/test_symbolic_engine.jl` (added to the `basic` set) passes 56/56.
+- `TEST_SET=basic` passes (779 tests, no failures).
+- Old-vs-new comparison on the model catalogue (steady state, first/second/third-order solutions, steady-state
+  derivatives) on 34 models: all match (mostly within 1e-12), setup is 2-5x faster.
+- With alias elimination: 34-model comparison still matches; fresh-cache robustness on 9 models x 40 draws
+  is at parity with the previous head; the symbolic engine tests pass 64/64.
+
+## Previous task
+
+Fix the latest nested-sampling and Julia prerelease `basic` CI failures.
+
+## Previous status
 
 - Parent branch `origin/particle-filter` was merged and its particle registry/defaults and documentation were retained alongside the Ivashchenko changes.
 - Quadratic and cubic Kollmann-style conditional covariance corrections remain implemented entirely in compressed symmetric pair/triple coordinates.

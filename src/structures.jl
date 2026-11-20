@@ -199,55 +199,20 @@ struct post_model_macro
 end
 
 struct symbolics
-    ss_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-    # dyn_equations_future::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-
-    # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    # dyn_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_ss_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_exo_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    # dyn_exo_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_exo_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_exo_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}} 
-
-    # dyn_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dyn_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    var_present_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_past_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_future_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    ss_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    var_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dynamic_variables_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    par_list_aux_SS::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    calibration_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-    calibration_equations_parameters::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-    # parameters::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
-
-    # var_present::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-    # var_past::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-    # var_future::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-    vars_in_ss_equations::Set{SPyPyC.Sym{PythonCall.Core.Py}}
-
-    ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    par_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-
-    var_redundant_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # var_redundant_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # var_solved_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
-    # var_solved_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    ss_equations::Vector{SymbolicExpression}
+    var_present_list_aux_SS::Vector{Set{Symbol}}
+    var_past_list_aux_SS::Vector{Set{Symbol}}
+    var_future_list_aux_SS::Vector{Set{Symbol}}
+    ss_list_aux_SS::Vector{Set{Symbol}}
+    var_list_aux_SS::Vector{Set{Symbol}}
+    par_list_aux_SS::Vector{Set{Symbol}}
+    calibration_equations::Vector{SymbolicExpression}
+    calibration_equations_parameters::Vector{Symbol}
+    vars_in_ss_equations::Set{Symbol}
+    ss_calib_list::Vector{Set{Symbol}}
+    par_calib_list::Vector{Set{Symbol}}
+    var_redundant_list::Vector{Set{Symbol}}
+    positive_symbols::Set{Symbol}
 end
 
 struct moments_substate_indices
