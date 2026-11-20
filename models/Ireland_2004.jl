@@ -1,3 +1,6 @@
+# Ireland, P.N. (2004). Technology shocks in the New Keynesian model.
+# Review of Economics and Statistics, 86(4), 923–936. https://doi.org/10.1162/0034653043125185
+
 @model Ireland_2004 begin
 	a[0] = ρᵃ * a[-1] + σᵃ * ϵᵃ[x]
 

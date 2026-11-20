@@ -1,3 +1,9 @@
+# Smets, F. and Wouters, R. (2007). Shocks and frictions in US business cycles: A Bayesian
+# DSGE approach. American Economic Review, 97(3), 586–606.
+# https://doi.org/10.1257/aer.97.3.586
+#
+# Linearised variant of the Smets and Wouters (2007) model.
+
 @model Smets_Wouters_2007_linear begin
 	a[0] = calfa * rkf[0] + (1 - calfa) * wf[0]
 

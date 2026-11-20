@@ -38,11 +38,13 @@ The package contains the following models in the `models` folder:
 - [Ascari and Sbordone (2014)](https://www.aeaweb.org/articles?id=10.1257/jel.52.3.679) `Ascari_Sbordone_2014.jl`
 - [Backus, Kehoe, and Kydland (1992)](https://www.jstor.org/stable/2138686) `Backus_Kehoe_Kydland_1992.jl`
 - [Baxter and King (1993)](https://www.jstor.org/stable/2117521) `Baxter_King_1993.jl`
+- [Bernanke, Gertler, and Gilchrist (1999)](https://doi.org/10.1016/S1574-0048(99)10034-X) `Bernanke_Gertler_Gilchrist_1999.jl`
 - [Caldara et al. (2012)](https://www.sciencedirect.com/science/article/abs/pii/S1094202511000433) `Caldara_et_al_2012.jl`
 - [Gali (2015)](https://press.princeton.edu/books/hardcover/9780691164786/monetary-policy-inflation-and-the-business-cycle) - Chapter 3 `Gali_2015_chapter_3_nonlinear.jl`
 - [Gali and Monacelli (2005)](https://crei.cat/wp-content/uploads/users/pages/roes8739.pdf) - CPI inflation-based Taylor rule `Gali_Monacelli_2005_CITR.jl`
 - [Federal Reserve Board U.S. model (FRB/US) - LINVER (2024))](https://www.federalreserve.gov/econres/us-models-about.htm) `FRBUS.jl`
 - [Gerali, Neri, Sessa, and Signoretti (2010)](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1538-4616.2010.00331.x) `GNSS_2010.jl`
+- [Gertler and Karadi (2011)](https://doi.org/10.1016/j.jmoneco.2010.10.004) `Gertler_Karadi_2011.jl`
 - [Ghironi and Melitz (2005)](https://faculty.washington.edu/ghiro/GhiroMeliQJE0805.pdf) `Ghironi_Melitz_2005.jl`
 - [Ireland (2004)](http://irelandp.com/pubs/tshocksnk.pdf) `Ireland_2004.jl`
 - [Jermann and Quadrini (2012)](https://www.aeaweb.org/articles?id=10.1257/aer.102.1.238) - RBC `JQ_2012_RBC.jl`

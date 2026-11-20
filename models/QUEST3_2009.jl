@@ -1,3 +1,7 @@
+# Ratto, M., Roeger, W., and in 't Veld, J. (2009). QUEST III: An estimated open-economy
+# DSGE model of the euro area with fiscal and monetary policy.
+# Economic Modelling, 26(1), 222–233. https://doi.org/10.1016/j.econmod.2008.06.014
+
 @model QUEST3_2009 begin
 	interest[0] = ((1 + E_INOM[0]) ^ 4 - interestq_exog ^ 4) / interestq_exog ^ 4
 

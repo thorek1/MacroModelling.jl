@@ -1,3 +1,6 @@
+# Schorfheide, F. (2000). Loss function-based evaluation of DSGE models.
+# Journal of Applied Econometrics, 15(6), 645–670. https://doi.org/10.1002/jae.582
+
 @model FS2000 begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
 

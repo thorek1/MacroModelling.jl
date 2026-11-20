@@ -1,3 +1,6 @@
+# Baxter, M. and King, R.G. (1993). Fiscal policy in general equilibrium.
+# American Economic Review, 83(3), 315–334. https://www.jstor.org/stable/2117521
+
 @model Baxter_King_1993 begin
     uc[0] = c[0]^-1
     

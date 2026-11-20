@@ -1,3 +1,7 @@
+# Gerali, A., Neri, S., Sessa, L., and Signoretti, F.M. (2010). Credit and banking in a DSGE
+# model of the euro area. Journal of Money, Credit and Banking, 42(s1), 107–141.
+# https://doi.org/10.1111/j.1538-4616.2010.00331.x
+
 @model GNSS_2010 begin
 	(1 - a_i) * exp(ee_z[0]) * (c_p[0] - a_i * c_p[-1]) ^ (-1) = lam_p[0]
 

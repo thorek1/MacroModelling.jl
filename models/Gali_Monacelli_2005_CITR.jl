@@ -1,3 +1,7 @@
+# Gali, J. and Monacelli, T. (2005). Monetary policy and exchange rate volatility in a small
+# open economy. Review of Economic Studies, 72(3), 707–734.
+# https://doi.org/10.1111/j.1467-937X.2005.00349.x
+
 @model Gali_Monacelli_2005_CITR begin
 	x[0] = x[1] - σᵃ ^ (-1) * (r[0] - pih[1] - rnat[0])
 
