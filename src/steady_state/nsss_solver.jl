@@ -1724,21 +1724,33 @@ end
                                            𝔖, 𝔓_ext, global_placeholder, global_solvetime_aux_sub)
                 end
 
-                # recover eliminated block variables, last eliminated first
-                for (alias_var, alias_rhs, _) in Iterators.reverse(eliminated_aliases)
-                    push!(solved_vars, alias_var)
-                    push!(solved_vals, alias_rhs)
-                    push!(atoms_in_equations_list, Set(symbolic_solution_atoms(alias_rhs)))
-                    for a in symbolic_solution_atoms(alias_rhs)
-                        push!(atoms_in_equations, a)
+                # recover eliminated block variables in one step: resolve them last
+                # eliminated first, so each expression only uses the block solution
+                if !isempty(eliminated_aliases)
+                    resolved_aliases = Dict{Symbol, SymbolicNode}()
+                    alias_exprs = []
+                    alias_write_indices = Int[]
+                    for (alias_var, alias_rhs, _) in Iterators.reverse(eliminated_aliases)
+                        push!(solved_vars, alias_var)
+                        push!(solved_vals, alias_rhs)
+                        push!(atoms_in_equations_list, Set(symbolic_solution_atoms(alias_rhs)))
+                        for a in symbolic_solution_atoms(alias_rhs)
+                            push!(atoms_in_equations, a)
+                        end
+
+                        resolved = substitute_symbolic(to_symbolic(alias_rhs), resolved_aliases)
+                        resolved_aliases[alias_var] = resolved
+                        alias_expr = from_symbolic(resolved)
+                        alias_expr = isempty(global_solvetime_aux_sub) ? alias_expr : replace_symbols(alias_expr, global_solvetime_aux_sub)
+
+                        push!(alias_exprs, alias_expr)
+                        push!(alias_write_indices, sol_name_to_index[alias_var])
                     end
 
-                    alias_expr = isempty(global_solvetime_aux_sub) ? alias_rhs : replace_symbols(alias_rhs, global_solvetime_aux_sub)
-
                     push_analytical_step!(builder;
-                        eval_func! = compile_exprs_to_func([alias_expr], 𝔖, 𝔓_ext, global_placeholder),
-                        write_indices = [sol_name_to_index[alias_var]],
-                        description = "Block alias: $alias_var",
+                        eval_func! = compile_exprs_to_func(alias_exprs, 𝔖, 𝔓_ext, global_placeholder),
+                        write_indices = alias_write_indices,
+                        description = "Block aliases: $(join(string.(first.(Iterators.reverse(eliminated_aliases))), ", "))",
                     )
                 end
 
