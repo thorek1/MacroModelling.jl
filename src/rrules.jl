@@ -2775,11 +2775,9 @@ function rrule(::typeof(calculate_covariance),
     if compact
         Ps = sol[:, 1:nPast]
         B_states = Ps[past_idx, :]
-        cached = 𝓂.caches.covariance_first_order
-        guess = size(cached) == size(CC) ? cached[past_idx, past_idx] : zeros(0, 0)
+        # Cold solve, as in `calculate_covariance`, so repeated calls give the same Σ.
         lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, nPast, :first_order)
         lyap_out, lyap_pb = rrule(solve_lyapunov_equation, B_states, CC[past_idx, past_idx], lyap_ws;
-                                    initial_guess = guess,
                                     lyapunov_algorithm = opts.lyapunov_algorithm,
                                     tol = opts.tol.first_order.ad.lyapunov,
                                     verbose = opts.verbose)

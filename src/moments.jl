@@ -228,9 +228,12 @@ function calculate_covariance(parameters::Vector{R},
                                 has_unit_roots = true)
     else
         lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nPast_not_future_and_mixed, :first_order)
+        # No warm start: the state block of a cached Σ is a solution, but lifting it again
+        # moves Σ by round-off on every call, and the square roots of near-zero
+        # variances (e.g. smoothed standard deviations) amplify that. A cold solve on
+        # the nPast block is cheap and gives the same result on every call.
         first_order_covariance_from_states(sol, CC, T.nPast_not_future_and_mixed,
                                            T.past_not_future_and_mixed_idx, lyap_ws;
-                                           initial_guess = cached_covar,
                                            lyapunov_algorithm = opts.lyapunov_algorithm,
                                            tol = opts.tol.first_order.lyapunov,
                                            verbose = opts.verbose)
