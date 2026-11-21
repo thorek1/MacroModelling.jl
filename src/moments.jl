@@ -1681,6 +1681,51 @@ function apply_kron_power_right(W::Matrix{Float64}, S::Matrix{Float64}, n::Int, 
     return X
 end
 
+# W ← W · (M_kᵀ ⊗ … ⊗ M_1ᵀ): mode p (counted from the fastest digit) gets mats[p].
+function apply_kron_modes_right(W::Matrix{Float64}, mats::Vector{Matrix{Float64}}, n::Int)
+    k = length(mats)
+    m = size(W, 1)
+    X = copy(W)
+    Y = similar(W)
+    x = vec(X)
+    y = vec(Y)
+    for p in 1:k
+        Mt = Matrix(mats[p]')
+        left = m * n^(p - 1)
+        right = n^(k - p)
+        blk = left * n
+        for r in 1:right
+            rng = ((r - 1) * blk + 1):(r * blk)
+            ℒ.mul!(reshape(view(y, rng), left, n), reshape(view(x, rng), left, n), Mt)
+        end
+        X, Y = Y, X
+        x, y = y, x
+    end
+    return X
+end
+
+# Derivative of apply_gaussian_transition_right in S along dS.
+function apply_gaussian_transition_right_dS(X::Matrix{Float64}, S::Matrix{Float64}, dS::Matrix{Float64}, n::Int,
+                                            d₂::Vector{Int}, l₂::Vector{Int},
+                                            d₃::Vector{Int}, l₃::Vector{Int})
+    n₂ = length(l₂)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):size(X, 2)
+    out = similar(X)
+    out[:, r1] = X[:, r1] * dS'
+    X₂ = X[:, r2][:, d₂]
+    t₂ = apply_kron_modes_right(X₂, [dS, S], n)
+    t₂ .+= apply_kron_modes_right(X₂, [S, dS], n)
+    out[:, r2] = t₂[:, l₂]
+    X₃ = X[:, r3][:, d₃]
+    t₃ = apply_kron_modes_right(X₃, [dS, S, S], n)
+    t₃ .+= apply_kron_modes_right(X₃, [S, dS, S], n)
+    t₃ .+= apply_kron_modes_right(X₃, [S, S, dS], n)
+    out[:, r3] = t₃[:, l₃]
+    return out
+end
+
 # Column map of a 0/1 matrix with one nonzero per row: M * Xᵀ… is a column gather
 function single_entry_row_columns(M::SparseMatrixCSC{Float64, Int})
     Mt = sparse(M')
@@ -1750,12 +1795,12 @@ function elimination_tuples(L::SparseMatrixCSC{Float64, Int}, n::Int, k::Int)
     return tuples
 end
 
-function gaussian_block_covariance(Σ₁::Matrix{Float64}, Σ̂ᶻ₂::AbstractMatrix{Float64}, n::Int,
-                                   L₂::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int})
+function gaussian_block_covariance(Σ₁::Matrix{T}, Σ̂ᶻ₂::AbstractMatrix{T}, n::Int,
+                                   L₂::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int}) where T <: Real
     n₂ = size(L₂, 1)
     n₃ = size(L₃, 1)
     nG = n + n₂ + n₃
-    Σ = zeros(nG, nG)
+    Σ = zeros(T, nG, nG)
     r1 = 1:n
     r2 = n .+ (1:n₂)
     r3 = (n + n₂ + 1):nG
@@ -1880,6 +1925,10 @@ function solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃::SparseMatri
     Σᶻ₃[H, H] = Σ_HH
     return Σᶻ₃, true
 end
+
+# Other number types use the generic Lyapunov solve; ForwardDiffExt adds a
+# method for ForwardDiff.Dual.
+solve_pruned_third_order_covariance_structured(args...; kwargs...) = (zeros(0, 0), false)
 
 
 # X (m × |G|) ← X · A_GG (untransposed), the adjoint of apply_gaussian_transition_right
@@ -2412,7 +2461,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
             info = false
-            if T === Float64 && PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+            if PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
                 Σᶻ₃, info = solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ,
                                         s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ,
                                         𝓂.workspaces, opts,
@@ -2791,7 +2840,7 @@ function calculate_third_order_moments(parameters::Vector{T},
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
             info = false
-            if T === Float64 && PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+            if PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
                 Σᶻ₃, info = solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ,
                                         s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ,
                                         𝓂.workspaces, opts,

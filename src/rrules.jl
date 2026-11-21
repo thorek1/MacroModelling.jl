@@ -8179,10 +8179,11 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- B matrix -----------------------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
-                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)
-
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
+    # Built only when the generic Sylvester solver needs it (not on the
+    # state-block Schur path).
+    build_B₃() = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7) +
+                 compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
@@ -8247,7 +8248,8 @@ function rrule(::typeof(calculate_third_order_solution),
                                                     tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
         if opts.verbose println("Third order solution: state-block Schur solve - solved: $schur_used_3rd") end
     end
-    sylv_alg_3rd = opts.sylvester_algorithm³ == :schur ? schur_fallback_sylvester_algorithm(size(B, 2)) : opts.sylvester_algorithm³
+    B = schur_used_3rd ? spzeros(S, 0, 0) : build_B₃()
+    sylv_alg_3rd = opts.sylvester_algorithm³ == :schur ? schur_fallback_sylvester_algorithm(size(C, 2)) : opts.sylvester_algorithm³
     cache_eligible_3rd = !schur_used_3rd && sylv_alg_3rd == :doubling
     pow_iters_captured_3rd = 0
     if schur_used_3rd
@@ -8301,7 +8303,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # Materialized transposes of forward-pass intermediates
     At = choose_matrix_format(A')
-    Bt = choose_matrix_format(B')
+    Bt = schur_used_3rd ? B : choose_matrix_format(B')
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
     D_ab_t = choose_matrix_format(D_ab')
@@ -8344,6 +8346,8 @@ function rrule(::typeof(calculate_third_order_solution),
                                                     tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
         end
         if !slvd
+            # Schur adjoint failed: the generic solver needs B
+            Bt_adj = schur_used_3rd ? choose_matrix_format(build_B₃()') : Bt
             ws = ℂ.sylvester_workspace
             cache_valid = cache_eligible_3rd &&
                           pow_iters_captured_3rd >= 1 &&
@@ -8353,7 +8357,7 @@ function rrule(::typeof(calculate_third_order_solution),
                 ws.pow_iters = pow_iters_captured_3rd
                 ws.pow_capture = false
             end
-            ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
+            ∂C_adj, slvd = solve_sylvester_equation(At, Bt_adj, ∂𝐒₃, ws,
                                                   sylvester_algorithm = sylv_alg_3rd,
                                                   preconditioner = opts.sylvester_preconditioner,
                                                   tol = opts.tol.third_order.ad.sylvester,
@@ -8371,6 +8375,10 @@ function rrule(::typeof(calculate_third_order_solution),
         # Dense workspace temporaries (overwritten by mul! each call)
         ∂𝐗₃           = ℂ.∂𝐗₃_3rd
         ∂A             = ℂ.∂A_3rd
+        if !schur_used_3rd
+            nc₃ = size(C, 2)
+            size(ℂ.∂B_sylv_3rd) == (nc₃, nc₃) || (ℂ.∂B_sylv_3rd = zeros(S, nc₃, nc₃))
+        end
         ∂B_from_sylv   = ℂ.∂B_sylv_3rd
         ∂out2          = ℂ.∂out2_3rd
         mul_tmp        = ℂ.mul_tmp_3rd
@@ -8406,10 +8414,10 @@ function rrule(::typeof(calculate_third_order_solution),
         else
             ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
             ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+            # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
+            ℒ.mul!(∂𝐗₃, At, ∂C_adj)
+            ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
         end
-        # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
-        ℒ.mul!(∂𝐗₃, At, ∂C_adj)
-        ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
         # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
         # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
         # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
@@ -8581,10 +8589,16 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
-        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
+        if schur_used_3rd
+            # ⟨∂B, B(s)⟩ with ∂B = 𝐒₃[i₊, :]ᵀ Āᵀ ∂C, from the block structure (no B, no ∂B)
+            third_order_schur_s_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Ā_schur3' * Matrix{Float64}(∂C_adj),
+                                          Matrix{Float64}(𝐒₃_stable[i₊, :]), s_schur3, n₋, nₑ)
+        else
+            compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
 
-        # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
+            # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
+            compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
+        end
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
         # Fused: nabla2_kron_S1S2_t * ∂out2 in blocks + identity/(2,1,3) permuted ∂A

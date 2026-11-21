@@ -2134,7 +2134,7 @@ function ensure_third_order_pullback_workspaces!(ℂ::higher_order_workspace, ::
     size(ℂ.∂A_3rd)              == (n, n)             || (ℂ.∂A_3rd = zeros(S, n, n))
     size(ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd)   == (n, n)             || (ℂ.∂∇₁₊𝐒₁➕∇₁₀_3rd = zeros(S, n, n))
     size(ℂ.mul_tmp_3rd)         == (n, n)             || (ℂ.mul_tmp_3rd = zeros(S, n, n))
-    size(ℂ.∂B_sylv_3rd)        == (n_𝐂₃, n_𝐂₃)     || (ℂ.∂B_sylv_3rd = zeros(S, n_𝐂₃, n_𝐂₃))
+    # ∂B_sylv_3rd (n_𝐂₃ × n_𝐂₃) is allocated in the pullback, only off the Schur path.
     size(ℂ.∂𝐗₃_3rd)            == (n, n_𝐂₃)         || (ℂ.∂𝐗₃_3rd = zeros(S, n, n_𝐂₃))
     size(ℂ.∂𝐗₃_pre_3rd)        == (n, n_𝐂₃_r)      || (ℂ.∂𝐗₃_pre_3rd = zeros(S, n, n_𝐂₃_r))
     size(ℂ.∂out2_3rd)          == (n, n_out2_c)      || (ℂ.∂out2_3rd = zeros(S, n, n_out2_c))

@@ -401,6 +401,10 @@ end
         𝐒₂, solved, _ = second_order_schur_solve(Matrix{Float64}(A[:, i₊]), 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
                                                 tol = opts.tol.second_order.sylvester.acceptance_tol)
         if opts.verbose println("Second order solution: state-block Schur solve - solved: $solved") end
+    elseif opts.sylvester_algorithm² == :schur && n₋ > 0
+        # AD numbers (ForwardDiff.Dual): Schur solve for the values and each partial
+        𝐒₂, solved = schur_perturbation_solve_dual(Val(2), A[:, i₊], 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
+                                                    tol = opts.tol.second_order.sylvester.acceptance_tol)
     end
 
     if !solved
@@ -714,6 +718,10 @@ end
         𝐒₃, solved, _ = third_order_schur_solve(Matrix{Float64}(A[:, i₊]), Matrix{Float64}(𝐒₁₋╱𝟏ₑ), Matrix{Float64}(C), i₊, n₋, nₑ,
                                                 tol = opts.tol.third_order.sylvester.acceptance_tol)
         if opts.verbose println("Third order solution: state-block Schur solve - solved: $solved") end
+    elseif opts.sylvester_algorithm³ == :schur && n₋ > 0
+        # AD numbers (ForwardDiff.Dual): Schur solve for the values and each partial
+        𝐒₃, solved = schur_perturbation_solve_dual(Val(3), A[:, i₊], 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.sylvester.acceptance_tol)
     end
 
     if !solved

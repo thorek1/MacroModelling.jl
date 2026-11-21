@@ -266,7 +266,8 @@ header) for `X` (n × compressed pairs). `Ā = A[:, i₊]`, `s = 𝐒₁₋╱�
 Returns `(X, solved, Z)` with `Z = X[i₊, :] * B` (used by the pullback).
 """
 function second_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}, C::Matrix{Float64},
-                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int; tol::Float64 = 1e-10)
+                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int; tol::Float64 = 1e-10,
+                                    schur_M = nothing, schur_H = nothing)
     pidx = second_order_pair_index
     nₑ₋ = n₋ + 1 + nₑ
     n₊ = length(i₊)
@@ -287,8 +288,8 @@ function second_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64
     @inbounds for a in 1:n₋, b in 1:n₋
         copyto!(view(Cxx, :, (a - 1) * n₋ + b), view(C₊, :, pidx(a, b)))
     end
-    SM = ℒ.schur(complex(Ā₊))
-    SH = ℒ.schur(complex(hx))
+    SM = schur_M === nothing ? ℒ.schur(complex(Ā₊)) : schur_M
+    SH = schur_H === nothing ? ℒ.schur(complex(hx)) : schur_H
     Yxx, res_xx = solve_kron_stein(Ā₊, hx, Cxx, schur_M = SM, schur_H = SH)
 
     # (x,1) block
@@ -541,4 +542,51 @@ function second_order_hessian_forcing(∇₂::SparseMatrixCSC{Float64}, M::Abstr
         end
     end
     return Matrix(transpose(outT))
+end
+
+"""
+    schur_perturbation_solve_dual(order, Ā, s, C, i₊, n₋, nₑ; tol)
+
+State-block Schur solve of the second (`Val(2)`) or third (`Val(3)`) order
+equation for AD number types. ForwardDiffExt adds the method for
+`ForwardDiff.Dual`; this fallback returns `(C, false)`, so the caller uses
+the generic Sylvester solver.
+"""
+schur_perturbation_solve_dual(::Val, Ā, s, C, i₊, n₋::Int, nₑ::Int; tol::Float64 = 1e-10) = (C, false)
+
+"""
+    second_order_schur_dZ(X₊, G, dG, n₋, nₑ)
+
+Directional derivative of `Z = X₊ B(s)` in the state rows `G = s[1:n₋, SE]`
+of `s`, along `dG`, with `X₊` fixed (compressed pair columns).
+"""
+function second_order_schur_dZ(X₊::Matrix{Float64}, G::Matrix{Float64}, dG::Matrix{Float64}, n₋::Int, nₑ::Int)
+    pidx = second_order_pair_index
+    nₑ₋ = n₋ + 1 + nₑ
+    c0 = n₋ + 1
+    p = size(X₊, 1)
+    nSE = nₑ₋ - 1
+    nc = nₑ₋ * (nₑ₋ + 1) ÷ 2
+    Yxx = Matrix{Float64}(undef, p, n₋ * n₋)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Yxx, :, (a - 1) * n₋ + b), view(X₊, :, pidx(a, b)))
+    end
+    Yx1 = X₊[:, [pidx(c0, a) for a in 1:n₋]]
+    T = kron_right(Yxx, dG, G)
+    dW1 = Yx1 * dG
+    pos(i) = i ≤ n₋ ? i : i - 1
+    dZ = zeros(p, nc)
+    @inbounds for i in 1:nₑ₋, k in 1:i
+        j = pidx(i, k)
+        if i == c0 && k == c0
+            continue
+        elseif i == c0 || k == c0
+            o = i == c0 ? k : i
+            copyto!(view(dZ, :, j), view(dW1, :, pos(o)))
+        else
+            α = pos(i); β = pos(k)
+            view(dZ, :, j) .= view(T, :, (α - 1) * nSE + β) .+ view(T, :, (β - 1) * nSE + α)
+        end
+    end
+    return dZ
 end

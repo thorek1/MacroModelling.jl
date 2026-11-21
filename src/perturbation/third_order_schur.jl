@@ -28,7 +28,8 @@ false) when the dense (x,x,x) block would need more than `max_bytes`.
 """
 function third_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}, C::Matrix{Float64},
                                     i₊::AbstractVector{Int}, n₋::Int, nₑ::Int;
-                                    tol::Float64 = 1e-10, max_bytes::Real = 2.0e9)
+                                    tol::Float64 = 1e-10, max_bytes::Real = 2.0e9,
+                                    schur_M = nothing, schur_H = nothing)
     tidx = third_order_triple_index
     nₑ₋ = n₋ + 1 + nₑ
     n₊ = length(i₊)
@@ -50,8 +51,8 @@ function third_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}
     G = sd[1:n₋, SE]
     E = collect(n₋ + 2:nₑ₋)
 
-    SM = ℒ.schur(complex(Ā₊))
-    SH = ℒ.schur(complex(hx))
+    SM = schur_M === nothing ? ℒ.schur(complex(Ā₊)) : schur_M
+    SH = schur_H === nothing ? ℒ.schur(complex(hx)) : schur_H
 
     # (x,x,x)
     Cxxx = Matrix{Float64}(undef, n₊, n₋^3)
@@ -282,4 +283,140 @@ function third_order_schur_adjoint(Ā::Matrix{Float64}, s::AbstractMatrix{Float6
         addV!(tidx(c0, e, e), 3.0, Q111)
     end
     return ∂C, all(isfinite, ∂C)
+end
+
+"""
+    third_order_schur_s_pullback!(∂s, L, X₊, s, n₋, nₑ)
+
+Add to `∂s` the gradient of `⟨L, X₊ B(s)⟩` with respect to `s`, with `X₊`
+fixed and `B(s)` the compressed third-order matrix of `third_order_schur_solve`
+(`s = [hx G_e; e₁ᵀ; 0]`). This is the `s`-part of `⟨∂B, B(s)⟩` with
+`∂B = X₊ᵀ L`; `B` and `∂B` are never formed. Only the state rows of `s` get a
+gradient.
+"""
+function third_order_schur_s_pullback!(∂s::AbstractMatrix{Float64}, L::AbstractMatrix{Float64},
+                                        X₊::AbstractMatrix{Float64}, s::AbstractMatrix{Float64},
+                                        n₋::Int, nₑ::Int)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    c0 = n₋ + 1
+    p = size(X₊, 1)
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    E = collect(n₋ + 2:nₑ₋)
+    G = Matrix{Float64}(s[1:n₋, SE])
+    Gt = Matrix(transpose(G))
+    Ld = L isa Matrix{Float64} ? L : Matrix{Float64}(L)
+    Xd = X₊ isa Matrix{Float64} ? X₊ : Matrix{Float64}(X₊)
+    ∂G = zeros(n₋, nSE)
+
+    # (x,x,x) columns: Z(α,β,γ) = X0 (G_α ⊗ G_β ⊗ G_γ), X0 and the spread
+    # cotangent Ls symmetric in their triple index, so ∂G = 3 · one slot.
+    if n₋ > 0
+        X0 = Matrix{Float64}(undef, p, n₋^3)
+        @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+            copyto!(view(X0, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(Xd, :, tidx(a, b, c)))
+        end
+        Ls = Matrix{Float64}(undef, p, nSE^3)
+        @inbounds for α in 1:nSE, β in 1:nSE, γ in 1:nSE
+            μ = third_order_triple_multiplicity(α, β, γ)
+            col = view(Ls, :, ((α - 1) * nSE + (β - 1)) * nSE + γ)
+            col .= view(Ld, :, tidx(SE[α], SE[β], SE[γ])) ./ μ
+        end
+        # T1[p, d, β, α] = Σ_γ Ls[p, γ, β, α] G[d, γ]
+        T1 = Vector{Float64}(undef, p * n₋ * nSE^2)
+        lsv = vec(Ls)
+        @inbounds for k in 1:nSE^2
+            ℒ.mul!(reshape(view(T1, (k - 1) * p * n₋ + 1:k * p * n₋), p, n₋),
+                   reshape(view(lsv, (k - 1) * p * nSE + 1:k * p * nSE), p, nSE), Gt)
+        end
+        Ls = nothing
+        # T2[p, d, e, α] = Σ_β T1[p, d, β, α] G[e, β]
+        T2 = Vector{Float64}(undef, p * n₋^2 * nSE)
+        @inbounds for α in 1:nSE
+            ℒ.mul!(reshape(view(T2, (α - 1) * p * n₋^2 + 1:α * p * n₋^2), p * n₋, n₋),
+                   reshape(view(T1, (α - 1) * p * n₋ * nSE + 1:α * p * n₋ * nSE), p * n₋, nSE), Gt)
+        end
+        T1 = nothing
+        ℒ.mul!(∂G, transpose(reshape(X0, p * n₋^2, n₋)), reshape(T2, p * n₋^2, nSE), 3.0, 1.0)
+        X0 = nothing; T2 = nothing
+
+        # (x,x,1) columns: Z(α,β,1) = X1 (G_α ⊗ G_β)
+        X1 = Matrix{Float64}(undef, p, n₋^2)
+        @inbounds for a in 1:n₋, b in 1:n₋
+            copyto!(view(X1, :, (a - 1) * n₋ + b), view(Xd, :, tidx(a, b, c0)))
+        end
+        L2 = Matrix{Float64}(undef, p, nSE^2)
+        @inbounds for α in 1:nSE, β in 1:nSE
+            view(L2, :, (α - 1) * nSE + β) .= view(Ld, :, tidx(SE[α], SE[β], c0)) ./ (α == β ? 1.0 : 2.0)
+        end
+        kron_right_pullback!(∂G, ∂G, L2, X1, G, G)
+
+        # (x,1,1) columns: Z(α,1,1) = (X₊(x,1,1) + Σᵢ X₊(x,eᵢ,eᵢ)) G_α
+        XQ = zeros(p, n₋)
+        @inbounds for d in 1:n₋
+            view(XQ, :, d) .+= view(Xd, :, tidx(d, c0, c0))
+            for e in E
+                view(XQ, :, d) .+= view(Xd, :, tidx(d, e, e))
+            end
+        end
+        L3 = Ld[:, [tidx(SE[α], c0, c0) for α in 1:nSE]]
+        ℒ.mul!(∂G, transpose(XQ), L3, 1.0, 1.0)
+    end
+
+    @views ∂s[1:n₋, SE] .+= ∂G
+    return ∂s
+end
+
+"""
+    third_order_schur_dZ(X₊, G, dG, n₋, nₑ)
+
+Directional derivative of `Z = X₊ B(s)` in the state rows `G = s[1:n₋, SE]`
+of `s`, along `dG`, with `X₊` fixed (compressed triple columns).
+"""
+function third_order_schur_dZ(X₊::Matrix{Float64}, G::Matrix{Float64}, dG::Matrix{Float64}, n₋::Int, nₑ::Int)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    c0 = n₋ + 1
+    p = size(X₊, 1)
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    E = collect(n₋ + 2:nₑ₋)
+    nc = nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    dZ = zeros(p, nc)
+    n₋ == 0 && return dZ
+
+    Y0 = Matrix{Float64}(undef, p, n₋^3)
+    @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+        copyto!(view(Y0, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(X₊, :, tidx(a, b, c)))
+    end
+    T0 = kron_right3(Y0, dG, G, G)
+    Y0 = nothing
+    ix(α, β, γ) = ((α - 1) * nSE + (β - 1)) * nSE + γ
+    @inbounds for α in 1:nSE, β in 1:α, γ in 1:β
+        view(dZ, :, tidx(SE[α], SE[β], SE[γ])) .= view(T0, :, ix(α, β, γ)) .+ view(T0, :, ix(β, α, γ)) .+ view(T0, :, ix(γ, β, α))
+    end
+    T0 = nothing
+
+    Y1 = Matrix{Float64}(undef, p, n₋^2)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Y1, :, (a - 1) * n₋ + b), view(X₊, :, tidx(a, b, c0)))
+    end
+    T1 = kron_right(Y1, dG, G)
+    @inbounds for α in 1:nSE, β in 1:α
+        view(dZ, :, tidx(SE[α], SE[β], c0)) .= view(T1, :, (α - 1) * nSE + β) .+ view(T1, :, (β - 1) * nSE + α)
+    end
+
+    YQ = zeros(p, n₋)
+    @inbounds for d in 1:n₋
+        view(YQ, :, d) .+= view(X₊, :, tidx(d, c0, c0))
+        for e in E
+            view(YQ, :, d) .+= view(X₊, :, tidx(d, e, e))
+        end
+    end
+    W2 = YQ * dG
+    @inbounds for α in 1:nSE
+        copyto!(view(dZ, :, tidx(SE[α], c0, c0)), view(W2, :, α))
+    end
+    return dZ
 end

@@ -4,6 +4,7 @@ import LinearAlgebra as ℒ
 import SparseArrays: sparse, sparsevec, findnz
 using Random
 import Zygote
+import ForwardDiff
 
 const MMschur = MacroModelling
 
@@ -92,6 +93,41 @@ end
         ∂C, ok2 = MMschur.third_order_schur_adjoint(Ā, s, G, i₊, n₋, nₑ)
         @test ok2
         @test isapprox(∂C, Zref, rtol = 1e-10)
+    end
+end
+
+@testset "Schur pullback and tangent of X₊ B(s) match the dense B" begin
+    Random.seed!(11)
+    for (n, i₊, n₋, nₑ) in [(7, [2, 4, 5], 2, 2), (9, [1, 3, 6, 8], 3, 2), (6, [2, 3], 1, 1)]
+        nₑ₋ = n₋ + 1 + nₑ
+        SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+        _, _, s, _ = schur_reference_problem(n, i₊, n₋, nₑ)
+        redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
+        redu_idxs = findnz(ℒ.kron(redu, redu))[1]
+        𝛔 = sparse(redu_idxs[Int.(range(1, nₑ^2, nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1.0, nₑ₋^2, nₑ₋^2)
+        colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
+        𝐂₂ = sparse(colls2, 1:length(colls2), 1.0)
+        𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1.0)
+        B₂(x) = Matrix(𝐔₂ * (ℒ.kron(x, x) + 𝛔) * 𝐂₂)
+        B₃(x) = Matrix(MMschur.compressed_permuted_mixed_kron(sparse(x), 𝛔) + MMschur.compressed_kron³(sparse(x)))
+        p = length(i₊)
+        dG = randn(n₋, length(SE))
+        E = zeros(nₑ₋, nₑ₋); E[1:n₋, SE] = dG
+        h = 1e-5
+        G = s[1:n₋, SE]
+
+        X₂ = randn(p, size(B₂(s), 1))
+        dZ₂ = (X₂ * B₂(s + h * E) - X₂ * B₂(s - h * E)) / (2h)
+        @test isapprox(MMschur.second_order_schur_dZ(X₂, G, dG, n₋, nₑ), dZ₂, rtol = 1e-7)
+
+        X₃ = randn(p, size(B₃(s), 1))
+        dZ₃ = (X₃ * B₃(s + h * E) - X₃ * B₃(s - h * E)) / (2h)
+        @test isapprox(MMschur.third_order_schur_dZ(X₃, G, dG, n₋, nₑ), dZ₃, rtol = 1e-7)
+
+        L = randn(p, size(X₃, 2))
+        ∂s = zeros(nₑ₋, nₑ₋)
+        MMschur.third_order_schur_s_pullback!(∂s, L, X₃, s, n₋, nₑ)
+        @test isapprox(sum(∂s .* E), sum(L .* dZ₃), rtol = 1e-7)
     end
 end
 
@@ -190,4 +226,29 @@ end
     A = zeros(n, n); B = zeros(n, n); C = zeros(n, n)
     r = MMschur.qme_standard_schur_solve(A, B, C, D, E, nothing, nothing, n, n)
     @test r[3] == false
+end
+
+@testset "ForwardDiff uses the Schur and structured paths" begin
+    include("../models/FS2000.jl")
+    m = FS2000
+    Random.seed!(1)
+    data = simulate(m, periods = 40, algorithm = :first_order)([:log_gy_obs, :log_gp_obs], :, :simulate)
+    p0 = copy(m.parameter_values)
+    for alg in (:second_order, :pruned_third_order)
+        f(x) = get_loglikelihood(m, data, x, algorithm = alg)
+        fd(x) = get_loglikelihood(m, data, x, algorithm = alg, sylvester_algorithm = [:doubling, :doubling])
+        g = ForwardDiff.gradient(f, p0)
+        @test isapprox(g, ForwardDiff.gradient(fd, p0), rtol = 1e-10)
+        @test isapprox(g, Zygote.gradient(f, p0)[1], rtol = 1e-8)
+    end
+    vars = Symbol.(get_variables(m))
+    w = collect(range(0.5, 1.5, length = length(vars)))
+    fm(p) = (r = MMschur.calculate_third_order_moments(p, vars, m); sum(w .* [r[1][i, i] for i in eachindex(vars)]) + sum(r[1]) / 10)
+    gs = map((true, false)) do flag
+        MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = flag
+        MMschur.invalidate_cache_validity!(m)
+        ForwardDiff.gradient(fm, p0)
+    end
+    MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = true
+    @test isapprox(gs[1], gs[2], rtol = 1e-10)
 end
