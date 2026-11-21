@@ -3,6 +3,7 @@ using MacroModelling
 import LinearAlgebra as ℒ
 import SparseArrays: sparse, sparsevec, findnz
 using Random
+import Zygote
 
 const MMschur = MacroModelling
 
@@ -166,4 +167,27 @@ end
         MMschur.invalidate_cache_validity!(m)
         @test isapprox(Σs[1], Σs[2], rtol = 1e-9)
     end
+end
+
+@testset "Structured third-order covariance in the Zygote rrule" begin
+    m = FS2000
+    vars = Symbol.(get_variables(m))
+    p0 = copy(m.parameter_values)
+    w = collect(range(0.5, 1.5, length = length(vars)))
+    f(p) = (r = MMschur.calculate_third_order_moments(p, vars, m); sum(w .* [r[1][i, i] for i in eachindex(vars)]) + sum(r[1]) / 10)
+    gs = map((true, false)) do flag
+        MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = flag
+        MMschur.invalidate_cache_validity!(m)
+        Zygote.gradient(f, p0)[1]
+    end
+    MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = true
+    @test isapprox(gs[1], gs[2], rtol = 1e-9)
+end
+
+@testset "Standard Schur QME path skips non-finite input" begin
+    n = 3
+    D = fill(NaN, 2n, 2n); E = Matrix{Float64}(ℒ.I, 2n, 2n)
+    A = zeros(n, n); B = zeros(n, n); C = zeros(n, n)
+    r = MMschur.qme_standard_schur_solve(A, B, C, D, E, nothing, nothing, n, n)
+    @test r[3] == false
 end

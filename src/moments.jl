@@ -1882,6 +1882,249 @@ function solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃::SparseMatri
 end
 
 
+# X (m × |G|) ← X · A_GG (untransposed), the adjoint of apply_gaussian_transition_right
+function apply_gaussian_transition_right_adjoint(X::Matrix{Float64}, S::Matrix{Float64}, n::Int,
+                                                 d₂::Vector{Int}, l₂::Vector{Int},
+                                                 d₃::Vector{Int}, l₃::Vector{Int})
+    m = size(X, 1)
+    n₂ = length(l₂)
+    n₃ = length(l₃)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):size(X, 2)
+    St = Matrix(S')
+    out = zeros(m, size(X, 2))
+    out[:, r1] = X[:, r1] * S
+    for (rk, dk, lk, k, nk) in ((r2, d₂, l₂, 2, n₂), (r3, d₃, l₃, 3, n₃))
+        W = zeros(m, n^k)
+        W[:, lk] = X[:, rk]
+        Z = apply_kron_power_right(W, St, n, k)
+        acc = zeros(m, nk)
+        @inbounds for c in 1:n^k
+            dc = dk[c]
+            @simd for i in 1:m
+                acc[i, dc] += Z[i, c]
+            end
+        end
+        out[:, rk] = acc
+    end
+    return out
+end
+
+const ISSERLIS_PAIRINGS_6 = let
+    out = NTuple{6, Int}[]
+    for b in 2:6
+        rest = setdiff(2:6, b)
+        c = rest[1]
+        for d in rest[2:end]
+            e, f = setdiff(rest[2:end], d)
+            push!(out, (1, b, c, d, e, f))
+        end
+    end
+    out
+end
+
+# Adjoint of gaussian_block_covariance: returns (∂Σ₁, ∂Σ̂ᶻ₂)
+function gaussian_block_covariance_pullback(∂Σ::Matrix{Float64}, Σ₁::Matrix{Float64}, Σ̂ᶻ₂::AbstractMatrix{Float64},
+                                            n::Int, L₂::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int})
+    n₂ = size(L₂, 1)
+    n₃ = size(L₃, 1)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    rff = (2 * n + 1):size(Σ̂ᶻ₂, 1)
+    o₃ = n + n₂
+    ∂Σ₁ = zeros(n, n)
+    ∂Σ̂ᶻ₂ = zeros(size(Σ̂ᶻ₂))
+    ∂Σ̂ᶻ₂[1:n, 1:n] .+= ∂Σ[r1, r1]
+    ∂Σ̂ᶻ₂[1:n, rff] .+= ∂Σ[r1, r2] * L₂ + Matrix(∂Σ[r2, r1]') * L₂
+    ∂Σ̂ᶻ₂[rff, rff] .+= L₂' * ∂Σ[r2, r2] * L₂
+
+    t = elimination_tuples(L₃, n, 3)
+    @inbounds for a in 1:n₃
+        i, j, k = t[1, a], t[2, a], t[3, a]
+        for l in 1:n
+            g = ∂Σ[o₃ + a, l] + ∂Σ[l, o₃ + a]
+            iszero(g) && continue
+            ∂Σ₁[i, j] += g * Σ₁[k, l];  ∂Σ₁[k, l] += g * Σ₁[i, j]
+            ∂Σ₁[i, k] += g * Σ₁[j, l];  ∂Σ₁[j, l] += g * Σ₁[i, k]
+            ∂Σ₁[i, l] += g * Σ₁[j, k];  ∂Σ₁[j, k] += g * Σ₁[i, l]
+        end
+    end
+    idx = zeros(Int, 6)
+    @inbounds for b in 1:n₃, a in b:n₃
+        g = ∂Σ[o₃ + a, o₃ + b] + (a == b ? 0.0 : ∂Σ[o₃ + b, o₃ + a])
+        iszero(g) && continue
+        idx[1] = t[1, a]; idx[2] = t[2, a]; idx[3] = t[3, a]
+        idx[4] = t[1, b]; idx[5] = t[2, b]; idx[6] = t[3, b]
+        for p in ISSERLIS_PAIRINGS_6
+            p1, p2 = idx[p[1]], idx[p[2]]
+            q1, q2 = idx[p[3]], idx[p[4]]
+            u1, u2 = idx[p[5]], idx[p[6]]
+            x = Σ₁[p1, p2]; y = Σ₁[q1, q2]; z = Σ₁[u1, u2]
+            ∂Σ₁[p1, p2] += g * y * z
+            ∂Σ₁[q1, q2] += g * x * z
+            ∂Σ₁[u1, u2] += g * x * y
+        end
+    end
+    return ∂Σ₁, ∂Σ̂ᶻ₂
+end
+
+"""
+    solve_pruned_third_order_covariance_structured_with_pullback(...)
+
+Same as `solve_pruned_third_order_covariance_structured`, and also returns a pullback
+`∂Σᶻ₃ ↦ (∂ŝ_to_ŝ₃, ∂C, ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂)`, with `∂C` the cotangent of
+`C = ê Γ₃ êᵀ + ê Eᴸᶻ ŝ_to_ŝ₃ᵀ + ŝ_to_ŝ₃ Eᴸᶻᵀ êᵀ` (only rows of the non-Gaussian
+states are nonzero). Returns `(Σᶻ₃, solved, pullback)`.
+"""
+function solve_pruned_third_order_covariance_structured_with_pullback(ŝ_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        ê_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        Γ₃::SparseMatrixCSC{Float64, Int},
+                                                        Eᴸᶻ::SparseMatrixCSC{Float64, Int},
+                                                        s_to_s₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₂::AbstractMatrix{Float64},
+                                                        n::Int,
+                                                        D₂::SparseMatrixCSC{Float64, Int}, L₂::SparseMatrixCSC{Float64, Int},
+                                                        D₃::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int},
+                                                        opts::CalculationOptions;
+                                                        max_iter::Int = 100)
+    fail = (zeros(0, 0), false, nothing)
+    n₂ = size(D₂, 2)
+    n₃ = size(D₃, 2)
+    N = size(ŝ_to_ŝ₃, 1)
+    N == 3 * n + n₂ + n^2 + n₃ || return fail
+
+    G = vcat(1:n, (2 * n + 1):(2 * n + n₂), (N - n₃ + 1):N)
+    H = vcat((n + 1):(2 * n), (2 * n + n₂ + 1):(N - n₃))
+
+    S = Matrix{Float64}(s_to_s₁)
+    maximum(abs, ℒ.eigvals(S)) < 1 - 1e-8 || return fail
+
+    d₂ = single_entry_row_columns(D₂)
+    l₂ = single_entry_row_columns(L₂)
+    d₃ = single_entry_row_columns(D₃)
+    l₃ = single_entry_row_columns(L₃)
+    (isempty(d₂) || isempty(l₂) || isempty(d₃) || isempty(l₃)) && return fail
+
+    Σ₁ = Matrix{Float64}(Σ̂ᶻ₁)
+    Σ_GG = gaussian_block_covariance(Σ₁, Σ̂ᶻ₂, n, L₂, L₃)
+
+    A_HH = Matrix(ŝ_to_ŝ₃[H, H])
+    A_HG = Matrix(ŝ_to_ŝ₃[H, G])
+
+    ê_H = ê_to_ŝ₃[H, :]
+    C_H = Matrix(ê_H * Γ₃ * ê_to_ŝ₃' + ê_H * Eᴸᶻ * ŝ_to_ŝ₃' + ŝ_to_ŝ₃[H, :] * Eᴸᶻ' * ê_to_ŝ₃')
+    C_HG = C_H[:, G]
+    C_HH = C_H[:, H]
+
+    P = A_HG * Σ_GG
+    R = apply_gaussian_transition_right(P, S, n, d₂, l₂, d₃, l₃) + C_HG
+
+    tol = max(opts.tol.third_order.lyapunov.atol, eps())
+
+    # Sylvester X = A_HH X A_GGᵀ + R by doubling
+    X = copy(R)
+    Aₖ = A_HH
+    Sₖ = S
+    converged = false
+    for _ in 1:max_iter
+        Y = Aₖ * apply_gaussian_transition_right(X, Sₖ, n, d₂, l₂, d₃, l₃)
+        X .+= Y
+        if ℒ.norm(Y) <= tol * ℒ.norm(X)
+            converged = true
+            break
+        end
+        Aₖ = Aₖ * Aₖ
+        Sₖ = Sₖ * Sₖ
+    end
+    converged || return fail
+
+    tmp = A_HH * X * A_HG'
+    C̃ = C_HH + P * A_HG' + tmp + tmp'
+    C̃ = (C̃ + C̃') / 2
+
+    lyap_ws = Lyapunov_workspace(length(H))
+    lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A_HH, C̃, lyap_ws,
+                              lyapunov_algorithm = opts.lyapunov_algorithm,
+                              tol = opts.tol.third_order.ad.lyapunov,
+                              verbose = opts.verbose)
+    Σ_HH = copy(lyap_out[1])
+    lyap_out[2] || return fail
+
+    Σᶻ₃ = zeros(N, N)
+    Σᶻ₃[G, G] = Σ_GG
+    Σᶻ₃[H, G] = X
+    Σᶻ₃[G, H] = X'
+    Σᶻ₃[H, H] = Σ_HH
+
+    function structured_covariance_pullback(∂Σᶻ₃::AbstractMatrix)
+        ∂Σ = Matrix{Float64}(∂Σᶻ₃)
+        ∂Σ_GG = ∂Σ[G, G]
+        ∂X = ∂Σ[H, G] + Matrix(∂Σ[G, H]')
+        ∂A_HH = zeros(length(H), length(H))
+        ∂A_HG = zeros(length(H), length(G))
+        ∂A_GG = zeros(length(G), length(G))
+        ∂C_HH = zeros(length(H), length(H))
+
+        lg = lyap_pb((∂Σ[H, H], NoTangent()))
+        if !(lg[2] isa AbstractZero)
+            ∂A_HH .+= lg[2]
+            ∂C̃ = lg[3]
+            ∂C̃s = (∂C̃ + ∂C̃') / 2
+            ∂C_HH .+= ∂C̃s
+            # P A_HGᵀ
+            ∂P = ∂C̃s * A_HG
+            ∂A_HG .+= ∂C̃s' * P
+            # tmp + tmpᵀ, tmp = A_HH X A_HGᵀ
+            ∂tmp = ∂C̃s + ∂C̃s'
+            XA = X * A_HG'
+            ∂A_HH .+= ∂tmp * XA'
+            ∂X .+= A_HH' * ∂tmp * A_HG
+            ∂A_HG .+= ∂tmp' * (A_HH * X)
+        else
+            ∂P = zeros(size(P))
+        end
+
+        # adjoint Sylvester: Y = A_HHᵀ Y A_GG + ∂X
+        Y = copy(∂X)
+        Bₖ = Matrix(A_HH')
+        Sₖ = S
+        for _ in 1:max_iter
+            Z = Bₖ * apply_gaussian_transition_right_adjoint(Y, Sₖ, n, d₂, l₂, d₃, l₃)
+            Y .+= Z
+            ℒ.norm(Z) <= tol * max(ℒ.norm(Y), floatmin()) && break
+            Bₖ = Bₖ * Bₖ
+            Sₖ = Sₖ * Sₖ
+        end
+
+        # X = A_HH X A_GGᵀ + R
+        ∂A_HH .+= Y * apply_gaussian_transition_right(X, S, n, d₂, l₂, d₃, l₃)'
+        ∂A_GG .+= Y' * (A_HH * X)
+        # R = P A_GGᵀ + C_HG
+        ∂C_HG = Y
+        ∂P .+= apply_gaussian_transition_right_adjoint(Y, S, n, d₂, l₂, d₃, l₃)
+        ∂A_GG .+= Y' * P
+        # P = A_HG Σ_GG
+        ∂A_HG .+= ∂P * Σ_GG
+        ∂Σ_GG .+= A_HG' * ∂P
+
+        ∂Σ₁, ∂Σ̂ᶻ₂ = gaussian_block_covariance_pullback(∂Σ_GG, Σ₁, Σ̂ᶻ₂, n, L₂, L₃)
+
+        ∂A = zeros(N, N)
+        ∂A[H, H] = ∂A_HH
+        ∂A[H, G] = ∂A_HG
+        ∂A[G, G] = ∂A_GG
+        ∂C = zeros(N, N)
+        ∂C[H, G] = ∂C_HG
+        ∂C[H, H] = ∂C_HH
+        return ∂A, ∂C, ∂Σ₁, ∂Σ̂ᶻ₂
+    end
+
+    return Σᶻ₃, true, structured_covariance_pullback
+end
+
+
 function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 

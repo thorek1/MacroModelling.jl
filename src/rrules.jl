@@ -3949,18 +3949,28 @@ function rrule(::typeof(calculate_third_order_moments),
         # ── Standard Lyapunov solve (compressed) ──
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-        A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
-
         N_total = N_upper + N_lower
-        lyap_ws_3rd = Lyapunov_workspace(N_total)
-        lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.third_order.ad.lyapunov,
-                                    verbose = opts.verbose)
-        Σᶻ₃ = lyap_out[1]
-        info = lyap_out[2]
+        struct_pb_iter = nothing
+        lyap_pb_iter = nothing
+        info = false
+        if T === Float64 && PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+            Σᶻ₃, info, struct_pb_iter = solve_pruned_third_order_covariance_structured_with_pullback(
+                                    ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ, s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ,
+                                    D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ, opts)
+            info || (struct_pb_iter = nothing)
+        end
+        if !info
+            A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
+            lyap_ws_3rd = Lyapunov_workspace(N_total)
+            lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
+                                        ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                        lyapunov_algorithm = opts.lyapunov_algorithm,
+                                        tol = opts.tol.third_order.ad.lyapunov,
+                                        verbose = opts.verbose)
+            Σᶻ₃ = lyap_out[1]
+            info = lyap_out[2]
+        end
 
         if !info
             return zero_4(), zero_pb
@@ -4031,6 +4041,7 @@ function rrule(::typeof(calculate_third_order_moments),
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
             lyap_pb = lyap_pb_iter,
+            struct_pb = struct_pb_iter,
             N_upper = N_upper,
             N_lower = N_lower,
             D₂ˢ = D₂ˢ,
@@ -4049,7 +4060,7 @@ function rrule(::typeof(calculate_third_order_moments),
     end
 
     # Convert to typed vector for type stability in pullback
-    if n_iters > 0
+    if n_iters > 0 && all(x -> typeof(x) === typeof(iter_data[1]), iter_data)
         iter_data = convert(Vector{typeof(iter_data[1])}, iter_data)
     end
     iter_data_typed = iter_data
@@ -4140,9 +4151,15 @@ function rrule(::typeof(calculate_third_order_moments),
             Nu = d.N_upper;  Nl = d.N_lower
             ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
 
-            lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
-            ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[2]
-            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[3]
+            ∂Σ̂ᶻ₁_struct = nothing
+            ∂Σ̂ᶻ₂_struct = nothing
+            if d.struct_pb !== nothing
+                ∂ŝ_to_ŝ₃, ∂C_lyap, ∂Σ̂ᶻ₁_struct, ∂Σ̂ᶻ₂_struct = d.struct_pb(∂Σᶻ₃)
+            else
+                lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
+                ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[2]
+                ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[3]
+            end
 
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
@@ -4226,6 +4243,10 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂vv₂_l = zeros(T, size(vv₂))
             ∂Σ̂ᶻ₁  = zeros(T, n, n)
             ∂Σ̂ᶻ₂  = zeros(T, size(d.Σ̂ᶻ₂))
+            if ∂Σ̂ᶻ₁_struct !== nothing
+                ∂Σ̂ᶻ₁ .+= ∂Σ̂ᶻ₁_struct
+                ∂Σ̂ᶻ₂ .+= ∂Σ̂ᶻ₂_struct
+            end
             ∂Δ̂μˢ₂_l = zeros(T, n)
 
             # Block boundary arrays
