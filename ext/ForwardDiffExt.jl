@@ -42,6 +42,7 @@ const ℱ = ForwardDiff
 
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
+import SparseArrays
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseMatrix, sparse, sparsevec, spzeros
 
 # ── Extend primal() for ForwardDiff.Dual ──
@@ -94,7 +95,7 @@ function MacroModelling.schur_perturbation_solve_dual(::Val{O}, Ā::AbstractMatr
 
     X = Matrix{ℱ.Dual{Z,Float64,N}}(undef, size(Xv))
     @inbounds for idx in eachindex(Xv)
-        X[idx] = ℱ.Dual{Z,Float64,N}(Xv[idx], ℱ.Partials(ntuple(k -> dX[k][idx], N)))
+        X[idx] = ℱ.Dual{Z,Float64,N}(Xv[idx], ℱ.Partials(ntuple(k -> dX[k][idx], Val(N))))
     end
     return X, true
 end
@@ -124,10 +125,81 @@ _fd_add(P, Q) = (P[1] + Q[1], [P[2][k] + Q[2][k] for k in eachindex(P[2])])
 _fd_t(P) = (Matrix(P[1]'), [Matrix(d') for d in P[2]])
 function _fd_dual(::Type{ℱ.Dual{Z,Float64,N}}, v::AbstractMatrix, d) where {Z,N}
     out = Matrix{ℱ.Dual{Z,Float64,N}}(undef, size(v))
-    @inbounds for i in eachindex(v)
-        out[i] = ℱ.Dual{Z,Float64,N}(v[i], ℱ.Partials(ntuple(k -> d[k][i], N)))
+    _fd_fill!(out, axes(v, 1), axes(v, 2), v, d)
+    return out
+end
+
+# out[rows, cols] .= Dual(v, d), without temporaries
+function _fd_fill!(out::AbstractMatrix{ℱ.Dual{Z,Float64,N}}, rows, cols, v::AbstractMatrix{Float64},
+                   d::Vector{Matrix{Float64}}) where {Z,N}
+    @inbounds for (jj, j) in enumerate(cols), (ii, i) in enumerate(rows)
+        out[i, j] = ℱ.Dual{Z,Float64,N}(v[ii, jj], ℱ.Partials(ntuple(k -> d[k][ii, jj], Val(N))))
     end
     return out
+end
+
+# value and partials of a product of sparse/dense factors with Float64 BLAS/sparse
+# kernels: d(F₁ ⋯ F_m) = Σᵢ (F₁ ⋯ Fᵢ₋₁) dFᵢ (Fᵢ₊₁ ⋯ F_m). Prefix and suffix
+# products are formed once; the partials of the outer factors are stacked so
+# that one sparse product covers all N partials.
+function _fd_add_sparse_block!(D::Matrix{Float64}, Y::SparseMatrixCSC{Float64}, roff::Int, coff::Int,
+                               nr::Int, nc::Int)
+    rv = SparseArrays.rowvals(Y)
+    nz = SparseArrays.nonzeros(Y)
+    @inbounds for j in (coff + 1):(coff + nc), p in SparseArrays.nzrange(Y, j)
+        r = rv[p] - roff
+        1 <= r <= nr && (D[r, j - coff] += nz[p])
+    end
+    return D
+end
+_fd_add_sparse_block!(D::Matrix{Float64}, Y::AbstractMatrix, roff::Int, coff::Int, nr::Int, nc::Int) =
+    (D .+= view(Y, (roff + 1):(roff + nr), (coff + 1):(coff + nc)); D)
+
+# Julia's sparse × dense kernel is slow for large dense operands; use the
+# transposed dense × sparse kernel instead
+_fd_mm(P::SparseMatrixCSC, Q::Matrix) = permutedims(permutedims(Q) * sparse(transpose(P)))
+_fd_mm(P, Q) = P * Q
+
+# sparse factors with many nonzeros are faster as dense BLAS operands
+_fd_densify(M::SparseMatrixCSC) = SparseArrays.nnz(M) > 0.05 * length(M) ? Matrix(M) : M
+_fd_densify(M) = M
+
+function _fd_prod_pair(N::Int, factors...)
+    m = length(factors)
+    vals = map(F -> _fd_densify(_fd_value(F)), factors)
+    pre = Vector{Any}(undef, m)
+    suf = Vector{Any}(undef, m)
+    for i in 2:m
+        pre[i] = i == 2 ? vals[1] : _fd_mm(pre[i - 1], vals[i - 1])
+    end
+    for i in (m - 1):-1:1
+        suf[i] = i == m - 1 ? vals[m] : _fd_mm(vals[i + 1], suf[i + 1])
+    end
+    v = Matrix{Float64}(_fd_mm(pre[m], vals[m]))
+    nr, nc = size(v)
+    d = [zeros(nr, nc) for _ in 1:N]
+    for i in 1:m
+        eltype(factors[i]) <: ℱ.Dual || continue
+        dF = [_fd_densify(_fd_partial(factors[i], k)) for k in 1:N]
+        if i == 1
+            Y = _fd_mm(reduce(vcat, dF), suf[1])
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, (k - 1) * nr, 0, nr, nc)
+            end
+        elseif i == m
+            Y = pre[m] * reduce(hcat, dF)
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, 0, (k - 1) * nc, nr, nc)
+            end
+        else
+            # (pre dFₖ) is a cheap dense-times-sparse product; one GEMM then covers all k
+            Y = _fd_mm(reduce(vcat, [Matrix{Float64}(_fd_mm(pre[i], dF[k])) for k in 1:N]), suf[i])
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, (k - 1) * nr, 0, nr, nc)
+            end
+        end
+    end
+    return (v, d)
 end
 
 function MacroModelling.solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃::AbstractMatrix{ℱ.Dual{Z,Float64,N}},
@@ -171,9 +243,11 @@ function MacroModelling.solve_pruned_third_order_covariance_structured(ŝ_to_ŝ�
 
     # rows H of C = ê Γ êᵀ + ê Eᴸᶻ Aᵀ + A Eᴸᶻᵀ êᵀ (sparse Dual products)
     ê_H = ê_to_ŝ₃[H, :]
-    C_H = ê_H * Γ₃ * transpose(ê_to_ŝ₃) + ê_H * Eᴸᶻ * transpose(A) + A[H, :] * transpose(Eᴸᶻ) * transpose(ê_to_ŝ₃)
-    C_HG = _fd_pair(C_H[:, G], N)
-    C_HH = _fd_pair(C_H[:, H], N)
+    êt = sparse(transpose(ê_to_ŝ₃))
+    C_H = _fd_add(_fd_add(_fd_prod_pair(N, ê_H, Γ₃, êt), _fd_prod_pair(N, ê_H, Eᴸᶻ, sparse(transpose(A)))),
+                  _fd_prod_pair(N, A[H, :], sparse(transpose(Eᴸᶻ)), êt))
+    C_HG = (C_H[1][:, G], [d[:, G] for d in C_H[2]])
+    C_HH = (C_H[1][:, H], [d[:, H] for d in C_H[2]])
     C_H = nothing
 
     A_HG_Σ_GG = _fd_mul(A_HG, Σ_GG)
@@ -245,11 +319,10 @@ function MacroModelling.solve_pruned_third_order_covariance_structured(ŝ_to_ŝ�
                                          has_unit_roots = has_unit_roots)
     info || return fail
 
-    Σᶻ₃ = zeros(DT, Nz, Nz)
-    Σᶻ₃[G, G] = _fd_dual(DT, Σ_GG...)
-    Σ_HG_dual = _fd_dual(DT, Σ_HG...)
-    Σᶻ₃[H, G] = Σ_HG_dual
-    Σᶻ₃[G, H] = transpose(Σ_HG_dual)
+    Σᶻ₃ = Matrix{DT}(undef, Nz, Nz)
+    _fd_fill!(Σᶻ₃, G, G, Σ_GG...)
+    _fd_fill!(Σᶻ₃, H, G, Σ_HG...)
+    _fd_fill!(Σᶻ₃, G, H, _fd_t(Σ_HG)...)
     Σᶻ₃[H, H] = Σ_HH
     return Σᶻ₃, true
 end
