@@ -149,3 +149,21 @@ end
     # a 2-million-period pruned simulation gives Var(z) ≈ 0.2161
     @test isapprox(sd(:z)^2, 0.2161, rtol = 0.02)
 end
+
+@testset "Structured pruned third-order covariance matches the generic Lyapunov solve" begin
+    # Gaussian blocks in closed form, Lyapunov only on the other states
+    include("../models/Backus_Kehoe_Kydland_1992.jl")
+    for m in (FS2000, sv_dependency_test, Backus_Kehoe_Kydland_1992)
+        get_std(m, algorithm = :pruned_third_order, derivatives = false)
+        Σs = map((false, true)) do flag
+            MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = flag
+            MMschur.invalidate_cache_validity!(m)
+            r = MMschur.calculate_third_order_moments(copy(m.parameter_values), Symbol.(get_variables(m)), m)
+            @test r[4]
+            copy(r[1])
+        end
+        MMschur.PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[] = true
+        MMschur.invalidate_cache_validity!(m)
+        @test isapprox(Σs[1], Σs[2], rtol = 1e-9)
+    end
+end
