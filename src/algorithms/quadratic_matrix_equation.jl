@@ -131,6 +131,124 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     return sol, reached_tol < acceptance_tol
 end
 
+
+# Internal switch for the standard-Schur QME path (tests compare it against QZ).
+const QME_STANDARD_SCHUR = Ref(true)
+
+# QME solve through the standard Schur form of the companion pencil (D, E).
+# When E (or D) is well conditioned, the right deflating subspaces of the pencil are the
+# invariant subspaces of M = E⁻¹D (or D⁻¹E). Real Schur (dgees) with ordering is cheaper
+# than the generalized QZ (dgges). The policy is then recovered from the omitted
+# (trailing) Schur vectors W = [W_p; W_f] with one small solve G = -(W_fᵀ)⁻¹W_pᵀ, and
+# one n-square solve against the original coefficients:
+#   (A X + B) X = -C  with  A X = A[:, future] G  ⇒  X[:, past] = -(B + A[:, future] G)⁻¹ C[:, past].
+# Returns (X, relative residual, success, has unit roots). D and E are not modified.
+function qme_standard_schur_solve(A::AbstractMatrix{Float64},
+                                    B::AbstractMatrix{Float64},
+                                    C::AbstractMatrix{Float64},
+                                    D::AbstractMatrix{Float64},
+                                    E::AbstractMatrix{Float64},
+                                    T,
+                                    idx_constants,
+                                    nPfm::Int,
+                                    nFnpm::Int;
+                                    unit_root_tol::Float64 = 1e-6,
+                                    rcond_tol::Float64 = 1e-10)
+    n = size(A, 1)
+    N = size(D, 1)
+    fail = (zeros(0, 0), Inf, false, false)
+    (N == nPfm + nFnpm && nPfm > 0 && nFnpm > 0) || return fail
+
+    r = 1.0 - unit_root_tol
+
+    # Standard form. Pencil eigenvalues λ (D x = λ E x) with |λ| ≥ r go to the leading block.
+    # σ = Inf: M = E⁻¹D, μ = λ.   Finite σ: M = (D - σE)⁻¹E, μ = 1/(λ - σ), so λ = σ + 1/μ
+    # (an infinite λ is μ = 0). The first well-conditioned factorization is used.
+    F = similar(D)
+    M = similar(D)
+    σ = NaN
+    for shift in (Inf, 0.0, -1.0, 0.5, 2.0)
+        if isinf(shift)
+            copyto!(F, E)
+        else
+            @. F = D - shift * E
+        end
+        anorm = ℒ.opnorm(F, 1)
+        Ff = ℒ.lu!(F, check = false)
+        ℒ.issuccess(Ff) || continue
+        ℒ.LAPACK.gecon!('1', Ff.factors, anorm) > rcond_tol || continue
+        copyto!(M, isinf(shift) ? D : E)
+        ℒ.ldiv!(Ff, M)
+        σ = shift
+        break
+    end
+    isnan(σ) && return fail
+    all(isfinite, M) || return fail
+
+    # Diagonal similarity balancing (no permutation, so the past/future split is kept).
+    _, _, scale = ℒ.LAPACK.gebal!('S', M)
+
+    Fs = try
+        ℒ.schur!(M)
+    catch
+        return fail
+    end
+
+    pencil_λ(μ) = isinf(σ) ? abs(μ) : (μ == 0 ? Inf : abs(σ + 1 / μ))
+    select = [pencil_λ(μ) ≥ r for μ in Fs.values]
+    count(select) == nPfm || return fail
+    has_ur = any(μ -> abs(pencil_λ(μ) - 1) ≤ unit_root_tol, Fs.values)
+
+    try
+        ℒ.ordschur!(Fs, select)
+    catch
+        return fail
+    end
+    Q = Fs.Z
+
+    # Omitted subspace in balanced coordinates; G maps past to future coordinates.
+    W_p = Q[1:nPfm, nPfm+1:N]
+    W_f = Q[nPfm+1:N, nPfm+1:N]
+    W_ff = ℒ.lu!(copy(W_f'), check = false)
+    ℒ.issuccess(W_ff) || return fail
+    G = W_ff \ Matrix(W_p')
+    ℒ.rmul!(G, -1)
+    # undo balancing: x = Dₛ x̃  ⇒  G = Dₛ,f G̃ Dₛ,p⁻¹
+    for j in 1:nPfm, i in 1:nFnpm
+        G[i, j] *= scale[nPfm + i] / scale[j]
+    end
+    all(isfinite, G) || return fail
+
+    nL = length(T.not_mixed_in_past_idx)
+    sol = zeros(nL + nFnpm, nPfm)
+    sol[nL+1:end, :] .= G
+    Xg = sol[T.dynamic_order, :] * idx_constants.Ir_past_selector
+
+    fut = idx_constants.future_not_past_and_mixed_in_comb
+    past = idx_constants.past_not_future_and_mixed_in_comb
+    K = Matrix{Float64}(B)
+    ℒ.mul!(K, @view(A[:, fut]), @view(Xg[fut, :]), 1, 1)
+    Kf = ℒ.lu!(K, check = false)
+    ℒ.issuccess(Kf) || return fail
+    Xp = Kf \ Matrix(@view C[:, past])
+    ℒ.rmul!(Xp, -1)
+    all(isfinite, Xp) || return fail
+
+    X = zeros(n, n)
+    X[:, past] .= Xp
+
+    # Relative residual  ‖A X² + B X + C‖ / (‖A X²‖ + ‖B X‖ + ‖C‖), using the column structure of X.
+    AX = @view(A[:, fut]) * @view(X[fut, past])          # n × nPfm  (= (A X)[:, past])
+    AXX = AX * @view(X[past, past])                       # (A X²)[:, past]
+    BX = B * Xp
+    res = AXX .+ BX .+ @view(C[:, past])
+    nC = ℒ.norm(C)
+    # C, A X², B X only have nonzero columns at past.
+    reached_tol = ℒ.norm(res) / (ℒ.norm(AXX) + ℒ.norm(BX) + nC)
+
+    return X, reached_tol, true, has_ur
+end
+
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
@@ -205,6 +323,27 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Bottom-right block: I₊
     copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
     
+    if QME_STANDARD_SCHUR[] && R === Float64
+        X_std, reached_tol_std, ok_std, has_ur_std = qme_standard_schur_solve(A, B, C, D, E, T, idx_constants, nPfm, nFnpm)
+        if ok_std && reached_tol_std < min(tol.acceptance_tol, sqrt(eps(Float64)))
+            X = if caching
+                existing_sol = cache.qme_solution
+                if existing_sol isa Matrix{R} && size(existing_sol) == (n, n)
+                    copyto!(existing_sol, X_std)
+                else
+                    cache.qme_solution = X_std
+                end
+            else
+                X_std
+            end
+            if caching
+                cache.has_unit_roots = has_ur_std
+            end
+            if verbose println("Quadratic matrix equation solver: standard schur - converged with tolerance $reached_tol_std") end
+            return X, 0, reached_tol_std
+        end
+    end
+
     schur_ws_local.fast_qz_ws,
     schur_ws_local.fast_qz_dims,
     schdcmp,

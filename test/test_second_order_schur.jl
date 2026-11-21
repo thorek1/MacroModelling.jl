@@ -112,3 +112,21 @@ end
     @test size(s2, 2) == GNSS_2010.constants.post_model_macro.nVars
     @test isapprox(collect(get_SS(GNSS_2010, derivatives = false)), ss0, atol = 1e-10)
 end
+
+@testset "Standard Schur QME path matches the generalized Schur path" begin
+    include("../models/Smets_Wouters_2007.jl")
+    for m in (FS2000, Smets_Wouters_2007)
+        SS, _ = MMschur.get_NSSS_and_parameters(m, m.parameter_values)
+        ∇₁ = MMschur.calculate_jacobian(m.parameter_values, SS, m.caches, m.functions.jacobian, m.workspaces)
+        sols = map((false, true)) do flag
+            MMschur.QME_STANDARD_SCHUR[] = flag
+            r = MMschur.calculate_first_order_solution(∇₁, m.constants, m.workspaces, m.caches;
+                                                        opts = MMschur.merge_calculation_options(),
+                                                        initial_guess = zeros(0, 0))
+            @test r[3]
+            copy(r[1])
+        end
+        MMschur.QME_STANDARD_SCHUR[] = true
+        @test isapprox(sols[1], sols[2], rtol = 1e-10)
+    end
+end
