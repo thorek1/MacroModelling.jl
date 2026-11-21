@@ -54,6 +54,104 @@ end
     return y
 end
 
+# Triangular kernels on complex Schur forms (Tm, Th upper triangular).
+
+# Ŷ = μ Tm Ŷ Th + R̂ for Ŷ (p × m), in place.
+function kron1_triangular!(Ŷ::AbstractMatrix{ComplexF64}, Tm::Matrix{ComplexF64}, Th::Matrix{ComplexF64},
+                            R̂::AbstractMatrix{ComplexF64}, μ::ComplexF64)
+    p, m = size(Ŷ)
+    Tm_up = ℒ.UpperTriangular(Tm)
+    w = zeros(ComplexF64, p)
+    @inbounds for b in 1:m
+        y = view(Ŷ, :, b)
+        if b > 1
+            ℒ.mul!(w, view(Ŷ, :, 1:b - 1), view(Th, 1:b - 1, b))
+            ℒ.lmul!(Tm_up, w)
+            y .= view(R̂, :, b) .+ μ .* w
+        else
+            copyto!(y, view(R̂, :, b))
+        end
+        stein_backsubstitute!(y, Tm, μ * Th[b, b])
+    end
+    return Ŷ
+end
+
+# Ŷ = μ Tm Ŷ (Th ⊗ Th) + R̂ for Ŷ (p × m²), in place. Ŷ must be a Matrix.
+function kron2_triangular!(Ŷ::Matrix{ComplexF64}, Tm::Matrix{ComplexF64}, Th::Matrix{ComplexF64},
+                            R̂::AbstractMatrix{ComplexF64}, μ::ComplexF64)
+    p = size(Ŷ, 1)
+    m = size(Th, 1)
+    Tm_up = ℒ.UpperTriangular(Tm)
+    Ŷ3 = reshape(Ŷ, p, m, m)
+    Ŷmat = reshape(Ŷ, p * m, m)   # an Array, so its column views stay BLAS-compatible
+    P = zeros(ComplexF64, p, m)
+    PT = zeros(ComplexF64, p, m)
+    RHS = zeros(ComplexF64, p, m)
+    @inbounds for a in 1:m
+        # P[:, d] = Σ_{c<a} Ŷ(c, d) Th[c, a]
+        if a > 1
+            ℒ.mul!(vec(P), view(Ŷmat, :, 1:a - 1), view(Th, 1:a - 1, a))
+        else
+            fill!(P, zero(ComplexF64))
+        end
+        ℒ.mul!(PT, P, Th)
+        ℒ.mul!(RHS, Tm_up, PT)
+        RHS .*= μ
+        RHS .+= view(R̂, :, (a - 1) * m + 1:a * m)
+        kron1_triangular!(view(Ŷ3, :, :, a), Tm, Th, RHS, μ * Th[a, a])
+    end
+    return Ŷ
+end
+
+# Ŷ = μ Tm Ŷ (Th ⊗ Th ⊗ Th) + R̂ for Ŷ (p × m³), in place.
+function kron3_triangular!(Ŷ::Matrix{ComplexF64}, Tm::Matrix{ComplexF64}, Th::Matrix{ComplexF64},
+                            R̂::AbstractMatrix{ComplexF64}, μ::ComplexF64)
+    p = size(Ŷ, 1)
+    m = size(Th, 1)
+    m2 = m * m
+    Tm_up = ℒ.UpperTriangular(Tm)
+    Ŷmat = reshape(Ŷ, p * m2, m)
+    P = zeros(ComplexF64, p, m2)
+    RHS = zeros(ComplexF64, p, m2)
+    Yb = zeros(ComplexF64, p, m2)
+    @inbounds for a in 1:m
+        if a > 1
+            ℒ.mul!(vec(P), view(Ŷmat, :, 1:a - 1), view(Th, 1:a - 1, a))
+            ℒ.mul!(RHS, Tm_up, kron_right(P, Th, Th))
+            RHS .*= μ
+        else
+            fill!(RHS, zero(ComplexF64))
+        end
+        RHS .+= view(R̂, :, (a - 1) * m2 + 1:a * m2)
+        fill!(Yb, zero(ComplexF64))
+        kron2_triangular!(Yb, Tm, Th, RHS, μ * Th[a, a])
+        copyto!(view(Ŷ, :, (a - 1) * m2 + 1:a * m2), Yb)
+    end
+    return Ŷ
+end
+
+"""
+    kron_right3(Y, F, G, H)
+
+Return `Y * kron(F, kron(G, H))` without forming the Kronecker product.
+"""
+function kron_right3(Y::AbstractMatrix, F::AbstractMatrix, G::AbstractMatrix, H::AbstractMatrix)
+    p = size(Y, 1)
+    mF, kF = size(F)
+    mG, kG = size(G)
+    mH, kH = size(H)
+    @assert size(Y, 2) == mF * mG * mH
+    R = promote_type(eltype(Y), eltype(F), eltype(G), eltype(H))
+    Yd = Y isa Matrix{R} ? Y : Matrix{R}(Y)
+    T1 = Array{R}(undef, p, kG * kH, mF)
+    @inbounds for c in 1:mF
+        T1[:, :, c] = kron_right(Yd[:, (c - 1) * mG * mH + 1:c * mG * mH], G, H)
+    end
+    out = Matrix{R}(undef, p, kF * kG * kH)
+    ℒ.mul!(reshape(out, p * kG * kH, kF), reshape(T1, p * kG * kH, mF), F)
+    return out
+end
+
 """
     solve_kron_stein(M, H, R)
 
@@ -71,46 +169,48 @@ function solve_kron_stein(M::Matrix{Float64}, H::Matrix{Float64}, R::Matrix{Floa
     SH = schur_H === nothing ? ℒ.schur(complex(H)) : schur_H
     U, Tm = SM.Z, SM.T
     Q, Th = SH.Z, SH.T
-    Tm_up = ℒ.UpperTriangular(Tm)
-
     R̂ = kron_right(U' * R, Q, Q)
-    R̂3 = reshape(R̂, p, m, m)
     Ŷ = zeros(ComplexF64, p, m * m)
-    Ŷ3 = reshape(Ŷ, p, m, m)
-    Ŷmat = reshape(Ŷ, p * m, m)   # an Array, so its column views stay BLAS-compatible
-
-    P = zeros(ComplexF64, p, m)
-    PT = zeros(ComplexF64, p, m)
-    RHS = zeros(ComplexF64, p, m)
-    w = zeros(ComplexF64, p)
-
-    @inbounds for a in 1:m
-        # P[:, d] = Σ_{c<a} Ŷ(c, d) Th[c, a]
-        if a > 1
-            ℒ.mul!(vec(P), view(Ŷmat, :, 1:a - 1), view(Th, 1:a - 1, a))
-        else
-            fill!(P, zero(ComplexF64))
-        end
-        ℒ.mul!(PT, P, Th)
-        ℒ.mul!(RHS, Tm_up, PT)
-        RHS .+= view(R̂3, :, :, a)
-        taa = Th[a, a]
-        for b in 1:m
-            y = view(Ŷ3, :, b, a)
-            if b > 1
-                ℒ.mul!(w, view(Ŷ3, :, 1:b - 1, a), view(Th, 1:b - 1, b))
-                ℒ.lmul!(Tm_up, w)
-                y .= view(RHS, :, b) .+ taa .* w
-            else
-                copyto!(y, view(RHS, :, b))
-            end
-            stein_backsubstitute!(y, Tm, taa * Th[b, b])
-        end
-    end
-
+    kron2_triangular!(Ŷ, Tm, Th, R̂, one(ComplexF64))
     Y = real.(U * kron_right(Ŷ, Q', Q'))
-
     return Y, kron_stein_probe_residual(Y, M, H, R)
+end
+
+"""
+    solve_kron3_stein(M, H, R)
+
+Solve `Y = M * Y * kron(H, H, H) + R` for `Y` (size p × m³) on complex Schur
+forms. Returns `(Y, relative_residual)`.
+"""
+function solve_kron3_stein(M::Matrix{Float64}, H::Matrix{Float64}, R::Matrix{Float64};
+                    schur_M = nothing, schur_H = nothing)
+    p = size(M, 1)
+    m = size(H, 1)
+    if m == 0 || p == 0
+        return zeros(p, m^3), 0.0
+    end
+    SM = schur_M === nothing ? ℒ.schur(complex(M)) : schur_M
+    SH = schur_H === nothing ? ℒ.schur(complex(H)) : schur_H
+    U, Tm = SM.Z, SM.T
+    Q, Th = SH.Z, SH.T
+    R̂ = kron_right3(U' * R, Q, Q, Q)
+    Ŷ = zeros(ComplexF64, p, m^3)
+    kron3_triangular!(Ŷ, Tm, Th, R̂, one(ComplexF64))
+    Qa = Matrix(Q')
+    Y = real.(U * kron_right3(Ŷ, Qa, Qa, Qa))
+    # probe residual with x ⊗ y ⊗ z
+    worst = 0.0
+    for probe in 1:2
+        x = [sin(1.3 * i + probe) for i in 1:m]
+        y = [cos(0.7 * i + 2 * probe) for i in 1:m]
+        z = [sin(0.4 * i + 3 * probe) for i in 1:m]
+        v = kron(x, kron(y, z))
+        Kv = kron(H * x, kron(H * y, H * z))
+        Yv = Y * v
+        r = Yv - M * (Y * Kv) - R * v
+        worst = max(worst, ℒ.norm(r) / max(ℒ.norm(Yv), ℒ.norm(R * v), eps()))
+    end
+    return Y, worst
 end
 
 # Relative residual of Y = M Y kron(H, H) + R on two rank-one probes x ⊗ y,
@@ -149,22 +249,9 @@ function solve_stein(M::Matrix{Float64}, H::Matrix{Float64}, R::Matrix{Float64};
     SH = schur_H === nothing ? ℒ.schur(complex(H)) : schur_H
     U, Tm = SM.Z, SM.T
     Q, Th = SH.Z, SH.T
-    Tm_up = ℒ.UpperTriangular(Tm)
-
     R̂ = U' * R * Q
     Ŷ = zeros(ComplexF64, p, m)
-    w = zeros(ComplexF64, p)
-    @inbounds for b in 1:m
-        y = view(Ŷ, :, b)
-        if b > 1
-            ℒ.mul!(w, view(Ŷ, :, 1:b - 1), view(Th, 1:b - 1, b))
-            ℒ.lmul!(Tm_up, w)
-            y .= view(R̂, :, b) .+ w
-        else
-            copyto!(y, view(R̂, :, b))
-        end
-        stein_backsubstitute!(y, Tm, Th[b, b])
-    end
+    kron1_triangular!(Ŷ, Tm, Th, R̂, one(ComplexF64))
     Y = real.(U * Ŷ * Q')
     res = Y - M * Y * H - R
     scale = max(ℒ.norm(Y), ℒ.norm(R), eps())

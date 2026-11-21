@@ -150,6 +150,7 @@ include("./algorithms/fast_lapack_wrappers.jl")
 include("./perturbation/derivatives.jl")
 include("./perturbation/solution.jl")
 include("./perturbation/second_order_schur.jl")
+include("./perturbation/third_order_schur.jl")
 include("./steady_state/stochastic_steady_state.jl")
 include("impulse_response_function.jl")
 

@@ -414,7 +414,7 @@ end
 
         𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
                                                 initial_guess = initial_guess_sylv,
-                                                sylvester_algorithm = opts.sylvester_algorithm² == :schur ? :doubling : opts.sylvester_algorithm²,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
                                                 preconditioner = opts.sylvester_preconditioner,
                                                 tol = opts.tol.second_order.sylvester,
                                                 verbose = opts.verbose)
@@ -600,14 +600,15 @@ end
     # B *= M₃.𝐂₃
     # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.third_order.droptol, multithreaded = false)
         # println("size(𝐒₁₋╱𝟏ₑ) = ",size(𝐒₁₋╱𝟏ₑ))
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
-                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
+    𝐒₁₋╱𝟏ₑ_for_B = 𝐒₁₋╱𝟏ₑ
+    build_B₃() = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ_for_B, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7) +
+                 compressed_kron³(𝐒₁₋╱𝟏ₑ_for_B, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
     # println("size(B) = ",size(B))
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -707,12 +708,23 @@ end
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess_sylv,
-                                            sylvester_algorithm = opts.sylvester_algorithm³,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.third_order.sylvester,
-                                            verbose = opts.verbose)
+    solved = false
+    𝐒₃ = C
+    if S === Float64 && opts.sylvester_algorithm³ == :schur && n₋ > 0
+        𝐒₃, solved, _ = third_order_schur_solve(Matrix{Float64}(A[:, i₊]), Matrix{Float64}(𝐒₁₋╱𝟏ₑ), Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                tol = opts.tol.third_order.sylvester.acceptance_tol)
+        if opts.verbose println("Third order solution: state-block Schur solve - solved: $solved") end
+    end
+
+    if !solved
+        B = build_B₃()
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                                initial_guess = initial_guess_sylv,
+                                                sylvester_algorithm = opts.sylvester_algorithm³,
+                                                preconditioner = opts.sylvester_preconditioner,
+                                                tol = opts.tol.third_order.sylvester,
+                                                verbose = opts.verbose)
+    end
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin

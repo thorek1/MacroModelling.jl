@@ -68,3 +68,32 @@ end
     b = get_solution(RBC_baseline, algorithm = :second_order, sylvester_algorithm = :doubling)
     @test isapprox(collect(a), collect(b), rtol = 1e-10)
 end
+
+@testset "State-block Schur third-order solver" begin
+    Random.seed!(9)
+    for (n, i₊, n₋, nₑ) in [(7, [2, 4, 5], 2, 2), (9, [1, 3, 6, 8], 3, 2), (6, [2, 3], 1, 1)]
+        nₑ₋ = n₋ + 1 + nₑ
+        Ā, A, s, _ = schur_reference_problem(n, i₊, n₋, nₑ)
+        redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
+        redu_idxs = findnz(ℒ.kron(redu, redu))[1]
+        𝛔 = sparse(redu_idxs[Int.(range(1, nₑ^2, nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1.0, nₑ₋^2, nₑ₋^2)
+        B = Matrix(MMschur.compressed_permuted_mixed_kron(sparse(s), 𝛔) + MMschur.compressed_kron³(sparse(s)))
+        nc = size(B, 1)
+        C = randn(n, nc)
+        Xref = reshape((ℒ.I - ℒ.kron(B', A)) \ vec(C), n, nc)
+        X, ok, Z = MMschur.third_order_schur_solve(Ā, s, C, i₊, n₋, nₑ)
+        @test ok
+        @test isapprox(X, Xref, rtol = 1e-10)
+        @test isapprox(Z, X[i₊, :] * B, rtol = 1e-10)
+    end
+end
+
+@testset "Schur and doubling give the same third-order solution" begin
+    include("../models/FS2000.jl")
+    get_solution(FS2000)
+    MMschur.clear_solution_caches!(FS2000, :third_order)
+    a = get_solution(FS2000, algorithm = :third_order)
+    MMschur.clear_solution_caches!(FS2000, :third_order)
+    b = get_solution(FS2000, algorithm = :third_order, sylvester_algorithm = [:doubling, :doubling])
+    @test isapprox(collect(a), collect(b), rtol = 1e-10)
+end

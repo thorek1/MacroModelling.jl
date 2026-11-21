@@ -1872,7 +1872,7 @@ function rrule(::typeof(get_loglikelihood),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
@@ -2617,7 +2617,7 @@ function rrule(::typeof(get_irf),
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ?
-            syl_sum > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM :
+            DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM :
             sylvester_algorithm[2],
         lyapunov_algorithm = lyapunov_algorithm)
 
@@ -6150,7 +6150,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug    
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
-    sylv_alg_2nd = opts.sylvester_algorithm² == :schur ? :doubling : opts.sylvester_algorithm²
+    sylv_alg_2nd = opts.sylvester_algorithm² == :schur ? schur_fallback_sylvester_algorithm(size(B, 2)) : opts.sylvester_algorithm²
 
     # Doubling power-cache: enable capture so the pullback's adjoint solve can
     # reuse A^(2^k), B^(2^k) from this forward pass.
@@ -6261,7 +6261,7 @@ function rrule(::typeof(calculate_second_order_solution),
             ∂C, solved = second_order_schur_adjoint(Ā_schur, s_schur, Matrix{Float64}(∂𝐒₂), i₊, n₋, nₑ,
                                                     tol = opts.tol.second_order.ad.sylvester.acceptance_tol)
         end
-        if !solved
+        if !solved && !schur_used_2nd   # B was not formed on the Schur path
             ws = ℂ.sylvester_workspace
             cache_valid = cache_eligible_2nd &&
                           pow_iters_captured_2nd >= 1 &&
@@ -8603,7 +8603,7 @@ function rrule(::typeof(solve_sylvester_equation),
     # in transposed form directly, saving a post-hoc transpose pass.
     # (:schur means :doubling for a generic Sylvester equation.)
     if sylvester_algorithm == :schur
-        sylvester_algorithm = :doubling
+        sylvester_algorithm = schur_fallback_sylvester_algorithm(size(B, 2))
     end
     cache_eligible = sylvester_algorithm == :doubling
     if cache_eligible
@@ -17982,7 +17982,7 @@ function rrule(::typeof(get_statistics),
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
@@ -18581,7 +18581,7 @@ function rrule(::typeof(get_solution),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     estimation = true
 
@@ -19659,7 +19659,7 @@ function rrule(::typeof(get_loglikelihood),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)

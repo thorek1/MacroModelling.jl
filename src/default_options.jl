@@ -210,6 +210,8 @@ const DEFAULT_SYLVESTER_THRESHOLD = 10000
 const DEFAULT_LARGE_SYLVESTER_ALGORITHM = :bicgstab
 # Second order: the state-block Schur solver (falls back to :doubling).
 const DEFAULT_SECOND_ORDER_SYLVESTER_ALGORITHM = :schur
+# Third order: the state-block Schur solver (falls back by size to :doubling or :bicgstab).
+const DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM = :schur
 const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> DEFAULT_SECOND_ORDER_SYLVESTER_ALGORITHM
 
 # StatsPlots specific constants
