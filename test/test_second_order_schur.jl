@@ -103,3 +103,12 @@ end
     b = get_solution(FS2000, algorithm = :third_order, sylvester_algorithm = [:doubling, :doubling])
     @test isapprox(collect(a), collect(b), rtol = 1e-10)
 end
+
+@testset "Cold steady state and second order after a cache reset (GNSS_2010)" begin
+    include("../models/GNSS_2010.jl")
+    ss0 = collect(get_SS(GNSS_2010, derivatives = false))
+    MMschur.clear_solution_caches!(GNSS_2010, :second_order)
+    s2 = get_solution(GNSS_2010, algorithm = :second_order)
+    @test size(s2, 2) == GNSS_2010.constants.post_model_macro.nVars
+    @test isapprox(collect(get_SS(GNSS_2010, derivatives = false)), ss0, atol = 1e-10)
+end

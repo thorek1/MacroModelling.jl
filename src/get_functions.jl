@@ -2308,6 +2308,18 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 
     solution_matrix = 𝓂.caches.first_order_solution_matrix
 
+    if algorithm ∈ (:second_order, :pruned_second_order)
+        if size(𝓂.caches.second_order_solution, 2) == 0
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            error("Could not find a second order solution for the current parameters.")
+        end
+    elseif algorithm ∈ (:third_order, :pruned_third_order)
+        if size(𝓂.caches.third_order_solution, 2) == 0
+            if !use_workspaces; 𝓂.workspaces = orig_ws; end
+            error("Could not find a third order solution for the current parameters.")
+        end
+    end
+
     axis1 = [𝓂.constants.post_model_macro.past_not_future_and_mixed; :Volatility; 𝓂.constants.post_model_macro.exo]
 
     if any(x -> contains(string(x), "◖"), axis1)
