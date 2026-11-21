@@ -158,6 +158,7 @@ function qme_standard_schur_solve(A::AbstractMatrix{Float64},
     N = size(D, 1)
     fail = (zeros(0, 0), Inf, false, false)
     (N == nPfm + nFnpm && nPfm > 0 && nFnpm > 0) || return fail
+    (all(isfinite, D) && all(isfinite, E)) || return fail
 
     r = 1.0 - unit_root_tol
 
@@ -174,6 +175,7 @@ function qme_standard_schur_solve(A::AbstractMatrix{Float64},
             @. F = D - shift * E
         end
         anorm = ℒ.opnorm(F, 1)
+        (isfinite(anorm) && anorm > 0) || continue
         Ff = ℒ.lu!(F, check = false)
         ℒ.issuccess(Ff) || continue
         ℒ.LAPACK.gecon!('1', Ff.factors, anorm) > rcond_tol || continue
@@ -324,7 +326,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     copyto!(view(E, n+1:n+nMixed, nPfm+1:nPfm+nFnpm), I₊)
     
     if QME_STANDARD_SCHUR[] && R === Float64
-        X_std, reached_tol_std, ok_std, has_ur_std = qme_standard_schur_solve(A, B, C, D, E, T, idx_constants, nPfm, nFnpm)
+        X_std, reached_tol_std, ok_std, has_ur_std = try
+            qme_standard_schur_solve(A, B, C, D, E, T, idx_constants, nPfm, nFnpm)
+        catch
+            (zeros(0, 0), Inf, false, false)
+        end
         if ok_std && reached_tol_std < min(tol.acceptance_tol, sqrt(eps(Float64)))
             X = if caching
                 existing_sol = cache.qme_solution
