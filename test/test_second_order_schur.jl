@@ -130,3 +130,22 @@ end
         @test isapprox(sols[1], sols[2], rtol = 1e-10)
     end
 end
+
+@testset "Third-order moment dependencies keep states that enter with shocks" begin
+    # z loads on σ₋ only through σ₋ ⊗ ε (second order) and σ₋ ⊗ σ₋ ⊗ ε (third order).
+    @model sv_dependency_test begin
+        z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
+        log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
+    end
+    @parameters sv_dependency_test silent = true begin
+        λ = 0.95; ρ = 0.9; σ̄ = 0.1; η = 0.3
+    end
+    m = sv_dependency_test
+    sd = get_std(m, algorithm = :pruned_third_order, derivatives = false)
+    MMschur.invalidate_cache_validity!(m)
+    Σ_full, = MMschur.calculate_third_order_moments(m.parameter_values, :full_covar, m)
+    iz = findfirst(==(:z), m.constants.post_model_macro.var)
+    @test isapprox(sd(:z), sqrt(Σ_full[iz, iz]), rtol = 1e-10)
+    # a 2-million-period pruned simulation gives Var(z) ≈ 0.2161
+    @test isapprox(sd(:z)^2, 0.2161, rtol = 0.02)
+end

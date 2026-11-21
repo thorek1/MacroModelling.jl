@@ -2327,6 +2327,38 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
+
+# For each row in `rows`, mark the states (of nˢ) that the row loads on in 𝐒₁ (state
+# columns), 𝐒₂ (pairs over s⁺ = [states; volatility; shocks]) and 𝐒₃ (triples over s⁺).
+# A pair or triple column marks every state it contains, also when combined with a shock
+# or with the volatility.
+function state_dependency_links(rows::AbstractVector{Int},
+                                𝐒₁::AbstractMatrix{<:Real},
+                                𝐒₂::Union{Nothing, AbstractMatrix{<:Real}},
+                                𝐒₃::Union{Nothing, AbstractMatrix{<:Real}},
+                                nˢ::Int, nᵉ::Int, tol::AbstractFloat)
+    L = falses(length(rows), nˢ)
+    n⁺ = nˢ + 1 + nᵉ
+    for (r, row) in enumerate(rows), a in 1:nˢ
+        abs(𝐒₁[row, a]) > tol && (L[r, a] = true)
+    end
+    for (S, order) in ((𝐒₂, 2), (𝐒₃, 3))
+        isnothing(S) && continue
+        Sr = sparse(S[rows, :])
+        I_r, J_c, V = findnz(Sr)
+        for k in eachindex(V)
+            abs(V[k]) > tol || continue
+            c = J_c[k] - 1
+            for _ in 1:order
+                idx = c % n⁺ + 1
+                c ÷= n⁺
+                idx <= nˢ && (L[I_r[k], idx] = true)
+            end
+        end
+    end
+    return L
+end
+
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     constants::constants,
                                     variables::Union{Symbol_input,String_input};
@@ -2604,66 +2636,22 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         observables = T.var[var_idx]
     end
 
-    # Build selectors for state variables in the augmented state vector [states; 1; shocks]
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    
-    # Kronecker product indices for interactions
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
-    
-    # Precompute state indices and matrix slices
     state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
-    𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
     has_S₂ = nnz(𝐒₂) > 0
     has_S₃ = nnz(𝐒₃) > 0
-    𝐒₂_states = has_S₂ ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-    𝐒₃_states = has_S₃ ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+
+    # State links of the state rows: L[i, a] is true when state i loads on state a in any
+    # term of the solution, including terms that mix it with shocks or the volatility
+    # (e.g. σ₋ ⊗ ε). Dropping those links loses states such as stochastic volatility.
+    L_states = state_dependency_links(state_idx_in_var, 𝐒₁, has_S₂ ? 𝐒₂ : nothing, has_S₃ ? 𝐒₃ : nothing, nˢ, nᵉ, tol)
 
     function compute_dependencies(obs_in_var_idx::Vector{Int})
-        # First order dependencies
-        dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+        L_obs = state_dependency_links(obs_in_var_idx, 𝐒₁, has_S₂ ? 𝐒₂ : nothing, has_S₃ ? 𝐒₃ : nothing, nˢ, nᵉ, tol)
+        dependencies_in_states = vec(any(L_obs, dims = 1))
 
-        # Second order dependencies from quadratic terms (s ⊗ s)
-        if has_S₂
-            s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-            s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
-        end
-
-        # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-        if has_S₃
-            s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-            s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .|
-                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .|
-                                                             vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
-        end
-
-        # Propagate dependencies through the system (iterative closure)
+        # Closure: add every state that a dependency loads on
         while true
-            prev_dependencies = dependencies_in_states
-
-            # First order propagation
-            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
-
-            # Second order propagation
-            if !isnothing(𝐒₂_states)
-                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
-                if any(selector)
-                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
-                    new_deps = new_deps .| affected
-                end
-            end
-
-            # Third order propagation
-            if !isnothing(𝐒₃_states)
-                selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
-                if any(selector)
-                    affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
-                    new_deps = new_deps .| affected
-                end
-            end
-
+            new_deps = dependencies_in_states .| vec(any(L_states[dependencies_in_states, :], dims = 1))
             if new_deps == dependencies_in_states
                 break
             end
