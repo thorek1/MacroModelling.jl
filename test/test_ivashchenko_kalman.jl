@@ -118,6 +118,16 @@ import AxisKeys: KeyedArray
             @test factorized ≈ direct rtol = 1e-10 atol = 1e-10
         end
 
+        # The linear loading on the random inputs must be the exact Jacobian
+        # of the polynomial map at the input mean.
+        v̄ = vcat(mean_state, 1.0, zeros(sys.nExo))
+        polynomial_map(v) = begin
+            out = sys.S1 * v + sys.S2 * MacroModelling.compressed_kron²_power(v) / 2
+            order == :third_order && (out += sys.S3 * MacroModelling.compressed_kron³_power(v) / 6)
+            out
+        end
+        @test ws.linear ≈ ForwardDiff.jacobian(polynomial_map, v̄)[:, sys.random_indices] rtol = 1e-10 atol = 1e-12
+
         selected_S1 = sys.S1
         selected_S2 = sys.S2
         selected_S3 = order == :third_order ? sys.S3 : nothing

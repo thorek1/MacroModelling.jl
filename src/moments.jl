@@ -134,6 +134,43 @@ function sparse_ABAt(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T};
 end
 
 
+"""
+First-order covariance from the state block only (as in the Rust port).
+
+With `A = P E` (`P = sol[:, 1:nPast]`, `E` selects the past states), the
+Lyapunov equation `Σ = A Σ A' + CC` reduces exactly to
+
+    Y = B Y B' + CC[past, past],   B = P[past, :]
+    Σ = P Y P' + CC,
+
+so only an `nPast × nPast` equation is solved and the full covariance is
+lifted once. Use it only without unit roots: the deflated unit-root solve
+needs the full system to place its NaN masks.
+"""
+function first_order_covariance_from_states(sol::AbstractMatrix{R},
+                                            CC::AbstractMatrix{R},
+                                            nPast::Int,
+                                            past_idx,
+                                            lyap_ws;
+                                            initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0, 0),
+                                            lyapunov_algorithm::Symbol = :doubling,
+                                            tol = SolverTolerances(),
+                                            verbose::Bool = false) where R <: Real
+    nPast == 0 && return Matrix{R}(CC), true
+    P = sol[:, 1:nPast]
+    B = P[past_idx, :]
+    CCs = CC[past_idx, past_idx]
+    guess = size(initial_guess) == size(CC) ? initial_guess[past_idx, past_idx] : zeros(0, 0)
+    Y, solved = solve_lyapunov_equation(B, CCs, lyap_ws,
+                                        initial_guess = guess,
+                                        lyapunov_algorithm = lyapunov_algorithm,
+                                        tol = tol,
+                                        verbose = verbose)
+    Σ = P * Matrix(Y) * P' + CC
+    return (Σ + Σ') / 2, solved
+end
+
+
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
@@ -181,15 +218,26 @@ function calculate_covariance(parameters::Vector{R},
         return cached_covar, sol, ∇₁, SS_and_pars, true
     end
 
-    # Ensure lyapunov workspace is properly sized and get it
-    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
-
-    covar_raw, solved = solve_lyapunov_equation(A, CC, lyap_ws,
-                            initial_guess = cached_covar,
-                            lyapunov_algorithm = opts.lyapunov_algorithm, 
-                            tol = opts.tol.first_order.lyapunov,
-                            verbose = opts.verbose,
-                            has_unit_roots = 𝓂.caches.has_unit_roots)
+    covar_raw, solved = if 𝓂.caches.has_unit_roots
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
+        solve_lyapunov_equation(A, CC, lyap_ws,
+                                initial_guess = cached_covar,
+                                lyapunov_algorithm = opts.lyapunov_algorithm,
+                                tol = opts.tol.first_order.lyapunov,
+                                verbose = opts.verbose,
+                                has_unit_roots = true)
+    else
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nPast_not_future_and_mixed, :first_order)
+        # No warm start: the state block of a cached Σ is a solution, but lifting it again
+        # moves Σ by round-off on every call, and the square roots of near-zero
+        # variances (e.g. smoothed standard deviations) amplify that. A cold solve on
+        # the nPast block is cheap and gives the same result on every call.
+        first_order_covariance_from_states(sol, CC, T.nPast_not_future_and_mixed,
+                                           T.past_not_future_and_mixed_idx, lyap_ws;
+                                           lyapunov_algorithm = opts.lyapunov_algorithm,
+                                           tol = opts.tol.first_order.lyapunov,
+                                           verbose = opts.verbose)
+    end
 
     # Safety net: if Lyapunov result contains NaN (deflation was used),
     # ensure the flag is set for subsequent calls even if QME didn't detect it
@@ -1591,6 +1639,541 @@ function solve_block_triangular_lyapunov(A_UU::AbstractMatrix{T},
 end
 
 
+# ── Structured solve of the pruned third-order covariance ──────────────────
+#
+# State order of the pruned third-order system:
+#   [x_f (nˢ); x_s (nˢ); vech(x_f⊗x_f) (n₂ˢ); x_t (nˢ); x_f⊗x_s (nˢ²); vech₃(x_f⊗³) (n₃ˢ)]
+# The Gaussian blocks G = (x_f, x_f⊗x_f, x_f⊗³) depend only on themselves, with
+# the transition blockdiag(S, L₂(S⊗S)D₂, L₃(S⊗S⊗S)D₃), S = s_to_s₁. Their
+# covariance has a closed form: the second-order moments give the x_f and x_f⊗x_f
+# blocks, and Isserlis' theorem gives the x_f⊗³ blocks (odd moments vanish).
+# Only the other blocks H = (x_s, x_t, x_f⊗x_s) need a solve:
+#   Σ_HG = A_HH Σ_HG A_GGᵀ + A_HG Σ_GG A_GGᵀ + C_HG        (Sylvester, by doubling)
+#   Σ_HH = A_HH Σ_HH A_HHᵀ + C_HH + A_HG Σ_GG A_HGᵀ
+#          + A_HH Σ_HG A_HGᵀ + A_HG Σ_GH A_HHᵀ               (Lyapunov, size |H|)
+# A_GGᵀ is applied with mode products of S, so the n₃ˢ × n₃ˢ block is never formed.
+
+const PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE = Ref(true)
+
+# W (m × nᵏ, column digits in kron order) ← W · (Sᵀ)⊗ᵏ, one mode at a time with gemm on
+# contiguous slices (no permutation of the tensor).
+function apply_kron_power_right(W::Matrix{Float64}, S::Matrix{Float64}, n::Int, k::Int)
+    m = size(W, 1)
+    St = Matrix(S')
+    X = copy(W)
+    Y = similar(W)
+    x = vec(X)
+    y = vec(Y)
+    for p in 1:k
+        # dims (m, n_k, …, n_1) in memory order; mode p counted from the fastest digit
+        left = m * n^(p - 1)
+        right = n^(k - p)
+        blk = left * n
+        for r in 1:right
+            rng = ((r - 1) * blk + 1):(r * blk)
+            src = reshape(view(x, rng), left, n)
+            dst = reshape(view(y, rng), left, n)
+            ℒ.mul!(dst, src, St)
+        end
+        X, Y = Y, X
+        x, y = y, x
+    end
+    return X
+end
+
+# W ← W · (M_kᵀ ⊗ … ⊗ M_1ᵀ): mode p (counted from the fastest digit) gets mats[p].
+function apply_kron_modes_right(W::Matrix{Float64}, mats::Vector{Matrix{Float64}}, n::Int)
+    k = length(mats)
+    m = size(W, 1)
+    X = copy(W)
+    Y = similar(W)
+    x = vec(X)
+    y = vec(Y)
+    for p in 1:k
+        Mt = Matrix(mats[p]')
+        left = m * n^(p - 1)
+        right = n^(k - p)
+        blk = left * n
+        for r in 1:right
+            rng = ((r - 1) * blk + 1):(r * blk)
+            ℒ.mul!(reshape(view(y, rng), left, n), reshape(view(x, rng), left, n), Mt)
+        end
+        X, Y = Y, X
+        x, y = y, x
+    end
+    return X
+end
+
+# Derivative of apply_gaussian_transition_right in S along dS.
+function apply_gaussian_transition_right_dS(X::Matrix{Float64}, S::Matrix{Float64}, dS::Matrix{Float64}, n::Int,
+                                            d₂::Vector{Int}, l₂::Vector{Int},
+                                            d₃::Vector{Int}, l₃::Vector{Int})
+    n₂ = length(l₂)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):size(X, 2)
+    out = similar(X)
+    out[:, r1] = X[:, r1] * dS'
+    X₂ = X[:, r2][:, d₂]
+    t₂ = apply_kron_modes_right(X₂, [dS, S], n)
+    t₂ .+= apply_kron_modes_right(X₂, [S, dS], n)
+    out[:, r2] = t₂[:, l₂]
+    X₃ = X[:, r3][:, d₃]
+    t₃ = apply_kron_modes_right(X₃, [dS, S, S], n)
+    t₃ .+= apply_kron_modes_right(X₃, [S, dS, S], n)
+    t₃ .+= apply_kron_modes_right(X₃, [S, S, dS], n)
+    out[:, r3] = t₃[:, l₃]
+    return out
+end
+
+# Column map of a 0/1 matrix with one nonzero per row: M * Xᵀ… is a column gather
+function single_entry_row_columns(M::SparseMatrixCSC{Float64, Int})
+    Mt = sparse(M')
+    cols = Vector{Int}(undef, size(M, 1))
+    for r in 1:size(M, 1)
+        rng = SparseArrays.nzrange(Mt, r)
+        length(rng) == 1 && SparseArrays.nonzeros(Mt)[first(rng)] == 1 || return Int[]
+        cols[r] = SparseArrays.rowvals(Mt)[first(rng)]
+    end
+    return cols
+end
+
+# X_G (m × |G|) ← X_G · A_GGᵀ for the transition S^(2ʲ) of the Gaussian blocks.
+# dᵏ[c]: compressed index of full index c (rows of Dₖ); lᵏ[r]: full index kept in row r of Lₖ.
+function apply_gaussian_transition_right(X::Matrix{Float64}, S::Matrix{Float64}, n::Int,
+                                         d₂::Vector{Int}, l₂::Vector{Int},
+                                         d₃::Vector{Int}, l₃::Vector{Int})
+    n₂ = length(l₂)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):size(X, 2)
+    out = similar(X)
+    out[:, r1] = X[:, r1] * S'
+    X₂ = X[:, r2]
+    out[:, r2] = apply_kron_power_right(X₂[:, d₂], S, n, 2)[:, l₂]
+    X₃ = X[:, r3]
+    out[:, r3] = apply_kron_power_right(X₃[:, d₃], S, n, 3)[:, l₃]
+    return out
+end
+
+# L * kron(A, B) for an elimination matrix L (one 1 per row): only the kept rows
+# of the Kronecker product are formed.
+function eliminated_kron(L::SparseMatrixCSC{Float64, Int}, A::AbstractMatrix, B::AbstractMatrix)
+    rows = single_entry_row_columns(L)
+    isempty(rows) && return L * ℒ.kron(A, B)
+    Ad = Matrix(A)
+    Bd = Matrix(B)
+    mB, nB = size(Bd)
+    nA = size(Ad, 2)
+    out = zeros(promote_type(eltype(Ad), eltype(Bd)), length(rows), nA * nB)
+    @inbounds for (k, r) in enumerate(rows)
+        i = (r - 1) ÷ mB + 1
+        j = (r - 1) % mB + 1
+        for a in 1:nA
+            αa = Ad[i, a]
+            iszero(αa) && continue
+            off = (a - 1) * nB
+            for b in 1:nB
+                out[k, off + b] = αa * Bd[j, b]
+            end
+        end
+    end
+    return out
+end
+
+# Representative index tuples of the rows of an elimination matrix Lₖ (one 1 per row)
+function elimination_tuples(L::SparseMatrixCSC{Float64, Int}, n::Int, k::Int)
+    Lt = sparse(L')
+    tuples = Matrix{Int}(undef, k, size(L, 1))
+    for r in 1:size(L, 1)
+        c = SparseArrays.rowvals(Lt)[first(SparseArrays.nzrange(Lt, r))] - 1
+        for d in k:-1:1
+            tuples[d, r] = c % n + 1
+            c ÷= n
+        end
+    end
+    return tuples
+end
+
+function gaussian_block_covariance(Σ₁::Matrix{T}, Σ̂ᶻ₂::AbstractMatrix{T}, n::Int,
+                                   L₂::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int}) where T <: Real
+    n₂ = size(L₂, 1)
+    n₃ = size(L₃, 1)
+    nG = n + n₂ + n₃
+    Σ = zeros(T, nG, nG)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):nG
+    rff = (2 * n + 1):size(Σ̂ᶻ₂, 1)
+    Σ[r1, r1] = Σ̂ᶻ₂[1:n, 1:n]
+    Σ[r1, r2] = Σ̂ᶻ₂[1:n, rff] * L₂'
+    Σ[r2, r1] = Σ[r1, r2]'
+    Σ[r2, r2] = L₂ * Σ̂ᶻ₂[rff, rff] * L₂'
+
+    t = elimination_tuples(L₃, n, 3)
+    # E[x_i x_j x_k x_l] with l from x_f
+    @inbounds for a in 1:n₃
+        i, j, k = t[1, a], t[2, a], t[3, a]
+        for l in 1:n
+            v = Σ₁[i, j] * Σ₁[k, l] + Σ₁[i, k] * Σ₁[j, l] + Σ₁[i, l] * Σ₁[j, k]
+            Σ[n + n₂ + a, l] = v
+            Σ[l, n + n₂ + a] = v
+        end
+    end
+    # E[x_i x_j x_k x_l x_m x_o] (15 pairings)
+    @inbounds for b in 1:n₃
+        l, m, o = t[1, b], t[2, b], t[3, b]
+        for a in b:n₃
+            i, j, k = t[1, a], t[2, a], t[3, a]
+            v = Σ₁[i, j] * (Σ₁[k, l] * Σ₁[m, o] + Σ₁[k, m] * Σ₁[l, o] + Σ₁[k, o] * Σ₁[l, m]) +
+                Σ₁[i, k] * (Σ₁[j, l] * Σ₁[m, o] + Σ₁[j, m] * Σ₁[l, o] + Σ₁[j, o] * Σ₁[l, m]) +
+                Σ₁[i, l] * (Σ₁[j, k] * Σ₁[m, o] + Σ₁[j, m] * Σ₁[k, o] + Σ₁[j, o] * Σ₁[k, m]) +
+                Σ₁[i, m] * (Σ₁[j, k] * Σ₁[l, o] + Σ₁[j, l] * Σ₁[k, o] + Σ₁[j, o] * Σ₁[k, l]) +
+                Σ₁[i, o] * (Σ₁[j, k] * Σ₁[l, m] + Σ₁[j, l] * Σ₁[k, m] + Σ₁[j, m] * Σ₁[k, l])
+            Σ[n + n₂ + a, n + n₂ + b] = v
+            Σ[n + n₂ + b, n + n₂ + a] = v
+        end
+    end
+    return Σ
+end
+
+"""
+    solve_pruned_third_order_covariance_structured(...)
+
+Covariance of the pruned third-order state, using the closed form of the Gaussian
+blocks. Returns `(Σᶻ₃, solved)`; `solved = false` asks the caller to use the
+generic Lyapunov solve.
+"""
+function solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        ê_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        Γ₃::SparseMatrixCSC{Float64, Int},
+                                                        Eᴸᶻ::SparseMatrixCSC{Float64, Int},
+                                                        s_to_s₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₂::AbstractMatrix{Float64},
+                                                        n::Int,
+                                                        D₂::SparseMatrixCSC{Float64, Int}, L₂::SparseMatrixCSC{Float64, Int},
+                                                        D₃::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int},
+                                                        𝓂_workspaces::workspaces, opts::CalculationOptions;
+                                                        has_unit_roots::Bool = false,
+                                                        max_iter::Int = 100)
+    n₂ = size(D₂, 2)
+    n₃ = size(D₃, 2)
+    N = size(ŝ_to_ŝ₃, 1)
+    N == 3 * n + n₂ + n^2 + n₃ || return zeros(0, 0), false
+
+    G = vcat(1:n, (2 * n + 1):(2 * n + n₂), (N - n₃ + 1):N)
+    H = vcat((n + 1):(2 * n), (2 * n + n₂ + 1):(N - n₃))
+
+    S = Matrix{Float64}(s_to_s₁)
+    maximum(abs, ℒ.eigvals(S)) < 1 - 1e-8 || return zeros(0, 0), false
+
+    Σ_GG = gaussian_block_covariance(Matrix{Float64}(Σ̂ᶻ₁), Σ̂ᶻ₂, n, L₂, L₃)
+
+    A_HH = Matrix(ŝ_to_ŝ₃[H, H])
+    A_HG = Matrix(ŝ_to_ŝ₃[H, G])
+
+    # rows H of C = ê Γ êᵀ + ê Eᴸᶻ Aᵀ + A Eᴸᶻᵀ êᵀ
+    ê_H = ê_to_ŝ₃[H, :]
+    C_H = Matrix(ê_H * Γ₃ * ê_to_ŝ₃' + ê_H * Eᴸᶻ * ŝ_to_ŝ₃' + ŝ_to_ŝ₃[H, :] * Eᴸᶻ' * ê_to_ŝ₃')
+    C_HG = C_H[:, G]
+    C_HH = C_H[:, H]
+
+    A_HG_Σ_GG = A_HG * Σ_GG
+
+    d₂ = single_entry_row_columns(D₂)
+    l₂ = single_entry_row_columns(L₂)
+    d₃ = single_entry_row_columns(D₃)
+    l₃ = single_entry_row_columns(L₃)
+    (isempty(d₂) || isempty(l₂) || isempty(d₃) || isempty(l₃)) && return zeros(0, 0), false
+
+    # Σ_HG by doubling: X = Σⱼ A_HHʲ R (A_GGʲ)ᵀ
+    X = apply_gaussian_transition_right(A_HG_Σ_GG, S, n, d₂, l₂, d₃, l₃) + C_HG
+    Aₖ = A_HH
+    Sₖ = S
+    tol = opts.tol.third_order.lyapunov.atol
+    converged = false
+    for it in 1:max_iter
+        Y = Aₖ * apply_gaussian_transition_right(X, Sₖ, n, d₂, l₂, d₃, l₃)
+        X .+= Y
+        if ℒ.norm(Y) <= max(tol, eps()) * ℒ.norm(X)
+            converged = true
+            break
+        end
+        Aₖ = Aₖ * Aₖ
+        Sₖ = Sₖ * Sₖ
+    end
+    converged || return zeros(0, 0), false
+    Σ_HG = X
+
+    tmp = A_HH * Σ_HG * A_HG'
+    C̃ = C_HH + A_HG_Σ_GG * A_HG' + tmp + tmp'
+    C̃ = (C̃ + C̃') / 2
+
+    lyap_ws = ensure_lyapunov_workspace!(𝓂_workspaces, length(H), :block)
+    Σ_HH, info = solve_lyapunov_equation(A_HH, C̃, lyap_ws,
+                                         lyapunov_algorithm = opts.lyapunov_algorithm,
+                                         tol = opts.tol.third_order.lyapunov,
+                                         verbose = opts.verbose,
+                                         has_unit_roots = has_unit_roots)
+    info || return zeros(0, 0), false
+
+    Σᶻ₃ = zeros(N, N)
+    Σᶻ₃[G, G] = Σ_GG
+    Σᶻ₃[H, G] = Σ_HG
+    Σᶻ₃[G, H] = Σ_HG'
+    Σᶻ₃[H, H] = Σ_HH
+    return Σᶻ₃, true
+end
+
+# Other number types use the generic Lyapunov solve; ForwardDiffExt adds a
+# method for ForwardDiff.Dual.
+solve_pruned_third_order_covariance_structured(args...; kwargs...) = (zeros(0, 0), false)
+
+
+# X (m × |G|) ← X · A_GG (untransposed), the adjoint of apply_gaussian_transition_right
+function apply_gaussian_transition_right_adjoint(X::Matrix{Float64}, S::Matrix{Float64}, n::Int,
+                                                 d₂::Vector{Int}, l₂::Vector{Int},
+                                                 d₃::Vector{Int}, l₃::Vector{Int})
+    m = size(X, 1)
+    n₂ = length(l₂)
+    n₃ = length(l₃)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    r3 = (n + n₂ + 1):size(X, 2)
+    St = Matrix(S')
+    out = zeros(m, size(X, 2))
+    out[:, r1] = X[:, r1] * S
+    for (rk, dk, lk, k, nk) in ((r2, d₂, l₂, 2, n₂), (r3, d₃, l₃, 3, n₃))
+        W = zeros(m, n^k)
+        W[:, lk] = X[:, rk]
+        Z = apply_kron_power_right(W, St, n, k)
+        acc = zeros(m, nk)
+        @inbounds for c in 1:n^k
+            dc = dk[c]
+            @simd for i in 1:m
+                acc[i, dc] += Z[i, c]
+            end
+        end
+        out[:, rk] = acc
+    end
+    return out
+end
+
+const ISSERLIS_PAIRINGS_6 = let
+    out = NTuple{6, Int}[]
+    for b in 2:6
+        rest = setdiff(2:6, b)
+        c = rest[1]
+        for d in rest[2:end]
+            e, f = setdiff(rest[2:end], d)
+            push!(out, (1, b, c, d, e, f))
+        end
+    end
+    out
+end
+
+# Adjoint of gaussian_block_covariance: returns (∂Σ₁, ∂Σ̂ᶻ₂)
+function gaussian_block_covariance_pullback(∂Σ::Matrix{Float64}, Σ₁::Matrix{Float64}, Σ̂ᶻ₂::AbstractMatrix{Float64},
+                                            n::Int, L₂::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int})
+    n₂ = size(L₂, 1)
+    n₃ = size(L₃, 1)
+    r1 = 1:n
+    r2 = n .+ (1:n₂)
+    rff = (2 * n + 1):size(Σ̂ᶻ₂, 1)
+    o₃ = n + n₂
+    ∂Σ₁ = zeros(n, n)
+    ∂Σ̂ᶻ₂ = zeros(size(Σ̂ᶻ₂))
+    ∂Σ̂ᶻ₂[1:n, 1:n] .+= ∂Σ[r1, r1]
+    ∂Σ̂ᶻ₂[1:n, rff] .+= ∂Σ[r1, r2] * L₂ + Matrix(∂Σ[r2, r1]') * L₂
+    ∂Σ̂ᶻ₂[rff, rff] .+= L₂' * ∂Σ[r2, r2] * L₂
+
+    t = elimination_tuples(L₃, n, 3)
+    @inbounds for a in 1:n₃
+        i, j, k = t[1, a], t[2, a], t[3, a]
+        for l in 1:n
+            g = ∂Σ[o₃ + a, l] + ∂Σ[l, o₃ + a]
+            iszero(g) && continue
+            ∂Σ₁[i, j] += g * Σ₁[k, l];  ∂Σ₁[k, l] += g * Σ₁[i, j]
+            ∂Σ₁[i, k] += g * Σ₁[j, l];  ∂Σ₁[j, l] += g * Σ₁[i, k]
+            ∂Σ₁[i, l] += g * Σ₁[j, k];  ∂Σ₁[j, k] += g * Σ₁[i, l]
+        end
+    end
+    idx = zeros(Int, 6)
+    @inbounds for b in 1:n₃, a in b:n₃
+        g = ∂Σ[o₃ + a, o₃ + b] + (a == b ? 0.0 : ∂Σ[o₃ + b, o₃ + a])
+        iszero(g) && continue
+        idx[1] = t[1, a]; idx[2] = t[2, a]; idx[3] = t[3, a]
+        idx[4] = t[1, b]; idx[5] = t[2, b]; idx[6] = t[3, b]
+        for p in ISSERLIS_PAIRINGS_6
+            p1, p2 = idx[p[1]], idx[p[2]]
+            q1, q2 = idx[p[3]], idx[p[4]]
+            u1, u2 = idx[p[5]], idx[p[6]]
+            x = Σ₁[p1, p2]; y = Σ₁[q1, q2]; z = Σ₁[u1, u2]
+            ∂Σ₁[p1, p2] += g * y * z
+            ∂Σ₁[q1, q2] += g * x * z
+            ∂Σ₁[u1, u2] += g * x * y
+        end
+    end
+    return ∂Σ₁, ∂Σ̂ᶻ₂
+end
+
+"""
+    solve_pruned_third_order_covariance_structured_with_pullback(...)
+
+Same as `solve_pruned_third_order_covariance_structured`, and also returns a pullback
+`∂Σᶻ₃ ↦ (∂ŝ_to_ŝ₃, ∂C, ∂Σ̂ᶻ₁, ∂Σ̂ᶻ₂)`, with `∂C` the cotangent of
+`C = ê Γ₃ êᵀ + ê Eᴸᶻ ŝ_to_ŝ₃ᵀ + ŝ_to_ŝ₃ Eᴸᶻᵀ êᵀ` (only rows of the non-Gaussian
+states are nonzero). Returns `(Σᶻ₃, solved, pullback)`.
+"""
+function solve_pruned_third_order_covariance_structured_with_pullback(ŝ_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        ê_to_ŝ₃::SparseMatrixCSC{Float64, Int},
+                                                        Γ₃::SparseMatrixCSC{Float64, Int},
+                                                        Eᴸᶻ::SparseMatrixCSC{Float64, Int},
+                                                        s_to_s₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₁::AbstractMatrix{Float64},
+                                                        Σ̂ᶻ₂::AbstractMatrix{Float64},
+                                                        n::Int,
+                                                        D₂::SparseMatrixCSC{Float64, Int}, L₂::SparseMatrixCSC{Float64, Int},
+                                                        D₃::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int},
+                                                        opts::CalculationOptions;
+                                                        max_iter::Int = 100)
+    fail = (zeros(0, 0), false, nothing)
+    n₂ = size(D₂, 2)
+    n₃ = size(D₃, 2)
+    N = size(ŝ_to_ŝ₃, 1)
+    N == 3 * n + n₂ + n^2 + n₃ || return fail
+
+    G = vcat(1:n, (2 * n + 1):(2 * n + n₂), (N - n₃ + 1):N)
+    H = vcat((n + 1):(2 * n), (2 * n + n₂ + 1):(N - n₃))
+
+    S = Matrix{Float64}(s_to_s₁)
+    maximum(abs, ℒ.eigvals(S)) < 1 - 1e-8 || return fail
+
+    d₂ = single_entry_row_columns(D₂)
+    l₂ = single_entry_row_columns(L₂)
+    d₃ = single_entry_row_columns(D₃)
+    l₃ = single_entry_row_columns(L₃)
+    (isempty(d₂) || isempty(l₂) || isempty(d₃) || isempty(l₃)) && return fail
+
+    Σ₁ = Matrix{Float64}(Σ̂ᶻ₁)
+    Σ_GG = gaussian_block_covariance(Σ₁, Σ̂ᶻ₂, n, L₂, L₃)
+
+    A_HH = Matrix(ŝ_to_ŝ₃[H, H])
+    A_HG = Matrix(ŝ_to_ŝ₃[H, G])
+
+    ê_H = ê_to_ŝ₃[H, :]
+    C_H = Matrix(ê_H * Γ₃ * ê_to_ŝ₃' + ê_H * Eᴸᶻ * ŝ_to_ŝ₃' + ŝ_to_ŝ₃[H, :] * Eᴸᶻ' * ê_to_ŝ₃')
+    C_HG = C_H[:, G]
+    C_HH = C_H[:, H]
+
+    P = A_HG * Σ_GG
+    R = apply_gaussian_transition_right(P, S, n, d₂, l₂, d₃, l₃) + C_HG
+
+    tol = max(opts.tol.third_order.lyapunov.atol, eps())
+
+    # Sylvester X = A_HH X A_GGᵀ + R by doubling
+    X = copy(R)
+    Aₖ = A_HH
+    Sₖ = S
+    converged = false
+    for _ in 1:max_iter
+        Y = Aₖ * apply_gaussian_transition_right(X, Sₖ, n, d₂, l₂, d₃, l₃)
+        X .+= Y
+        if ℒ.norm(Y) <= tol * ℒ.norm(X)
+            converged = true
+            break
+        end
+        Aₖ = Aₖ * Aₖ
+        Sₖ = Sₖ * Sₖ
+    end
+    converged || return fail
+
+    tmp = A_HH * X * A_HG'
+    C̃ = C_HH + P * A_HG' + tmp + tmp'
+    C̃ = (C̃ + C̃') / 2
+
+    lyap_ws = Lyapunov_workspace(length(H))
+    lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A_HH, C̃, lyap_ws,
+                              lyapunov_algorithm = opts.lyapunov_algorithm,
+                              tol = opts.tol.third_order.ad.lyapunov,
+                              verbose = opts.verbose)
+    Σ_HH = copy(lyap_out[1])
+    lyap_out[2] || return fail
+
+    Σᶻ₃ = zeros(N, N)
+    Σᶻ₃[G, G] = Σ_GG
+    Σᶻ₃[H, G] = X
+    Σᶻ₃[G, H] = X'
+    Σᶻ₃[H, H] = Σ_HH
+
+    function structured_covariance_pullback(∂Σᶻ₃::AbstractMatrix)
+        ∂Σ = Matrix{Float64}(∂Σᶻ₃)
+        ∂Σ_GG = ∂Σ[G, G]
+        ∂X = ∂Σ[H, G] + Matrix(∂Σ[G, H]')
+        ∂A_HH = zeros(length(H), length(H))
+        ∂A_HG = zeros(length(H), length(G))
+        ∂A_GG = zeros(length(G), length(G))
+        ∂C_HH = zeros(length(H), length(H))
+
+        lg = lyap_pb((∂Σ[H, H], NoTangent()))
+        if !(lg[2] isa AbstractZero)
+            ∂A_HH .+= lg[2]
+            ∂C̃ = lg[3]
+            ∂C̃s = (∂C̃ + ∂C̃') / 2
+            ∂C_HH .+= ∂C̃s
+            # P A_HGᵀ
+            ∂P = ∂C̃s * A_HG
+            ∂A_HG .+= ∂C̃s' * P
+            # tmp + tmpᵀ, tmp = A_HH X A_HGᵀ
+            ∂tmp = ∂C̃s + ∂C̃s'
+            XA = X * A_HG'
+            ∂A_HH .+= ∂tmp * XA'
+            ∂X .+= A_HH' * ∂tmp * A_HG
+            ∂A_HG .+= ∂tmp' * (A_HH * X)
+        else
+            ∂P = zeros(size(P))
+        end
+
+        # adjoint Sylvester: Y = A_HHᵀ Y A_GG + ∂X
+        Y = copy(∂X)
+        Bₖ = Matrix(A_HH')
+        Sₖ = S
+        for _ in 1:max_iter
+            Z = Bₖ * apply_gaussian_transition_right_adjoint(Y, Sₖ, n, d₂, l₂, d₃, l₃)
+            Y .+= Z
+            ℒ.norm(Z) <= tol * max(ℒ.norm(Y), floatmin()) && break
+            Bₖ = Bₖ * Bₖ
+            Sₖ = Sₖ * Sₖ
+        end
+
+        # X = A_HH X A_GGᵀ + R
+        ∂A_HH .+= Y * apply_gaussian_transition_right(X, S, n, d₂, l₂, d₃, l₃)'
+        ∂A_GG .+= Y' * (A_HH * X)
+        # R = P A_GGᵀ + C_HG
+        ∂C_HG = Y
+        ∂P .+= apply_gaussian_transition_right_adjoint(Y, S, n, d₂, l₂, d₃, l₃)
+        ∂A_GG .+= Y' * P
+        # P = A_HG Σ_GG
+        ∂A_HG .+= ∂P * Σ_GG
+        ∂Σ_GG .+= A_HG' * ∂P
+
+        ∂Σ₁, ∂Σ̂ᶻ₂ = gaussian_block_covariance_pullback(∂Σ_GG, Σ₁, Σ̂ᶻ₂, n, L₂, L₃)
+
+        ∂A = zeros(N, N)
+        ∂A[H, H] = ∂A_HH
+        ∂A[H, G] = ∂A_HG
+        ∂A[G, G] = ∂A_GG
+        ∂C = zeros(N, N)
+        ∂C[H, G] = ∂C_HG
+        ∂C[H, H] = ∂C_HH
+        return ∂A, ∂C, ∂Σ₁, ∂Σ̂ᶻ₂
+    end
+
+    return Σᶻ₃, true, structured_covariance_pullback
+end
+
+
 function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
@@ -1771,19 +2354,22 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         # third order
         kron_s_v = dep_kron.kron_s_v
 
-        s_s_s_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, s_in_s⁺)]
-        s_s_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, e_in_s⁺)]
-        s_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_e, e_in_s⁺)]
-        e_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_e, e_in_s⁺)]
-        s_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_v, v_in_s⁺)]
-        e_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_v, v_in_s⁺)]
+        𝐒₃_y = 𝐒₃[obs_in_y, :]
+        𝐒₃_s = 𝐒₃[iˢ, :]
 
-        s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
-        s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
-        s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
-        e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
-        s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
-        e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+        s_s_s_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+        s_s_s_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_e_v, v_in_s⁺)]
 
         # Set up pruned state transition sub-blocks
         N_upper = 2 * nˢ + n₂ˢ
@@ -1799,14 +2385,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
                 spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
-                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+                spzeros(n₃ˢ, nˢ + nˢ^2)               eliminated_kron(L₃ˢ, s_to_s₁, s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                             ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) (eliminated_kron(L₃ˢ, s_to_s₁_by_s_to_s₁, e_to_s₁) + eliminated_kron(L₃ˢ, s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + eliminated_kron(L₃ˢ, e_to_s₁, s_to_s₁_by_s_to_s₁) * e_ss)   (eliminated_kron(L₃ˢ, s_to_s₁_by_e_to_s₁, e_to_s₁) + eliminated_kron(L₃ˢ, e_to_s₁, s_to_s₁_by_e_to_s₁) * e_es + eliminated_kron(L₃ˢ, e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  eliminated_kron(L₃ˢ, e_to_s₁, e_to_s₁_by_e_to_s₁)]
 
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
@@ -1874,18 +2460,28 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         else
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-            A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-            droptol!(A, eps())
-
-            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
-            droptol!(C, eps())
-
-            lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-            Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                        lyapunov_algorithm = opts.lyapunov_algorithm,
-                                        tol = opts.tol.third_order.lyapunov,
-                                        verbose = opts.verbose,
+            info = false
+            if PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+                Σᶻ₃, info = solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ,
+                                        s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ,
+                                        𝓂.workspaces, opts,
                                         has_unit_roots = 𝓂.caches.has_unit_roots)
+            end
+
+            if !info
+                A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+                droptol!(A, eps())
+
+                C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
+                droptol!(C, eps())
+
+                lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+                Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.third_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+            end
         end
 
         if !info
@@ -2140,19 +2736,22 @@ function calculate_third_order_moments(parameters::Vector{T},
         # third order
         kron_s_v = dep_kron.kron_s_v
 
-        s_s_s_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, s_in_s⁺)]
-        s_s_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, e_in_s⁺)]
-        s_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_e, e_in_s⁺)]
-        e_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_e, e_in_s⁺)]
-        s_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_v, v_in_s⁺)]
-        e_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_v, v_in_s⁺)]
+        𝐒₃_y = 𝐒₃[obs_in_y, :]
+        𝐒₃_s = 𝐒₃[iˢ, :]
 
-        s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
-        s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
-        s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
-        e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
-        s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
-        e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+        s_s_s_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_y₃ = 𝐒₃_y[:, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+        s_s_s_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_s₃ = 𝐒₃_s[:, ℒ.kron(kron_e_v, v_in_s⁺)]
 
         # Set up pruned state transition sub-blocks
         N_upper = 2 * nˢ + n₂ˢ
@@ -2168,14 +2767,14 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         A_LL = [s_to_s₁           s_s_to_s₂             s_s_s_to_s₃ / 6 * D₃ˢ
                 spzeros(nˢ^2, nˢ) s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2) * D₃ˢ
-                spzeros(n₃ˢ, nˢ + nˢ^2)               L₃ˢ * ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁) * D₃ˢ]
+                spzeros(n₃ˢ, nˢ + nˢ^2)               eliminated_kron(L₃ˢ, s_to_s₁, s_to_s₁_by_s_to_s₁) * D₃ˢ]
 
         ê_to_ŝ₃ = [ e_to_s₁   spzeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             spzeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   spzeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             spzeros(n₂ˢ,nᵉ)  L₂ˢ * e_to_s₁_by_e_to_s₁  L₂ˢ * I_plus_s_s * s_to_s₁_by_e_to_s₁  spzeros(n₂ˢ, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
                                             e_v_v_to_s₃ / 2    spzeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
                                             ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    spzeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) L₃ˢ * (ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss)   L₃ˢ * (ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  L₃ˢ * ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+                                            spzeros(n₃ˢ, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) (eliminated_kron(L₃ˢ, s_to_s₁_by_s_to_s₁, e_to_s₁) + eliminated_kron(L₃ˢ, s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + eliminated_kron(L₃ˢ, e_to_s₁, s_to_s₁_by_s_to_s₁) * e_ss)   (eliminated_kron(L₃ˢ, s_to_s₁_by_e_to_s₁, e_to_s₁) + eliminated_kron(L₃ˢ, e_to_s₁, s_to_s₁_by_e_to_s₁) * e_es + eliminated_kron(L₃ˢ, e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es)  eliminated_kron(L₃ˢ, e_to_s₁, e_to_s₁_by_e_to_s₁)]
 
         ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2 * D₂ˢ   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6 * D₃ˢ]
 
@@ -2240,18 +2839,28 @@ function calculate_third_order_moments(parameters::Vector{T},
         else
             ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-            A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-            droptol!(A, eps())
-
-            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
-            droptol!(C, eps())
-
-            lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
-            Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                        lyapunov_algorithm = opts.lyapunov_algorithm,
-                                        tol = opts.tol.third_order.lyapunov,
-                                        verbose = opts.verbose,
+            info = false
+            if PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+                Σᶻ₃, info = solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ,
+                                        s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ, D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ,
+                                        𝓂.workspaces, opts,
                                         has_unit_roots = 𝓂.caches.has_unit_roots)
+            end
+
+            if !info
+                A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+                droptol!(A, eps())
+
+                C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A + A'
+                droptol!(C, eps())
+
+                lyap_ws_3rd = ensure_lyapunov_workspace!(𝓂.workspaces, size(ŝ_to_ŝ₃, 1), :third_order)
+                Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                            lyapunov_algorithm = opts.lyapunov_algorithm,
+                                            tol = opts.tol.third_order.lyapunov,
+                                            verbose = opts.verbose,
+                                            has_unit_roots = 𝓂.caches.has_unit_roots)
+            end
         end
 
         if !info
@@ -2281,6 +2890,38 @@ function calculate_third_order_moments(parameters::Vector{T},
     return Σʸ₃, μʸ₂, SS_and_pars, all_solved
 end
 
+
+
+# For each row in `rows`, mark the states (of nˢ) that the row loads on in 𝐒₁ (state
+# columns), 𝐒₂ (pairs over s⁺ = [states; volatility; shocks]) and 𝐒₃ (triples over s⁺).
+# A pair or triple column marks every state it contains, also when combined with a shock
+# or with the volatility.
+function state_dependency_links(rows::AbstractVector{Int},
+                                𝐒₁::AbstractMatrix{<:Real},
+                                𝐒₂::Union{Nothing, AbstractMatrix{<:Real}},
+                                𝐒₃::Union{Nothing, AbstractMatrix{<:Real}},
+                                nˢ::Int, nᵉ::Int, tol::AbstractFloat)
+    L = falses(length(rows), nˢ)
+    n⁺ = nˢ + 1 + nᵉ
+    for (r, row) in enumerate(rows), a in 1:nˢ
+        abs(𝐒₁[row, a]) > tol && (L[r, a] = true)
+    end
+    for (S, order) in ((𝐒₂, 2), (𝐒₃, 3))
+        isnothing(S) && continue
+        Sr = sparse(S[rows, :])
+        I_r, J_c, V = findnz(Sr)
+        for k in eachindex(V)
+            abs(V[k]) > tol || continue
+            c = J_c[k] - 1
+            for _ in 1:order
+                idx = c % n⁺ + 1
+                c ÷= n⁺
+                idx <= nˢ && (L[I_r[k], idx] = true)
+            end
+        end
+    end
+    return L
+end
 
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     constants::constants,
@@ -2559,66 +3200,22 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         observables = T.var[var_idx]
     end
 
-    # Build selectors for state variables in the augmented state vector [states; 1; shocks]
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    
-    # Kronecker product indices for interactions
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
-    
-    # Precompute state indices and matrix slices
     state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
-    𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
     has_S₂ = nnz(𝐒₂) > 0
     has_S₃ = nnz(𝐒₃) > 0
-    𝐒₂_states = has_S₂ ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
-    𝐒₃_states = has_S₃ ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+
+    # State links of the state rows: L[i, a] is true when state i loads on state a in any
+    # term of the solution, including terms that mix it with shocks or the volatility
+    # (e.g. σ₋ ⊗ ε). Dropping those links loses states such as stochastic volatility.
+    L_states = state_dependency_links(state_idx_in_var, 𝐒₁, has_S₂ ? 𝐒₂ : nothing, has_S₃ ? 𝐒₃ : nothing, nˢ, nᵉ, tol)
 
     function compute_dependencies(obs_in_var_idx::Vector{Int})
-        # First order dependencies
-        dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+        L_obs = state_dependency_links(obs_in_var_idx, 𝐒₁, has_S₂ ? 𝐒₂ : nothing, has_S₃ ? 𝐒₃ : nothing, nˢ, nᵉ, tol)
+        dependencies_in_states = vec(any(L_obs, dims = 1))
 
-        # Second order dependencies from quadratic terms (s ⊗ s)
-        if has_S₂
-            s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
-            s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
-        end
-
-        # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
-        if has_S₃
-            s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
-            s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
-            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .|
-                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .|
-                                                             vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
-        end
-
-        # Propagate dependencies through the system (iterative closure)
+        # Closure: add every state that a dependency loads on
         while true
-            prev_dependencies = dependencies_in_states
-
-            # First order propagation
-            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
-
-            # Second order propagation
-            if !isnothing(𝐒₂_states)
-                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
-                if any(selector)
-                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
-                    new_deps = new_deps .| affected
-                end
-            end
-
-            # Third order propagation
-            if !isnothing(𝐒₃_states)
-                selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
-                if any(selector)
-                    affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
-                    new_deps = new_deps .| affected
-                end
-            end
-
+            new_deps = dependencies_in_states .| vec(any(L_states[dependencies_in_states, :], dims = 1))
             if new_deps == dependencies_in_states
                 break
             end

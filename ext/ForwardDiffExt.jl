@@ -42,10 +42,290 @@ const ℱ = ForwardDiff
 
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseMatrix, sparse, sparsevec
+import SparseArrays
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseMatrix, sparse, sparsevec, spzeros
 
 # ── Extend primal() for ForwardDiff.Dual ──
 MacroModelling.primal(x::ℱ.Dual) = ℱ.value(x)
+
+
+# ── state-block Schur solve at second and third order ──
+# X = A X B(s) + C with A = Ā E₊ᵀ. The values use the Float64 Schur solver;
+# each partial dX solves the same equation with the right side
+#   dC + dĀ Z + Ā X₊ dB,   Z = X₊ B(s),
+# on the same Schur forms, so B is never formed.
+function MacroModelling.schur_perturbation_solve_dual(::Val{O}, Ā::AbstractMatrix{ℱ.Dual{Z,Float64,N}},
+                                    s::AbstractMatrix, C::AbstractMatrix{ℱ.Dual{Z,Float64,N}},
+                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int;
+                                    tol::Float64 = 1e-10) where {O,Z,N}
+    Āv = Matrix{Float64}(ℱ.value.(Ā))
+    Cv = Matrix{Float64}(ℱ.value.(C))
+    sv = Matrix{Float64}(ℱ.value.(s))
+    nₑ₋ = n₋ + 1 + nₑ
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    SM = ℒ.schur(complex(Āv[i₊, :]))
+    SH = ℒ.schur(complex(sv[1:n₋, 1:n₋]))
+    solve(R) = O == 2 ?
+        MacroModelling.second_order_schur_solve(Āv, sv, R, i₊, n₋, nₑ, tol = tol, schur_M = SM, schur_H = SH) :
+        MacroModelling.third_order_schur_solve(Āv, sv, R, i₊, n₋, nₑ, tol = tol, schur_M = SM, schur_H = SH)
+
+    Xv, ok, Zv = solve(Cv)
+    ok || return C, false
+
+    X₊ = Xv[i₊, :]
+    G = sv[1:n₋, SE]
+    s_dual = eltype(s) <: ℱ.Dual
+    dX = Vector{Matrix{Float64}}(undef, N)
+    for k in 1:N
+        R = Matrix{Float64}(ℱ.partials.(C, k))
+        dĀ = Matrix{Float64}(ℱ.partials.(Ā, k))
+        any(!iszero, dĀ) && ℒ.mul!(R, dĀ, Zv, 1.0, 1.0)
+        if s_dual
+            dG = Matrix{Float64}(ℱ.partials.(s[1:n₋, SE], k))
+            if any(!iszero, dG)
+                dZ = O == 2 ? MacroModelling.second_order_schur_dZ(X₊, G, dG, n₋, nₑ) :
+                              MacroModelling.third_order_schur_dZ(X₊, G, dG, n₋, nₑ)
+                ℒ.mul!(R, Āv, dZ, 1.0, 1.0)
+            end
+        end
+        dXk, okk, _ = solve(R)
+        okk || return C, false
+        dX[k] = dXk
+    end
+
+    X = Matrix{ℱ.Dual{Z,Float64,N}}(undef, size(Xv))
+    @inbounds for idx in eachindex(Xv)
+        X[idx] = ℱ.Dual{Z,Float64,N}(Xv[idx], ℱ.Partials(ntuple(k -> dX[k][idx], Val(N))))
+    end
+    return X, true
+end
+
+
+# ── structured pruned third-order covariance ──
+# Values with the Float64 algorithm; each partial solves the linearised
+# Sylvester equation for Σ_HG (same doubling powers) and the Lyapunov equation
+# for Σ_HH (Dual method of solve_lyapunov_equation). All products use BLAS on
+# values and partials.
+_fd_value(M::SparseMatrixCSC{<:ℱ.Dual}) = SparseMatrixCSC(size(M, 1), size(M, 2), M.colptr, M.rowval, ℱ.value.(M.nzval))
+_fd_value(M::AbstractMatrix{<:ℱ.Dual}) = Matrix{Float64}(ℱ.value.(M))
+_fd_value(M::AbstractMatrix) = M
+_fd_partial(M::SparseMatrixCSC{<:ℱ.Dual}, k) = SparseMatrixCSC(size(M, 1), size(M, 2), M.colptr, M.rowval, ℱ.partials.(M.nzval, k))
+_fd_partial(M::AbstractMatrix{<:ℱ.Dual}, k) = Matrix{Float64}(ℱ.partials.(M, k))
+_fd_partial(M::SparseMatrixCSC, k) = spzeros(Float64, size(M)...)
+_fd_partial(M::AbstractMatrix, k) = zeros(Float64, size(M))
+
+# (v, d) pairs: value matrix and one matrix per partial
+_fd_pair(M, N) = (Matrix{Float64}(_fd_value(M)), [Matrix{Float64}(_fd_partial(M, k)) for k in 1:N])
+function _fd_mul(P, Q)
+    v = P[1] * Q[1]
+    d = [P[2][k] * Q[1] + P[1] * Q[2][k] for k in eachindex(P[2])]
+    return (v, d)
+end
+_fd_add(P, Q) = (P[1] + Q[1], [P[2][k] + Q[2][k] for k in eachindex(P[2])])
+_fd_t(P) = (Matrix(P[1]'), [Matrix(d') for d in P[2]])
+function _fd_dual(::Type{ℱ.Dual{Z,Float64,N}}, v::AbstractMatrix, d) where {Z,N}
+    out = Matrix{ℱ.Dual{Z,Float64,N}}(undef, size(v))
+    _fd_fill!(out, axes(v, 1), axes(v, 2), v, d)
+    return out
+end
+
+# out[rows, cols] .= Dual(v, d), without temporaries
+function _fd_fill!(out::AbstractMatrix{ℱ.Dual{Z,Float64,N}}, rows, cols, v::AbstractMatrix{Float64},
+                   d::Vector{Matrix{Float64}}) where {Z,N}
+    @inbounds for (jj, j) in enumerate(cols), (ii, i) in enumerate(rows)
+        out[i, j] = ℱ.Dual{Z,Float64,N}(v[ii, jj], ℱ.Partials(ntuple(k -> d[k][ii, jj], Val(N))))
+    end
+    return out
+end
+
+# value and partials of a product of sparse/dense factors with Float64 BLAS/sparse
+# kernels: d(F₁ ⋯ F_m) = Σᵢ (F₁ ⋯ Fᵢ₋₁) dFᵢ (Fᵢ₊₁ ⋯ F_m). Prefix and suffix
+# products are formed once; the partials of the outer factors are stacked so
+# that one sparse product covers all N partials.
+function _fd_add_sparse_block!(D::Matrix{Float64}, Y::SparseMatrixCSC{Float64}, roff::Int, coff::Int,
+                               nr::Int, nc::Int)
+    rv = SparseArrays.rowvals(Y)
+    nz = SparseArrays.nonzeros(Y)
+    @inbounds for j in (coff + 1):(coff + nc), p in SparseArrays.nzrange(Y, j)
+        r = rv[p] - roff
+        1 <= r <= nr && (D[r, j - coff] += nz[p])
+    end
+    return D
+end
+_fd_add_sparse_block!(D::Matrix{Float64}, Y::AbstractMatrix, roff::Int, coff::Int, nr::Int, nc::Int) =
+    (D .+= view(Y, (roff + 1):(roff + nr), (coff + 1):(coff + nc)); D)
+
+# Julia's sparse × dense kernel is slow for large dense operands; use the
+# transposed dense × sparse kernel instead
+_fd_mm(P::SparseMatrixCSC, Q::Matrix) = permutedims(permutedims(Q) * sparse(transpose(P)))
+_fd_mm(P, Q) = P * Q
+
+# sparse factors with many nonzeros are faster as dense BLAS operands
+_fd_densify(M::SparseMatrixCSC) = SparseArrays.nnz(M) > 0.05 * length(M) ? Matrix(M) : M
+_fd_densify(M) = M
+
+function _fd_prod_pair(N::Int, factors...)
+    m = length(factors)
+    vals = map(F -> _fd_densify(_fd_value(F)), factors)
+    pre = Vector{Any}(undef, m)
+    suf = Vector{Any}(undef, m)
+    for i in 2:m
+        pre[i] = i == 2 ? vals[1] : _fd_mm(pre[i - 1], vals[i - 1])
+    end
+    for i in (m - 1):-1:1
+        suf[i] = i == m - 1 ? vals[m] : _fd_mm(vals[i + 1], suf[i + 1])
+    end
+    v = Matrix{Float64}(_fd_mm(pre[m], vals[m]))
+    nr, nc = size(v)
+    d = [zeros(nr, nc) for _ in 1:N]
+    for i in 1:m
+        eltype(factors[i]) <: ℱ.Dual || continue
+        dF = [_fd_densify(_fd_partial(factors[i], k)) for k in 1:N]
+        if i == 1
+            Y = _fd_mm(reduce(vcat, dF), suf[1])
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, (k - 1) * nr, 0, nr, nc)
+            end
+        elseif i == m
+            Y = pre[m] * reduce(hcat, dF)
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, 0, (k - 1) * nc, nr, nc)
+            end
+        else
+            # (pre dFₖ) is a cheap dense-times-sparse product; one GEMM then covers all k
+            Y = _fd_mm(reduce(vcat, [Matrix{Float64}(_fd_mm(pre[i], dF[k])) for k in 1:N]), suf[i])
+            for k in 1:N
+                _fd_add_sparse_block!(d[k], Y, (k - 1) * nr, 0, nr, nc)
+            end
+        end
+    end
+    return (v, d)
+end
+
+function MacroModelling.solve_pruned_third_order_covariance_structured(ŝ_to_ŝ₃::AbstractMatrix{ℱ.Dual{Z,Float64,N}},
+                                    ê_to_ŝ₃::AbstractMatrix, Γ₃::AbstractMatrix, Eᴸᶻ::AbstractMatrix,
+                                    s_to_s₁::AbstractMatrix, Σ̂ᶻ₁::AbstractMatrix, Σ̂ᶻ₂::AbstractMatrix,
+                                    n::Int,
+                                    D₂::SparseMatrixCSC{Float64, Int}, L₂::SparseMatrixCSC{Float64, Int},
+                                    D₃::SparseMatrixCSC{Float64, Int}, L₃::SparseMatrixCSC{Float64, Int},
+                                    𝓂_workspaces::workspaces, opts::CalculationOptions;
+                                    has_unit_roots::Bool = false,
+                                    max_iter::Int = 100) where {Z,N}
+    DT = ℱ.Dual{Z,Float64,N}
+    fail = (zeros(DT, 0, 0), false)
+    apply_GT = MacroModelling.apply_gaussian_transition_right
+    apply_GT_dS = MacroModelling.apply_gaussian_transition_right_dS
+    n₂ = size(D₂, 2)
+    n₃ = size(D₃, 2)
+    Nz = size(ŝ_to_ŝ₃, 1)
+    Nz == 3 * n + n₂ + n^2 + n₃ || return fail
+
+    G = vcat(1:n, (2 * n + 1):(2 * n + n₂), (Nz - n₃ + 1):Nz)
+    H = vcat((n + 1):(2 * n), (2 * n + n₂ + 1):(Nz - n₃))
+
+    S = _fd_pair(s_to_s₁, N)
+    maximum(abs, ℒ.eigvals(S[1])) < 1 - 1e-8 || return fail
+
+    d₂ = MacroModelling.single_entry_row_columns(D₂)
+    l₂ = MacroModelling.single_entry_row_columns(L₂)
+    d₃ = MacroModelling.single_entry_row_columns(D₃)
+    l₃ = MacroModelling.single_entry_row_columns(L₃)
+    (isempty(d₂) || isempty(l₂) || isempty(d₃) || isempty(l₃)) && return fail
+
+    # Gaussian blocks: closed form, evaluated directly in Dual numbers
+    Σ_GG_dual = MacroModelling.gaussian_block_covariance(Matrix{DT}(Σ̂ᶻ₁), Matrix{DT}(Σ̂ᶻ₂), n, L₂, L₃)
+    Σ_GG = _fd_pair(Σ_GG_dual, N)
+    Σ_GG_dual = nothing
+
+    A = ŝ_to_ŝ₃ isa SparseMatrixCSC ? ŝ_to_ŝ₃ : sparse(ŝ_to_ŝ₃)
+    A_HH = _fd_pair(A[H, H], N)
+    A_HG = _fd_pair(A[H, G], N)
+
+    # rows H of C = ê Γ êᵀ + ê Eᴸᶻ Aᵀ + A Eᴸᶻᵀ êᵀ (sparse Dual products)
+    ê_H = ê_to_ŝ₃[H, :]
+    êt = sparse(transpose(ê_to_ŝ₃))
+    C_H = _fd_add(_fd_add(_fd_prod_pair(N, ê_H, Γ₃, êt), _fd_prod_pair(N, ê_H, Eᴸᶻ, sparse(transpose(A)))),
+                  _fd_prod_pair(N, A[H, :], sparse(transpose(Eᴸᶻ)), êt))
+    C_HG = (C_H[1][:, G], [d[:, G] for d in C_H[2]])
+    C_HH = (C_H[1][:, H], [d[:, H] for d in C_H[2]])
+    C_H = nothing
+
+    A_HG_Σ_GG = _fd_mul(A_HG, Σ_GG)
+
+    # values: Σ_HG by doubling, keeping the powers for the partials
+    tol = opts.tol.third_order.lyapunov.atol
+    Sv = S[1]
+    R = apply_GT(A_HG_Σ_GG[1], Sv, n, d₂, l₂, d₃, l₃) + C_HG[1]
+    X = copy(R)
+    Aₖ = A_HH[1]
+    Sₖ = Sv
+    powers = Tuple{Matrix{Float64}, Matrix{Float64}}[]
+    converged = false
+    for it in 1:max_iter
+        push!(powers, (Aₖ, Sₖ))
+        Y = Aₖ * apply_GT(X, Sₖ, n, d₂, l₂, d₃, l₃)
+        X .+= Y
+        if ℒ.norm(Y) <= max(tol, eps()) * ℒ.norm(X)
+            converged = true
+            break
+        end
+        Aₖ = Aₖ * Aₖ
+        Sₖ = Sₖ * Sₖ
+    end
+    converged || return fail
+
+    # partials: dX = A_HH dX A_GGᵀ + R̃ₖ
+    XA = apply_GT(X, Sv, n, d₂, l₂, d₃, l₃)
+    dX = Vector{Matrix{Float64}}(undef, N)
+    for k in 1:N
+        dS = S[2][k]
+        Rk = apply_GT(A_HG_Σ_GG[2][k], Sv, n, d₂, l₂, d₃, l₃) + C_HG[2][k]
+        if any(!iszero, dS)
+            Rk .+= apply_GT_dS(A_HG_Σ_GG[1], Sv, dS, n, d₂, l₂, d₃, l₃)
+            Rk .+= A_HH[1] * apply_GT_dS(X, Sv, dS, n, d₂, l₂, d₃, l₃)
+        end
+        ℒ.mul!(Rk, A_HH[2][k], XA, 1.0, 1.0)
+        Xk = copy(Rk)
+        ok = false
+        j = 0
+        while j < max_iter
+            j += 1
+            if j > length(powers)
+                Aₗ, Sₗ = powers[end]
+                push!(powers, (Aₗ * Aₗ, Sₗ * Sₗ))
+            end
+            Aⱼ, Sⱼ = powers[j]
+            Y = Aⱼ * apply_GT(Xk, Sⱼ, n, d₂, l₂, d₃, l₃)
+            Xk .+= Y
+            if ℒ.norm(Y) <= max(tol, eps()) * max(ℒ.norm(Xk), ℒ.norm(X))
+                ok = true
+                break
+            end
+        end
+        ok || return fail
+        dX[k] = Xk
+    end
+    Σ_HG = (X, dX)
+
+    tmp = _fd_mul(_fd_mul(A_HH, Σ_HG), _fd_t(A_HG))
+    C̃ = _fd_add(_fd_add(C_HH, _fd_mul(A_HG_Σ_GG, _fd_t(A_HG))), _fd_add(tmp, _fd_t(tmp)))
+    C̃ = ((C̃[1] + C̃[1]') / 2, [(d + d') / 2 for d in C̃[2]])
+
+    lyap_ws = MacroModelling.ensure_lyapunov_workspace!(𝓂_workspaces, length(H), :block)
+    Σ_HH, info = MacroModelling.solve_lyapunov_equation(_fd_dual(DT, A_HH...), _fd_dual(DT, C̃...), lyap_ws,
+                                         lyapunov_algorithm = opts.lyapunov_algorithm,
+                                         tol = opts.tol.third_order.lyapunov,
+                                         verbose = opts.verbose,
+                                         has_unit_roots = has_unit_roots)
+    info || return fail
+
+    Σᶻ₃ = Matrix{DT}(undef, Nz, Nz)
+    _fd_fill!(Σᶻ₃, G, G, Σ_GG...)
+    _fd_fill!(Σᶻ₃, H, G, Σ_HG...)
+    _fd_fill!(Σᶻ₃, G, H, _fd_t(Σ_HG)...)
+    Σᶻ₃[H, H] = Σ_HH
+    return Σᶻ₃, true
+end
 
 
 # ── sparse_preallocated! ──

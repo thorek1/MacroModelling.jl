@@ -59,7 +59,10 @@ cubic_pair_index(i::Int, j::Int, n::Int) = begin
 end
 
 cubic_triple_index(i::Int, j::Int, k::Int, n::Int) = begin
-    i, j, k = sort((i, j, k), rev = true)
+    # Sorting a tuple needs Julia 1.12; the package supports 1.10.
+    i < j && ((i, j) = (j, i))
+    j < k && ((j, k) = (k, j))
+    i < j && ((i, j) = (j, i))
     (i - 1) * i * (i + 1) ÷ 6 + (j - 1) * j ÷ 2 + k
 end
 
