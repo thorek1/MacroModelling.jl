@@ -593,8 +593,6 @@ end
     # @timeit_debug timer "Setup B" begin
     # @timeit_debug timer "Add tmpkron" begin
 
-    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-
     # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
     # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
     # B *= M₃.𝐂₃
@@ -615,7 +613,9 @@ end
     # @timeit_debug timer "Setup C" begin
     # @timeit_debug timer "Initialise smaller matrices" begin
 
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
+    # 𝐒₂[i₊, :] * kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) without forming the Kronecker product
+    𝐒₂₊k𝐒₁₋╱𝟏ₑ = kron_right(Matrix(𝐒₂[i₊, :]), 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂₊k𝐒₁₋╱𝟏ₑ + 𝐒₁[i₊, :] * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
             

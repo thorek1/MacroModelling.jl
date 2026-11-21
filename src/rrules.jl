@@ -8215,21 +8215,40 @@ function rrule(::typeof(calculate_third_order_solution),
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
-    cache_eligible_3rd = opts.sylvester_algorithm³ == :doubling
-    if cache_eligible_3rd
-        ℂ.sylvester_workspace.pow_iters = 0
-        ℂ.sylvester_workspace.pow_capture = true
-        ℂ.sylvester_workspace.pow_transposed = true
+    # State-block Schur path (third_order_schur.jl) for the forward and the
+    # adjoint solve; otherwise the generic solver.
+    schur_used_3rd = false
+    Ā_schur3 = zeros(0, 0)
+    s_schur3 = zeros(0, 0)
+    Z_schur3 = zeros(0, 0)
+    if S === Float64 && opts.sylvester_algorithm³ == :schur && n₋ > 0
+        Ā_schur3 = Matrix{Float64}(A[:, i₊])
+        s_schur3 = Matrix{Float64}(𝐒₁₋╱𝟏ₑ)
+        𝐒₃, schur_used_3rd, Z_schur3 = third_order_schur_solve(Ā_schur3, s_schur3, Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
+        if opts.verbose println("Third order solution: state-block Schur solve - solved: $schur_used_3rd") end
     end
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                        initial_guess = initial_guess_sylv,
-                                        sylvester_algorithm = opts.sylvester_algorithm³,
-                                        preconditioner = opts.sylvester_preconditioner,
-                                        tol = opts.tol.third_order.ad.sylvester,
-                                        verbose = opts.verbose)
-    ℂ.sylvester_workspace.pow_capture = false
-    pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
-    ℂ.sylvester_workspace.pow_iters = 0
+    sylv_alg_3rd = opts.sylvester_algorithm³ == :schur ? schur_fallback_sylvester_algorithm(size(B, 2)) : opts.sylvester_algorithm³
+    cache_eligible_3rd = !schur_used_3rd && sylv_alg_3rd == :doubling
+    pow_iters_captured_3rd = 0
+    if schur_used_3rd
+        solved = true
+    else
+        if cache_eligible_3rd
+            ℂ.sylvester_workspace.pow_iters = 0
+            ℂ.sylvester_workspace.pow_capture = true
+            ℂ.sylvester_workspace.pow_transposed = true
+        end
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                            initial_guess = initial_guess_sylv,
+                                            sylvester_algorithm = sylv_alg_3rd,
+                                            preconditioner = opts.sylvester_preconditioner,
+                                            tol = opts.tol.third_order.ad.sylvester,
+                                            verbose = opts.verbose)
+        ℂ.sylvester_workspace.pow_capture = false
+        pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
+        ℂ.sylvester_workspace.pow_iters = 0
+    end
 
     𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
@@ -8300,22 +8319,29 @@ function rrule(::typeof(calculate_third_order_solution),
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ws = ℂ.sylvester_workspace
-        cache_valid = cache_eligible_3rd &&
-                      pow_iters_captured_3rd >= 1 &&
-                      ws.pow_transposed
-        saved_capture = ws.pow_capture
-        if cache_valid
-            ws.pow_iters = pow_iters_captured_3rd
-            ws.pow_capture = false
+        slvd = false
+        if schur_used_3rd
+            ∂C_adj, slvd = third_order_schur_adjoint(Ā_schur3, s_schur3, Matrix{Float64}(∂𝐒₃), i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
         end
-        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
-                                              sylvester_algorithm = opts.sylvester_algorithm³,
-                                              preconditioner = opts.sylvester_preconditioner,
-                                              tol = opts.tol.third_order.ad.sylvester,
-                                              verbose = opts.verbose)
-        ws.pow_capture = saved_capture
-        ws.pow_iters = 0
+        if !slvd
+            ws = ℂ.sylvester_workspace
+            cache_valid = cache_eligible_3rd &&
+                          pow_iters_captured_3rd >= 1 &&
+                          ws.pow_transposed
+            saved_capture = ws.pow_capture
+            if cache_valid
+                ws.pow_iters = pow_iters_captured_3rd
+                ws.pow_capture = false
+            end
+            ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
+                                                  sylvester_algorithm = sylv_alg_3rd,
+                                                  preconditioner = opts.sylvester_preconditioner,
+                                                  tol = opts.tol.third_order.ad.sylvester,
+                                                  verbose = opts.verbose)
+            ws.pow_capture = saved_capture
+            ws.pow_iters = 0
+        end
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
@@ -8354,8 +8380,14 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
         # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
-        ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
-        ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+        if schur_used_3rd
+            # 𝐒₃[i₊, :] B = Z_schur3; only the i₊ columns of ∂A reach ∇₁₊ and spinv.
+            fill!(∂A, zero(S))
+            ∂A[:, i₊] = ∂C_adj * Z_schur3'
+        else
+            ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
+            ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+        end
         # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
         ℒ.mul!(∂𝐗₃, At, ∂C_adj)
         ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)

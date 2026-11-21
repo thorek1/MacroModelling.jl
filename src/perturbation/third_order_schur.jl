@@ -145,3 +145,141 @@ function third_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}
     X .+= C
     return X, all(isfinite, X), Z
 end
+
+@inline function third_order_triple_multiplicity(i::Int, k::Int, l::Int)
+    (i == k && k == l) && return 1
+    (i == k || k == l || i == l) && return 3
+    return 6
+end
+
+"""
+    third_order_schur_adjoint(Ā, s, Gc, i₊, n₋, nₑ; tol, max_bytes)
+
+Solve the adjoint compressed third-order equation `∂C = Aᵀ ∂C Bᵀ + Gc` with
+the block structure of `third_order_schur_solve` (blocks solved in reverse
+order). Returns `(∂C, solved)`.
+"""
+function third_order_schur_adjoint(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}, Gc::AbstractMatrix{Float64},
+                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int;
+                                    tol::Float64 = 1e-10, max_bytes::Real = 2.0e9)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    n₊ = length(i₊)
+    c0 = n₋ + 1
+    nc = size(Gc, 2)
+    @assert nc == nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    if 48.0 * n₊ * n₋^3 + 16.0 * n₊ * nSE^3 > max_bytes
+        return Gc, false
+    end
+
+    Ā₊t = Matrix(transpose(Ā[i₊, :]))
+    sd = Matrix{Float64}(s)
+    hxt = Matrix(transpose(sd[1:n₋, 1:n₋]))
+    hut = Matrix(transpose(sd[1:n₋, n₋ + 2:nₑ₋]))
+    Gt = Matrix(transpose(sd[1:n₋, SE]))
+    E = collect(n₋ + 2:nₑ₋)
+
+    # Symmetric full-space forcing: each compressed column spread over its
+    # distinct permutations.
+    Gs = Matrix{Float64}(Gc)
+    @inbounds for i in 1:nₑ₋, k in 1:i, l in 1:k
+        μ = third_order_triple_multiplicity(i, k, l)
+        μ == 1 || (view(Gs, :, tidx(i, k, l)) .*= 1 / μ)
+    end
+    F = transpose(Ā) * Gs
+
+    SM = ℒ.schur(complex(Ā₊t))
+    SH = ℒ.schur(complex(hxt))
+
+    # (1,1,1)
+    j111 = tidx(c0, c0, c0)
+    lhs = -Ā₊t
+    @inbounds for i in 1:n₊
+        lhs[i, i] += 1
+    end
+    lu111 = ℒ.lu!(lhs, check = false)
+    ℒ.issuccess(lu111) || return Gc, false
+    Q111 = lu111 \ F[:, j111]
+    AQ111 = Ā₊t * Q111
+
+    # (x,1,1), with the shock columns (e,1,1) known
+    QE11 = F[:, [tidx(e, c0, c0) for e in E]]
+    Fx11 = F[:, [tidx(d, c0, c0) for d in 1:n₋]]
+    QE11hu = QE11 * hut
+    Qx11, res2 = solve_stein(Ā₊t, hxt, Ā₊t * QE11hu + Fx11, schur_M = SM, schur_H = SH)
+    Vx11 = Qx11 * hxt
+    Vx11 .+= QE11hu
+    AVx11 = Ā₊t * Vx11
+
+    # (x,x,1), with the pairs that contain a shock known
+    Qk1 = zeros(n₊, nSE * nSE)
+    @inbounds for α in 1:nSE, β in 1:nSE
+        i = SE[α]; k = SE[β]
+        (i ≤ n₋ && k ≤ n₋) && continue
+        col = view(Qk1, :, (α - 1) * nSE + β)
+        copyto!(col, view(F, :, tidx(i, k, c0)))
+        i == k && (col .+= AQ111)
+    end
+    rest1 = kron_right(Qk1, Gt, Gt)
+    Fxx1 = Matrix{Float64}(undef, n₊, n₋^2)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Fxx1, :, (a - 1) * n₋ + b), view(F, :, tidx(a, b, c0)))
+    end
+    Qxx1, res1 = solve_kron_stein(Ā₊t, hxt, Ā₊t * rest1 + Fxx1, schur_M = SM, schur_H = SH)
+    Vxx1 = kron_right(Qxx1, hxt, hxt)
+    Vxx1 .+= rest1
+
+    # (x,x,x), with the triples that contain a shock known
+    Qk0 = zeros(n₊, nSE^3)
+    @inbounds for α in 1:nSE, β in 1:nSE, γ in 1:nSE
+        i = SE[α]; k = SE[β]; l = SE[γ]
+        (i ≤ n₋ && k ≤ n₋ && l ≤ n₋) && continue
+        col = view(Qk0, :, ((α - 1) * nSE + (β - 1)) * nSE + γ)
+        copyto!(col, view(F, :, tidx(i, k, l)))
+        # (d, e, e) with d a state: V(d, e, e) = Vx11[:, d]
+        a, b, c = i, k, l
+        if a ≤ n₋ && b > c0 && b == c
+            col .+= view(AVx11, :, a)
+        elseif b ≤ n₋ && a > c0 && a == c
+            col .+= view(AVx11, :, b)
+        elseif c ≤ n₋ && a > c0 && a == b
+            col .+= view(AVx11, :, c)
+        end
+    end
+    rest0 = kron_right3(Qk0, Gt, Gt, Gt)
+    Qk0 = nothing
+    Fxxx = Matrix{Float64}(undef, n₊, n₋^3)
+    @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+        copyto!(view(Fxxx, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(F, :, tidx(a, b, c)))
+    end
+    Qxxx, res0 = solve_kron3_stein(Ā₊t, hxt, Ā₊t * rest0 + Fxxx, schur_M = SM, schur_H = SH)
+    Fxxx = nothing
+    if !(res0 < tol) || !(res1 < tol) || !(res2 < tol)
+        return Gc, false
+    end
+    Vxxx = kron_right3(Qxxx, hxt, hxt, hxt)
+    Vxxx .+= rest0
+
+    # ∂C = Gc + multiplicity · (E₊ V) on the nonzero V blocks
+    ∂C = Matrix{Float64}(Gc)
+    addV!(j, μ, v) = (@inbounds for (r, ir) in enumerate(i₊); ∂C[ir, j] += μ * v[r]; end)
+    @inbounds for a in 1:n₋, b in 1:a, c in 1:b
+        addV!(tidx(a, b, c), third_order_triple_multiplicity(a, b, c), view(Vxxx, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c))
+    end
+    @inbounds for a in 1:n₋, b in 1:a
+        addV!(tidx(a, b, c0), a == b ? 3.0 : 6.0, view(Vxx1, :, (a - 1) * n₋ + b))
+    end
+    @inbounds for d in 1:n₋
+        addV!(tidx(d, c0, c0), 3.0, view(Vx11, :, d))
+        for e in E
+            addV!(tidx(d, e, e), 3.0, view(Vx11, :, d))
+        end
+    end
+    addV!(j111, 1.0, Q111)
+    @inbounds for e in E
+        addV!(tidx(c0, e, e), 3.0, Q111)
+    end
+    return ∂C, all(isfinite, ∂C)
+end

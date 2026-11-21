@@ -85,6 +85,12 @@ end
         @test ok
         @test isapprox(X, Xref, rtol = 1e-10)
         @test isapprox(Z, X[i₊, :] * B, rtol = 1e-10)
+
+        G = randn(n, nc)
+        Zref = reshape((ℒ.I - ℒ.kron(B, A')) \ vec(G), n, nc)
+        ∂C, ok2 = MMschur.third_order_schur_adjoint(Ā, s, G, i₊, n₋, nₑ)
+        @test ok2
+        @test isapprox(∂C, Zref, rtol = 1e-10)
     end
 end
 
