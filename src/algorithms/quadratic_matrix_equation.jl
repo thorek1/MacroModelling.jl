@@ -178,7 +178,14 @@ function qme_standard_schur_solve(A::AbstractMatrix{Float64},
         (isfinite(anorm) && anorm > 0) || continue
         Ff = ℒ.lu!(F, check = false)
         ℒ.issuccess(Ff) || continue
-        ℒ.LAPACK.gecon!('1', Ff.factors, anorm) > rcond_tol || continue
+        all(isfinite, Ff.factors) || continue
+        # newer LAPACK versions reject some inputs (info = -5) instead of returning rcond = 0
+        rc = try
+            ℒ.LAPACK.gecon!('1', Ff.factors, anorm)
+        catch
+            0.0
+        end
+        rc > rcond_tol || continue
         copyto!(M, isinf(shift) ? D : E)
         ℒ.ldiv!(Ff, M)
         σ = shift
