@@ -362,11 +362,15 @@ end
     # Build first forcing term directly in compressed Hessian space:
     #   ∇₂ * compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
     # This skips explicit right-compression by M₂.𝐂₂ for this term.
-    kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
-                                        rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
-                                        sparse_preallocation = ℂ.tmp_sparse_prealloc2)
-
-    term1 = ∇₂ * kron_compressed
+    term1 = if S === Float64
+        # Dense, equation by equation (see second_order_schur.jl).
+        second_order_hessian_forcing(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+    else
+        kron_compressed = compressed_kron²(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,
+                                            rowmask = M₂.∇₂_nonempty_col_as_kron_rowmask,
+                                            sparse_preallocation = ℂ.tmp_sparse_prealloc2)
+        ∇₂ * kron_compressed
+    end
 
     # Build second forcing term in compressed Hessian space with extra pruning.
     # We only keep compressed-kron columns that can survive right multiplication by σc₂.
@@ -389,20 +393,36 @@ end
     # end # timeit_debug
     # @timeit_debug timer "B" begin
 
-    # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
+    # State-block Schur path (see second_order_schur.jl): solves only the
+    # forward-looking block and never forms B.
+    solved = false
+    𝐒₂ = C
+    if S === Float64 && opts.sylvester_algorithm² == :schur && n₋ > 0
+        𝐒₂, solved, _ = second_order_schur_solve(Matrix{Float64}(A[:, i₊]), 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
+                                                tol = opts.tol.second_order.sylvester.acceptance_tol)
+        if opts.verbose println("Second order solution: state-block Schur solve - solved: $solved") end
+    elseif opts.sylvester_algorithm² == :schur && n₋ > 0
+        # AD numbers (ForwardDiff.Dual): Schur solve for the values and each partial
+        𝐒₂, solved = schur_perturbation_solve_dual(Val(2), A[:, i₊], 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
+                                                    tol = opts.tol.second_order.sylvester.acceptance_tol)
+    end
 
-    # end # timeit_debug
-    # end # timeit_debug
-    # @timeit_debug timer "Solve sylvester equation" begin
+    if !solved
+        # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+        𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+        B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
 
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess_sylv,
-                                            sylvester_algorithm = opts.sylvester_algorithm²,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.second_order.sylvester,
-                                            verbose = opts.verbose)
+        # end # timeit_debug
+        # end # timeit_debug
+        # @timeit_debug timer "Solve sylvester equation" begin
+
+        𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                                initial_guess = initial_guess_sylv,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
+                                                preconditioner = opts.sylvester_preconditioner,
+                                                tol = opts.tol.second_order.sylvester,
+                                                verbose = opts.verbose)
+    end
 
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -577,28 +597,29 @@ end
     # @timeit_debug timer "Setup B" begin
     # @timeit_debug timer "Add tmpkron" begin
 
-    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-
     # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
     # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
     # B *= M₃.𝐂₃
     # B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.third_order.droptol, multithreaded = false)
         # println("size(𝐒₁₋╱𝟏ₑ) = ",size(𝐒₁₋╱𝟏ₑ))
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
-                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)#, timer = timer)
+    𝐒₁₋╱𝟏ₑ_for_B = 𝐒₁₋╱𝟏ₑ
+    build_B₃() = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ_for_B, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7) +
+                 compressed_kron³(𝐒₁₋╱𝟏ₑ_for_B, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
     # println("size(B) = ",size(B))
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "Setup C" begin
     # @timeit_debug timer "Initialise smaller matrices" begin
 
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
+    # 𝐒₂[i₊, :] * kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) without forming the Kronecker product
+    𝐒₂₊k𝐒₁₋╱𝟏ₑ = kron_right(Matrix(𝐒₂[i₊, :]), 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂₊k𝐒₁₋╱𝟏ₑ + 𝐒₁[i₊, :] * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
             
@@ -691,12 +712,27 @@ end
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                            initial_guess = initial_guess_sylv,
-                                            sylvester_algorithm = opts.sylvester_algorithm³,
-                                            preconditioner = opts.sylvester_preconditioner,
-                                            tol = opts.tol.third_order.sylvester,
-                                            verbose = opts.verbose)
+    solved = false
+    𝐒₃ = C
+    if S === Float64 && opts.sylvester_algorithm³ == :schur && n₋ > 0
+        𝐒₃, solved, _ = third_order_schur_solve(Matrix{Float64}(A[:, i₊]), Matrix{Float64}(𝐒₁₋╱𝟏ₑ), Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                tol = opts.tol.third_order.sylvester.acceptance_tol)
+        if opts.verbose println("Third order solution: state-block Schur solve - solved: $solved") end
+    elseif opts.sylvester_algorithm³ == :schur && n₋ > 0
+        # AD numbers (ForwardDiff.Dual): Schur solve for the values and each partial
+        𝐒₃, solved = schur_perturbation_solve_dual(Val(3), A[:, i₊], 𝐒₁₋╱𝟏ₑ, C, i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.sylvester.acceptance_tol)
+    end
+
+    if !solved
+        B = build_B₃()
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                                initial_guess = initial_guess_sylv,
+                                                sylvester_algorithm = opts.sylvester_algorithm³,
+                                                preconditioner = opts.sylvester_preconditioner,
+                                                tol = opts.tol.third_order.sylvester,
+                                                verbose = opts.verbose)
+    end
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin

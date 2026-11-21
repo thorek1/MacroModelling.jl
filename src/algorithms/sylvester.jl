@@ -1,5 +1,7 @@
 @stable default_mode = "disable" begin
 
+schur_fallback_sylvester_algorithm(ncols::Int) = ncols > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM
+
 # Available algorithms: 
 # :doubling     - fast, expensive part: B^2
 # :bartels_stewart    - fast, dense matrices only
@@ -38,6 +40,12 @@
     # The doubling retry path still uses collect() because the doubling method modifies
     # its workspace copies of A/B internally (squaring) and reads the original A/B/C
     # arguments for the final residual—passing workspace aliases would corrupt those reads.
+    # :schur is the structured perturbation path (second_order_schur.jl,
+    # third_order_schur.jl); for a generic Sylvester equation it means the
+    # size-based default.
+    if sylvester_algorithm == :schur
+        sylvester_algorithm = schur_fallback_sylvester_algorithm(size(B, 2))
+    end
     n = size(A, 1)
     m = size(B, 2)
     ensure_sylvester_doubling_buffers!(𝕊ℂ, n, m)

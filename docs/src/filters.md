@@ -685,7 +685,7 @@ P  = P̂ − K C P̂                            P   = P̂ − K 𝒞 P̂
 | | linear Kalman | quadratic Kalman |
 |---|---|---|
 | state carried | ``x_t`` | ``z_t = [x_1;\ x_2;\ \mathrm{vech}(x_{1,p}x_{1,p}')]`` |
-| dimension (SW07) | 34 | 446 |
+| dimension (SW07) | 34 | 417 (276 on the reachable pair block, see below) |
 | transition | ``x' = Ax + B\varepsilon`` | ``z' = \mathcal{A}z + c + w(z,\varepsilon)`` |
 | drift ``c`` | zero — certainty equivalence empties ``\mathbf{S}_1``'s constant column | non-zero — carries the risk correction |
 | noise covariance | ``\mathbf{B} = BB'``, **constant** | ``G(\bar z)G(\bar z)' + Q_H + Q_{\mathrm{state}}``, **depends on state mean and covariance** |
@@ -804,29 +804,27 @@ as observables, no measurement error, so it is a deterministic change of variabl
 
 | measurement-error variance | quadratic Kalman | exact | gap |
 |---|---|---|---|
-| ``10^{-5}`` | 211.2451 | 213.6137 | ``-2.37`` |
-| ``10^{-6}`` | 212.0289 | 213.6137 | ``-1.58`` |
-| ``10^{-8}`` | 212.0937 | 213.6137 | ``-1.52`` |
-| ``10^{-10}`` | 212.0943 | 213.6137 | ``-1.52`` |
+| ``10^{-5}`` | 211.0944 | 213.8426 | ``-2.75`` |
+| ``10^{-6}`` | 211.4349 | 213.8426 | ``-2.41`` |
+| ``10^{-8}`` | 211.4358 | 213.8426 | ``-2.41`` |
+| ``10^{-10}`` | 211.4358 | 213.8426 | ``-2.41`` |
 
-It converges to a persistent gap rather than to the truth. The size is governed by
-``n_\varepsilon(n_\varepsilon+1)/(2\,n_{obs})`` — 1.5 for the RBC, 4.0 for Smets-Wouters — and by
-persistence: raising ``\rho`` from 0.4/0.6 to 0.98 on the same model multiplies the error
-per period by 13. It is *not* governed by the size of the second-order terms, which is a
-natural but wrong guess.
+(RBC model of `test/test_quadratic_kalman.jl`, 60 simulated periods, seed 12345.)
+It converges to a persistent gap rather than to the truth.
 
 ### What that means for usability
 
-The bias falls almost entirely on the **level** of the likelihood, not on its shape. Profiling
-against the exact likelihood, the gap varies by only about 0.2 log points across a parameter
-grid, and the mode is unchanged:
+The bias falls mostly on the **level** of the likelihood, but not only. Profiling against
+the exact likelihood on the same data (measurement-error variance ``10^{-8}``), the gap
+changes by 2.7 log points over ``\sigma_z \in [0.014, 0.028]`` and by 0.6 log points over
+``\rho_z \in [0.30, 0.50]``, and the mode moves by one grid step:
 
 | parameter | truth | argmax, exact | argmax, quadratic Kalman |
 |---|---|---|---|
-| shock std | 0.02 | 0.021 | 0.021 |
-| persistence | 0.4 | 0.39 | 0.39 |
+| shock std ``\sigma_z`` | 0.02 | 0.020 | 0.019 |
+| persistence ``\rho_z`` | 0.4 | 0.41 | 0.39 |
 
-And the filter does the job it was designed for. Latent-state accuracy, as a fraction of each
+And the filter does the job it was designed for. Latent-state accuracy (measured before the shock-loading fix described below), as a fraction of each
 state's own standard deviation: ``1.4\times10^{-5}`` and ``7\times10^{-7}`` for the two observed
 variables, 2.8% for capital, and about 11% for the two unobserved shock processes.
 
@@ -922,13 +920,16 @@ small models.
 
 ### Cost
 
-Unlike the pruned Kollmann filters, Ivashchenko does not propagate a 446-dimensional lifted
+Unlike the pruned Kollmann filters, Ivashchenko does not propagate a 276- to 417-dimensional lifted
 covariance on SW07. It propagates the physical ``n_{past}\times n_{past}`` covariance and
 contracts the raw polynomial map. For a second-order map the random input basis has
 ``d(d+1)/2`` compressed pair terms; for a third-order map it has
 ``d(d+1)(d+2)/6`` compressed triple terms. The exact constant depends on the number of output
 rows retained for the likelihood or estimates, so the dominant operation is the corresponding
-moment contraction rather than an ``O(446^3)`` augmented covariance recursion.
+moment contraction rather than an ``O(n_z^3)`` augmented covariance recursion.
+At pruned second order only the first-stage states and the shocks carry curvature, and only the
+second-stage and measurement rows have it, so the quadratic contraction runs on that block
+(on SW07 33 of 59 inputs and 40 of 73 outputs; 565 ms to 156 ms per likelihood).
 
 The two filters use related Gaussian moment identities but not the same closure. The quadratic
 Kollmann filter needs pair-product state coordinates and hence Gaussian fourth moments of its
@@ -950,6 +951,22 @@ For comparison, the cost breakdown of the *pruned quadratic* augmented recursion
 The two matrix triple-products are 91% of the quadratic augmented loop. That comparison is not
 the cost model for Ivashchenko: its covariance remains physical and its bottleneck is the
 polynomial moment contraction. The ``O(n_z^3)`` cost belongs to the lifted Kollmann state.
+
+**Reachable pair block.** From the first period on, the first-order past state lies in
+``U = \operatorname{range}(PS_1)``, so the pair block lies in the span of
+``\operatorname{vech}(U S U')``. When ``PS_1`` has rank ``d < n_{past}`` the recursion runs on
+``2n_r + d(d+1)/2`` instead of ``2n_r + n_{past}(n_{past}+1)/2`` coordinates and gives the same
+likelihood. On SW07 the state goes from 417 to 276 coordinates and one likelihood evaluation from
+1.37 s to 0.57 s. The basis comes from a generic QR, so ForwardDiff follows its parameter
+dependence; the Zygote rule runs on the full system.
+
+**Shock loading (fixed in 2026-11).** ``x_2 = \tfrac12\mathbf{S}_2 c(a)`` with
+``c(a) = [a_i^2;\ 2a_ia_j]``, so the ``\varepsilon``-linear part of ``x_2`` is
+``\mathbf{S}_2`` times the mixed pair products, without the ``\tfrac12``. Earlier versions kept the
+``\tfrac12`` and understated the innovation covariance of the ``x_2`` block (by about two thirds
+on the test RBC model, checked by Monte Carlo). The Ivashchenko filter had the same factor in its
+linear loading ``\mathbf{S}_1 + \mathbf{S}_2 D_2(v)``. Likelihood values of both filters changed
+with the fix.
 
 **References:** Kollmann (2015), [*Tractable Latent State Filtering for Non-Linear DSGE Models
 Using a Second-Order Approximation and Pruning](https://doi.org/10.1007/s10614-013-9418-3),

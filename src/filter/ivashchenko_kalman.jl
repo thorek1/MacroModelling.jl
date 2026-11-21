@@ -79,7 +79,9 @@ end
 function build_ivashchenko_kalman_system_from_constants(cons, 𝐒,
                                                         observables_index::Vector{Int},
                                                         order::Symbol;
-                                                        keep_all_rows::Bool = true)
+                                                        keep_all_rows::Bool = true,
+                                                        curvature_inputs::Union{Nothing,Vector{Int}} = nothing,
+                                                        curvature_outputs::Union{Nothing,Vector{Int}} = nothing)
     T = cons.post_model_macro
     nVars, nPast, nExo = T.nVars, T.nPast_not_future_and_mixed, T.nExo
     past = collect(T.past_not_future_and_mixed_idx)
@@ -115,7 +117,6 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒,
         S3 = Matrix{scalar_type}(S3)
     end
 
-    quadratic_hessian = order == :second_order ? zeros(scalar_type, d * d, nout) : nothing
 
     pair_indices = Tuple{Int, Int}[]
     pair_multiplicities = Int[]
@@ -166,14 +167,55 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒,
         end
     end
 
-    if quadratic_hessian !== nothing
+    # Second-order curvature block. The quadratic covariance
+    # 1/2 tr(T_r Σ T_s Σ) only involves the random inputs and outputs that
+    # have curvature. A caller that knows the structural zeros of S₂ (the
+    # pruned builder: second-stage states enter linearly, first-stage rows are
+    # linear) passes them, and the Hessians are stored on that block only.
+    # The given sets are checked against S₂; on any miss the full block is used.
+    curvature_input_set = curvature_inputs === nothing ? collect(1:d) : sort(curvature_inputs)
+    curvature_output_set = curvature_outputs === nothing ? collect(1:nout) :
+                           sort(row_position[curvature_outputs])
+    if order == :second_order && (curvature_inputs !== nothing || curvature_outputs !== nothing)
+        in_input = falses(d); in_input[curvature_input_set] .= true
+        in_output = falses(nout); in_output[curvature_output_set] .= true
+        complete = true
         @inbounds for p in eachindex(random_pair_indices)
-            r, s = random_pair_indices[p]
+            r, q = random_pair_indices[p]
             column = random_pair_columns[p]
+            inside = in_input[r] && in_input[q]
             for output in 1:nout
+                if !(inside && in_output[output]) && !iszero(S2[output, column])
+                    complete = false
+                    break
+                end
+            end
+            complete || break
+        end
+        if !complete
+            curvature_input_set = collect(1:d)
+            curvature_output_set = collect(1:nout)
+        end
+    end
+    dc = length(curvature_input_set)
+    nc = length(curvature_output_set)
+    # Local pairs (a ≥ b) of the curvature block and their S₂ columns.
+    curvature_pair_local = Tuple{Int, Int}[]
+    curvature_pair_columns = Int[]
+    for a in 1:dc, b in 1:a
+        push!(curvature_pair_local, (a, b))
+        push!(curvature_pair_columns,
+              compressed_pair_index(random_indices[curvature_input_set[a]],
+                                    random_indices[curvature_input_set[b]], dv))
+    end
+    quadratic_hessian = order == :second_order ? zeros(scalar_type, dc * dc, nc) : nothing
+    if quadratic_hessian !== nothing
+        @inbounds for (p, (a, b)) in enumerate(curvature_pair_local)
+            column = curvature_pair_columns[p]
+            for (o, output) in enumerate(curvature_output_set)
                 value = S2[output, column]
-                quadratic_hessian[r + (s - 1) * d, output] = value
-                quadratic_hessian[s + (r - 1) * d, output] = value
+                quadratic_hessian[a + (b - 1) * dc, o] = value
+                quadratic_hessian[b + (a - 1) * dc, o] = value
             end
         end
     end
@@ -191,7 +233,9 @@ function build_ivashchenko_kalman_system_from_constants(cons, 𝐒,
             observation_position, random_indices, random_pair_indices,
             random_pair_columns, random_pair_multiplicities, random_hessian,
             random_triple_indices, random_triple_columns,
-            random_triple_multiplicities, quadratic_hessian, A, B)
+            random_triple_multiplicities, quadratic_hessian, A, B,
+            curvature_input_set, curvature_output_set, dc, nc,
+            curvature_pair_local, curvature_pair_columns)
 end
 
 build_ivashchenko_kalman_system(𝓂::ℳ, 𝐒, oi::Vector{Int}, order::Symbol;
@@ -395,9 +439,26 @@ function build_pruned_ivashchenko_kalman_system_from_constants(cons, 𝐒,
                                              past_not_future_and_mixed_idx = state_output_positions))
     effective_solution = effective_S3 === nothing ?
         [effective_S1, effective_S2] : [effective_S1, effective_S2, effective_S3]
+    curvature_inputs = nothing
+    curvature_outputs = nothing
+    if nStages == 2
+        # Second-stage states enter linearly and the first-stage rows are
+        # linear, so only first-stage states and shocks carry curvature, and
+        # only second-stage and measurement rows have it.
+        effective_random(i) = i <= flat_nPast ? i : i - 1
+        curvature_inputs = Int[]
+        for i in 1:original_dv
+            i == original_nPast + 1 && continue
+            push!(curvature_inputs, effective_random(
+                pruned_ivashchenko_effective_index(1, i, original_nPast, nStages, nExo)))
+        end
+        curvature_outputs = vcat(collect(nKeep + 1:2nKeep), collect(measurement_rows))
+    end
     base = build_ivashchenko_kalman_system_from_constants(
         fake_constants, effective_solution, collect(measurement_rows),
-        nStages == 2 ? :second_order : :third_order)
+        nStages == 2 ? :second_order : :third_order;
+        curvature_inputs = curvature_inputs,
+        curvature_outputs = curvature_outputs)
     return merge(base, (; past = collect(1:flat_nPast), pruned = true, nStages,
                         original_nVars, original_nPast,
                         original_past, original_observables = copy(observables_index),
@@ -533,9 +594,12 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type;
             hessian,
             quadratic_hessian,
             quadratic_left = third || gaussian_closure == :linearized ? nothing :
-                             zeros(scalar_type, d * d, nout),
+                             zeros(scalar_type, sys.dc * sys.dc, sys.nc),
             quadratic_right = third || gaussian_closure != :exact ? nothing :
-                              zeros(scalar_type, d * d, nout),
+                              zeros(scalar_type, sys.dc * sys.dc, sys.nc),
+            quadratic_sigma = third ? nothing : zeros(scalar_type, sys.dc, sys.dc),
+            quadratic_covariance = third || gaussian_closure != :exact ? nothing :
+                                   zeros(scalar_type, sys.nc, sys.nc),
             pair_mean = zeros(scalar_type, n_pair),
             pair_covariance = third && gaussian_closure == :exact ?
                               zeros(scalar_type, n_pair, n_pair) : nothing,
@@ -565,7 +629,6 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type;
             third_linear_left = third && gaussian_closure == :exact ?
                                 zeros(scalar_type, nout, d) : nothing,
             pair_scratch = zeros(scalar_type, n_pair),
-            pair_jacobian = zeros(scalar_type, n_pair, d),
             triple_scratch = third ? zeros(scalar_type, n_triple) : nothing,
             triple_jacobian = third ? zeros(scalar_type, n_triple, d) : nothing,
             basis = zeros(scalar_type, sys.dv),
@@ -573,43 +636,44 @@ function ivashchenko_kalman_workspace(sys, scalar_type::Type;
             gaussian_closure)
 end
 
-function ivashchenko_pair_jacobian!(output, sys, v)
-    @inbounds for pair in eachindex(sys.pair_indices)
-        i, j = sys.pair_indices[pair]
-        for column in 1:sys.d
-            random_index = sys.random_indices[column]
-            if i == j
-                output[pair, column] = i == random_index ? v[i] : zero(eltype(output))
-            else
-                output[pair, column] = (i == random_index ? v[j] : zero(eltype(output))) +
-                                       (j == random_index ? v[i] : zero(eltype(output)))
+# linear[:, r] += Σₖ S₂[:, (iᵣ, k)] vₖ with iᵣ = random_indices[r]: the product
+# S₂ D₂(v) without the dense pair Jacobian (each of its columns has at most dv
+# non-zeros out of dv(dv+1)/2).
+function ivashchenko_add_pair_linear!(linear, sys, v)
+    S2, dv = sys.S2, sys.dv
+    @inbounds for column in 1:sys.d
+        i = sys.random_indices[column]
+        for k in 1:dv
+            vk = v[k]
+            iszero(vk) && continue
+            pair = compressed_pair_index(i, k, dv)
+            for output in axes(linear, 1)
+                linear[output, column] += S2[output, pair] * vk
             end
         end
     end
-    return output
+    return linear
 end
 
-function ivashchenko_selected_pair_identity_vjp!(gradient, cotangent, sys)
-    nPast = sys.nPast
-    constant_index = nPast + 1
-    @inbounds for (pair, (i, j)) in enumerate(sys.pair_indices)
-        if i == j
-            if i != constant_index
-                column = i <= nPast ? i : i - 1
-                gradient[i] += cotangent[pair, column]
+# Pullback of `ivashchenko_add_pair_linear!` for the cotangent gL of `linear`:
+# gS₂ += gL D₂(v)' and gv += ∂(S₂ D₂(v))/∂v ⋅ gL.
+function ivashchenko_pair_linear_pullback!(gS2, gv, gL, sys, v)
+    S2, dv = sys.S2, sys.dv
+    @inbounds for column in 1:sys.d
+        i = sys.random_indices[column]
+        for k in 1:dv
+            pair = compressed_pair_index(i, k, dv)
+            vk = v[k]
+            acc = zero(eltype(gv))
+            for output in axes(gL, 1)
+                g = gL[output, column]
+                gS2[output, pair] += g * vk
+                acc += g * S2[output, pair]
             end
-        else
-            if i != constant_index
-                column = i <= nPast ? i : i - 1
-                gradient[j] += cotangent[pair, column]
-            end
-            if j != constant_index
-                column = j <= nPast ? j : j - 1
-                gradient[i] += cotangent[pair, column]
-            end
+            gv[k] += acc
         end
     end
-    return gradient
+    return gS2, gv
 end
 
 function ivashchenko_triple_jacobian!(output, sys, v, basis)
@@ -695,8 +759,6 @@ function ivashchenko_third_order_pullback_workspace(sys, scalar_type::Type)
             gmode_one = zeros(scalar_type, d, n_random_pair),
             gmode_two = zeros(scalar_type, n_random_pair, d),
             gmode_three = zeros(scalar_type, n_random_pair, d),
-            pair_jacobian = zeros(scalar_type, n_pair, d),
-            pair_cotangent_matrix = zeros(scalar_type, n_pair, d),
             pair_cotangent = zeros(scalar_type, n_pair),
             triple_jacobian = zeros(scalar_type, n_triple, d),
             triple_cotangent_matrix = zeros(scalar_type, n_triple, d),
@@ -871,13 +933,13 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         ℒ.mul!(ws.mean, sys.S3, ws.triple_scratch, 1 / 6, 1.0)
     end
 
-    ivashchenko_pair_jacobian!(ws.pair_jacobian, sys, ws.vbar)
     @inbounds for column in 1:d
         copyto!(view(ws.linear, :, column),
                 view(sys.S1, :, sys.random_indices[column]))
     end
-    # linear = S₁[:, random] + 1/2 * S₂ * D₂(v).
-    ℒ.mul!(ws.linear, sys.S2, ws.pair_jacobian, 0.5, 1.0)
+    # linear = S₁[:, random] + S₂ * D₂(v), where D₂(v) is half the Jacobian
+    # of c(v) = [vᵢ²; 2vᵢvⱼ] (so the ½ of the second-order term cancels).
+    ivashchenko_add_pair_linear!(ws.linear, sys, ws.vbar)
     if sys.order == :third_order
         ivashchenko_triple_jacobian!(ws.triple_jacobian, sys, ws.vbar, ws.basis)
         # linear += 1/2 * S₃ * D₃(v).
@@ -957,28 +1019,40 @@ function ivashchenko_polynomial_moments!(sys, mean_state, covariance_state, ws)
         ivashchenko_right_input_covariance!(ws.linear_left, ws.linear, Σ, nPast)
         ℒ.mul!(ws.covariance, ws.linear_left, transpose(ws.linear), 1.0, 0.0)
         if gaussian_closure != :linearized
-            @inbounds for output in 1:nout
-                hessian = reshape(view(ws.quadratic_hessian, :, output), d, d)
-                left = reshape(view(ws.quadratic_left, :, output), d, d)
-                ivashchenko_right_input_covariance!(left, hessian, Σ, nPast)
+            # The Hessians live on the curvature block (inputs `cin`, outputs
+            # `cout`), so Σ is needed only on cin × cin.
+            dc, cin, cout = sys.dc, sys.curvature_input_set, sys.curvature_output_set
+            Σc = ws.quadratic_sigma
+            @inbounds for b in 1:dc, a in 1:dc
+                Σc[a, b] = Σ[cin[a], cin[b]]
+            end
+            @inbounds for output in 1:sys.nc
+                hessian = reshape(view(ws.quadratic_hessian, :, output), dc, dc)
+                left = reshape(view(ws.quadratic_left, :, output), dc, dc)
+                ℒ.mul!(left, hessian, Σc)
                 if gaussian_closure == :exact
-                    right = reshape(view(ws.quadratic_right, :, output), d, d)
-                    copyto!(right, transpose(left))
+                    # (T Σ)' = Σ T for symmetric T and Σ.
+                    right = reshape(view(ws.quadratic_right, :, output), dc, dc)
+                    ℒ.mul!(right, Σc, hessian)
                 else
                     # Retain each output's exact curvature variance, but
                     # assume curvature shocks are independent across outputs.
                     value = zero(eltype(ws.covariance))
-                    for j in 1:d, i in 1:d
+                    for j in 1:dc, i in 1:dc
                         value += left[i, j] * left[j, i]
                     end
-                    ws.covariance[output, output] += value / 2
+                    ws.covariance[cout[output], cout[output]] += value / 2
                 end
             end
-        end
-        if gaussian_closure == :exact
-            # For symmetric T_r and Σ, the quadratic covariance is
-            # 1/2 tr(T_r Σ T_s Σ). This avoids materialising the full pair covariance.
-            ℒ.mul!(ws.covariance, transpose(ws.quadratic_left), ws.quadratic_right, 0.5, 1.0)
+            if gaussian_closure == :exact
+                # For symmetric T_r and Σ, the quadratic covariance is
+                # 1/2 tr(T_r Σ T_s Σ). This avoids materialising the full pair covariance.
+                ℒ.mul!(ws.quadratic_covariance, transpose(ws.quadratic_left),
+                       ws.quadratic_right, 0.5, 0.0)
+                @inbounds for j in 1:sys.nc, i in 1:sys.nc
+                    ws.covariance[cout[i], cout[j]] += ws.quadratic_covariance[i, j]
+                end
+            end
         end
     end
 
@@ -1519,55 +1593,68 @@ end
 
 function ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys, covariance_bar, Σ, buffers;
                                                    gaussian_closure::Symbol = :exact)
-    d, nout = sys.d, sys.nout
+    # Works on the curvature block (see the builder): T holds the Hessians on
+    # cin × cin for the outputs cout, so only Σ[cin, cin] and V̄[cout, cout]
+    # enter, and only gΣ[cin, cin] and the matching S₂ columns receive cotangents.
+    dc, nc = sys.dc, sys.nc
+    cin, cout = sys.curvature_input_set, sys.curvature_output_set
     T = sys.quadratic_hessian
     mixed = buffers.mixed
     gT = buffers.gT
     left = buffers.left
     right = buffers.right
+    Σc = buffers.sigma_c
+    V̄c = buffers.covariance_bar_c
+    gΣc = buffers.gsigma_c
+    @inbounds for b in 1:dc, a in 1:dc
+        Σc[a, b] = Σ[cin[a], cin[b]]
+    end
+    @inbounds for j in 1:nc, i in 1:nc
+        V̄c[i, j] = covariance_bar[cout[i], cout[j]]
+    end
+    fill!(gΣc, zero(eltype(gΣc)))
 
     if gaussian_closure == :diagonal
         # Only V̄_rr reaches the retained curvature variances. For
         # V_rr = 1/2 tr(T_r Σ T_r Σ), the symmetric adjoints are
         # dV_rr/dT_r = Σ T_r Σ and dV_rr/dΣ = T_r Σ T_r.
-        @inbounds for output in 1:nout
-            weight = covariance_bar[output, output]
-            T_output = reshape(view(T, :, output), d, d)
-            gT_output = reshape(view(gT, :, output), d, d)
-            ivashchenko_left_input_covariance!(right, T_output, Σ, sys.nPast)
-            ivashchenko_right_input_covariance!(gT_output, right, Σ,
-                                                sys.nPast, weight)
-            ivashchenko_right_input_covariance!(right, T_output, Σ, sys.nPast)
-            ℒ.mul!(left, right, T_output, weight, 0.0)
-            gΣ .+= left
+        @inbounds for output in 1:nc
+            weight = V̄c[output, output]
+            T_output = reshape(view(T, :, output), dc, dc)
+            gT_output = reshape(view(gT, :, output), dc, dc)
+            ℒ.mul!(right, Σc, T_output)
+            ℒ.mul!(gT_output, right, Σc, weight, 0.0)
+            ℒ.mul!(right, T_output, Σc)
+            ℒ.mul!(gΣc, right, T_output, weight, 1.0)
         end
     else
         # If V_rs = 1/2 tr(T_r Σ T_s Σ), the symmetric covariance cotangent gives
         # dV/dT_r = Σ (Σ_s V̄_rs T_s) Σ and dV/dΣ = Σ_r T_r Σ (Σ_s V̄_rs T_s).
-        ℒ.mul!(mixed, T, transpose(covariance_bar))
-        @inbounds for output in 1:nout
-            Tmix = reshape(view(mixed, :, output), d, d)
-            gT_output = reshape(view(gT, :, output), d, d)
-            ivashchenko_left_input_covariance!(right, Tmix, Σ, sys.nPast)
-            ivashchenko_right_input_covariance!(gT_output, right, Σ, sys.nPast)
-            T_output = reshape(view(T, :, output), d, d)
-            ivashchenko_right_input_covariance!(right, T_output, Σ, sys.nPast)
-            ℒ.mul!(left, right, Tmix)
-            gΣ .+= left
+        ℒ.mul!(mixed, T, transpose(V̄c))
+        @inbounds for output in 1:nc
+            Tmix = reshape(view(mixed, :, output), dc, dc)
+            gT_output = reshape(view(gT, :, output), dc, dc)
+            ℒ.mul!(right, Σc, Tmix)
+            ℒ.mul!(gT_output, right, Σc)
+            T_output = reshape(view(T, :, output), dc, dc)
+            ℒ.mul!(right, T_output, Σc)
+            ℒ.mul!(gΣc, right, Tmix, 1.0, 1.0)
         end
     end
+    @inbounds for b in 1:dc, a in 1:dc
+        gΣ[cin[a], cin[b]] += gΣc[a, b]
+    end
 
-    @inbounds for p in eachindex(sys.random_pair_indices)
-        r, s = sys.random_pair_indices[p]
-        column = sys.random_pair_columns[p]
-        if r == s
-            for output in 1:nout
-                gS2[output, column] += gT[r + (s - 1) * d, output]
+    @inbounds for (p, (a, b)) in enumerate(sys.curvature_pair_local)
+        column = sys.curvature_pair_columns[p]
+        if a == b
+            for (o, output) in enumerate(cout)
+                gS2[output, column] += gT[a + (b - 1) * dc, o]
             end
         else
-            for output in 1:nout
-                gS2[output, column] += gT[r + (s - 1) * d, output] +
-                                        gT[s + (r - 1) * d, output]
+            for (o, output) in enumerate(cout)
+                gS2[output, column] += gT[a + (b - 1) * dc, o] +
+                                        gT[b + (a - 1) * dc, o]
             end
         end
     end
@@ -1639,18 +1726,14 @@ function ivashchenko_second_order_moment_pullback!(sys, moment_tape, mean_bar,
         end
     end
 
-    ivashchenko_pair_jacobian!(buffers.pair_jacobian, sys, v)
     @inbounds for column in 1:d
         solution_column = sys.random_indices[column]
         for output in axes(gS1, 1)
             gS1[output, solution_column] += gL[output, column]
         end
     end
-    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
-    ℒ.mul!(gS2, gL, transpose(buffers.pair_jacobian), 0.5, 1.0)
-    ℒ.mul!(buffers.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
-    ivashchenko_selected_pair_identity_vjp!(gv,
-                                            buffers.pair_cotangent_matrix, sys)
+    # gS₂ += gL * D₂(v)' and its v-cotangent.
+    ivashchenko_pair_linear_pullback!(gS2, gv, gL, sys, v)
 
     @inbounds for j in 1:d, i in 1:j-1
         value = (gΣ[i, j] + gΣ[j, i]) / 2
@@ -1794,10 +1877,13 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
             gΣ[i, j] += sys.random_pair_multiplicities[p] * gpair_mean[p]
             gS2[:, sys.random_pair_columns[p]] .+= mean_bar * pair_mean[p] / 2
         end
-        quadratic_buffers === nothing && (quadratic_buffers = (; mixed = zeros(eltype(Σ), d * d, nout),
-                                             gT = zeros(eltype(Σ), d * d, nout),
-                                             left = zeros(eltype(Σ), d, d),
-                                             right = zeros(eltype(Σ), d, d)))
+        quadratic_buffers === nothing && (quadratic_buffers = (; mixed = zeros(eltype(Σ), sys.dc * sys.dc, sys.nc),
+                                             gT = zeros(eltype(Σ), sys.dc * sys.dc, sys.nc),
+                                             left = zeros(eltype(Σ), sys.dc, sys.dc),
+                                             right = zeros(eltype(Σ), sys.dc, sys.dc),
+                                             sigma_c = zeros(eltype(Σ), sys.dc, sys.dc),
+                                             covariance_bar_c = zeros(eltype(Σ), sys.nc, sys.nc),
+                                             gsigma_c = zeros(eltype(Σ), sys.dc, sys.dc)))
         ivashchenko_quadratic_covariance_pullback!(gΣ, gS2, sys,
                                                    covariance_bar_symmetric, Σ,
                                                    quadratic_buffers)
@@ -1842,17 +1928,14 @@ function ivashchenko_polynomial_moments_pullback(sys, moment_tape, mean_bar, cov
         gv .+= first_bar
     end
 
-    ivashchenko_pair_jacobian!(B.pair_jacobian, sys, v)
     @inbounds for column in 1:d
         solution_column = sys.random_indices[column]
         for output in axes(gS1, 1)
             gS1[output, solution_column] += gL[output, column]
         end
     end
-    # gS₂ += 1/2 * gL * D₂(v)'; pair_cotangent = 1/2 * S₂' * gL.
-    ℒ.mul!(gS2, gL, transpose(B.pair_jacobian), 0.5, 1.0)
-    ℒ.mul!(B.pair_cotangent_matrix, transpose(sys.S2), gL, 0.5, 0.0)
-    ivashchenko_selected_pair_identity_vjp!(gv, B.pair_cotangent_matrix, sys)
+    # gS₂ += gL * D₂(v)' and its v-cotangent.
+    ivashchenko_pair_linear_pullback!(gS2, gv, gL, sys, v)
 
     if third !== nothing
         ivashchenko_triple_jacobian!(B.triple_jacobian, sys, v, basis)
@@ -1947,14 +2030,15 @@ function ivashchenko_filter_pullback(sys, tape, solution_matrices, scale;
            tmp_noutd = zeros(scalar_type, sys.nout, sys.d),
            tmp_dnout = zeros(scalar_type, sys.d, sys.nout),
            pair_cotangent = zeros(scalar_type, sys.n_pair),
-           pair_jacobian = zeros(scalar_type, sys.n_pair, sys.d),
-           pair_cotangent_matrix = zeros(scalar_type, sys.n_pair, sys.d),
            first_bar = zeros(scalar_type, sys.dv),
            pair_value = zeros(scalar_type, sys.n_pair),
-           mixed = zeros(scalar_type, sys.d * sys.d, sys.nout),
-           gT = zeros(scalar_type, sys.d * sys.d, sys.nout),
-           left = zeros(scalar_type, sys.d, sys.d),
-           right = zeros(scalar_type, sys.d, sys.d),
+           mixed = zeros(scalar_type, sys.dc * sys.dc, sys.nc),
+           gT = zeros(scalar_type, sys.dc * sys.dc, sys.nc),
+           left = zeros(scalar_type, sys.dc, sys.dc),
+           right = zeros(scalar_type, sys.dc, sys.dc),
+           sigma_c = zeros(scalar_type, sys.dc, sys.dc),
+           covariance_bar_c = zeros(scalar_type, sys.nc, sys.nc),
+           gsigma_c = zeros(scalar_type, sys.dc, sys.dc),
            mean_result = zeros(scalar_type, sys.nPast),
            covariance_result = zeros(scalar_type, sys.nPast, sys.nPast)) : nothing
     third_order_buffers = sys.order == :third_order ?

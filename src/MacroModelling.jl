@@ -149,6 +149,8 @@ include("moments.jl")
 include("./algorithms/fast_lapack_wrappers.jl")
 include("./perturbation/derivatives.jl")
 include("./perturbation/solution.jl")
+include("./perturbation/second_order_schur.jl")
+include("./perturbation/third_order_schur.jl")
 include("./steady_state/stochastic_steady_state.jl")
 include("impulse_response_function.jl")
 
@@ -2654,7 +2656,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     else
         fastest_idx = 𝓂.constants.post_complete_parameters.nsss_fastest_solver_parameter_idx
         preferred_solver_parameter_idx = fastest_idx < 1 || fastest_idx > length(DEFAULT_SOLVER_PARAMETERS) ? 1 : fastest_idx
+        # A cache that holds only the guess seed (no solved point) gives the
+        # warm path nothing to continue from; it then needs the cold-start sweep.
+        no_solved_point = !cold_start && !any(c -> !isempty(c) && all(isfinite, c[end]), 𝓂.caches.solver)
         SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
+        if no_solved_point && (solution_error > opts.tol.nsss.acceptance_tol || isnan(solution_error))
+            SS_and_pars, (solution_error, iters) = solve_nsss_wrapper(parameter_values, 𝓂, opts.tol, opts.verbose, true, DEFAULT_SOLVER_PARAMETERS, preferred_solver_parameter_idx = preferred_solver_parameter_idx)
+        end
     end
 
     # Update counters

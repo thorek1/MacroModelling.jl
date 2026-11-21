@@ -1,0 +1,422 @@
+# State-block Schur solver for the third-order perturbation solution.
+#
+# Same idea as second_order_schur.jl. The third-order equation is X = A X B + C
+# with B = 𝐔₃ (s⊗s⊗s + Σ_placements s⊗𝛔) 𝐂₃ (compressed triples of
+# [past states; 1; shocks]). In the full symmetric triple space the number of
+# "1" slots of a column is kept by s⊗s⊗s, and the 𝛔 terms feed a column with
+# two "1" slots from columns with a shock pair (eᵢ, eᵢ). So:
+#   (x,x,x):  Y = Ā₊ Y (hx⊗hx⊗hx) + C₊                 triple Stein equation,
+#   (x,x,1):  Y = Ā₊ Y (hx⊗hx) + C₊                    pair Stein equation,
+#   (x,1,1):  Y = Ā₊ (Y + Q) hx + C₊,  Q = Σᵢ X₊(x,eᵢ,eᵢ)   Stein equation,
+#   (1,1,1):  (I - Ā₊) Y = 3 Ā₊ Σᵢ X₊(1,eᵢ,eᵢ) + C₊,
+# and every column with a shock is explicit.
+
+@inline function third_order_triple_index(i::Int, k::Int, l::Int)
+    # sort descending
+    if i < k; i, k = k, i; end
+    if k < l; k, l = l, k; end
+    if i < k; i, k = k, i; end
+    return (i * (i - 1) * (i + 1)) ÷ 6 + (k * (k - 1)) ÷ 2 + l
+end
+
+"""
+    third_order_schur_solve(Ā, s, C, i₊, n₋, nₑ; tol, max_bytes)
+
+Solve the compressed third-order equation `X = A X B + C` (see the file
+header). Returns `(X, solved, Z)` with `Z = X[i₊, :] * B`. Gives up (solved =
+false) when the dense (x,x,x) block would need more than `max_bytes`.
+"""
+function third_order_schur_solve(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}, C::Matrix{Float64},
+                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int;
+                                    tol::Float64 = 1e-10, max_bytes::Real = 2.0e9,
+                                    schur_M = nothing, schur_H = nothing)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    n₊ = length(i₊)
+    c0 = n₋ + 1
+    nc = size(C, 2)
+    @assert nc == nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+
+    # complex Ŷ, R̂ and real Y, R of the (x,x,x) block
+    if 48.0 * n₊ * n₋^3 > max_bytes
+        return C, false, zeros(0, 0)
+    end
+
+    Ā₊ = Ā[i₊, :]
+    C₊ = C[i₊, :]
+    sd = Matrix{Float64}(s)
+    hx = sd[1:n₋, 1:n₋]
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    G = sd[1:n₋, SE]
+    E = collect(n₋ + 2:nₑ₋)
+
+    SM = schur_M === nothing ? ℒ.schur(complex(Ā₊)) : schur_M
+    SH = schur_H === nothing ? ℒ.schur(complex(hx)) : schur_H
+
+    # (x,x,x)
+    Cxxx = Matrix{Float64}(undef, n₊, n₋^3)
+    @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+        copyto!(view(Cxxx, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(C₊, :, tidx(a, b, c)))
+    end
+    Y0, res0 = solve_kron3_stein(Ā₊, hx, Cxxx, schur_M = SM, schur_H = SH)
+    Cxxx = nothing
+
+    # (x,x,1)
+    Cxx1 = Matrix{Float64}(undef, n₊, n₋^2)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Cxx1, :, (a - 1) * n₋ + b), view(C₊, :, tidx(a, b, c0)))
+    end
+    Y1, res1 = solve_kron_stein(Ā₊, hx, Cxx1, schur_M = SM, schur_H = SH)
+
+    if !(res0 < tol) || !(res1 < tol)
+        @debug "third_order_schur_solve residuals" res0 res1 tol
+        return C, false, zeros(0, 0)
+    end
+
+    Z = zeros(n₊, nc)
+
+    # columns without a "1": Z(α,β,γ) = Y0 (G⊗G⊗G), α ≥ β ≥ γ over SE positions
+    Y0r = reshape(Y0, n₊ * n₋^2, n₋)
+    Vα = zeros(n₊ * n₋^2)
+    Uαβ = zeros(n₊ * n₋, nSE)
+    tmp = zeros(n₊, nSE)
+    @inbounds for α in 1:nSE
+        ℒ.mul!(Vα, Y0r, view(G, :, α))
+        ℒ.mul!(view(Uαβ, :, 1:α), reshape(Vα, n₊ * n₋, n₋), view(G, :, 1:α))
+        for β in 1:α
+            Uβ = reshape(view(Uαβ, :, β), n₊, n₋)
+            ℒ.mul!(view(tmp, :, 1:β), Uβ, view(G, :, 1:β))
+            for γ in 1:β
+                copyto!(view(Z, :, tidx(SE[α], SE[β], SE[γ])), view(tmp, :, γ))
+            end
+        end
+    end
+    Y0 = nothing; Y0r = nothing
+
+    # columns with one "1": Z(α,β,1) = Y1 (G⊗G)
+    W1 = kron_right(Y1, G, G)
+    @inbounds for α in 1:nSE, β in 1:α
+        copyto!(view(Z, :, tidx(SE[α], SE[β], c0)), view(W1, :, (α - 1) * nSE + β))
+    end
+
+    # Q[:, d] = Σᵢ X₊(d, eᵢ, eᵢ), d ∈ states
+    zq = zeros(n₊, n₋)
+    cq = zeros(n₊, n₋)
+    @inbounds for d in 1:n₋, e in E
+        j = tidx(d, e, e)
+        view(zq, :, d) .+= view(Z, :, j)
+        view(cq, :, d) .+= view(C₊, :, j)
+    end
+    Q = Ā₊ * zq + cq
+
+    # (x,1,1)
+    Cx11 = C₊[:, [tidx(a, c0, c0) for a in 1:n₋]]
+    Y2, res2 = solve_stein(Ā₊, hx, Cx11 + Ā₊ * (Q * hx), schur_M = SM, schur_H = SH)
+    if !(res2 < tol)
+        return C, false, zeros(0, 0)
+    end
+    W2 = (Y2 + Q) * G
+    @inbounds for α in 1:nSE
+        copyto!(view(Z, :, tidx(SE[α], c0, c0)), view(W2, :, α))
+    end
+
+    # (1,1,1)
+    z1 = zeros(n₊)
+    c1 = zeros(n₊)
+    @inbounds for e in E
+        j = tidx(c0, e, e)
+        z1 .+= view(Z, :, j)
+        c1 .+= view(C₊, :, j)
+    end
+    q1 = Ā₊ * z1 + c1
+    j111 = tidx(c0, c0, c0)
+    lhs = -Ā₊
+    @inbounds for i in 1:n₊
+        lhs[i, i] += 1
+    end
+    lu111 = ℒ.lu!(lhs, check = false)
+    if !ℒ.issuccess(lu111)
+        return C, false, zeros(0, 0)
+    end
+    Y3 = lu111 \ (3 .* (Ā₊ * q1) .+ view(C₊, :, j111))
+    Z[:, j111] .= Y3 .+ 3 .* q1
+
+    X = Ā * Z
+    X .+= C
+    return X, all(isfinite, X), Z
+end
+
+@inline function third_order_triple_multiplicity(i::Int, k::Int, l::Int)
+    (i == k && k == l) && return 1
+    (i == k || k == l || i == l) && return 3
+    return 6
+end
+
+"""
+    third_order_schur_adjoint(Ā, s, Gc, i₊, n₋, nₑ; tol, max_bytes)
+
+Solve the adjoint compressed third-order equation `∂C = Aᵀ ∂C Bᵀ + Gc` with
+the block structure of `third_order_schur_solve` (blocks solved in reverse
+order). Returns `(∂C, solved)`.
+"""
+function third_order_schur_adjoint(Ā::Matrix{Float64}, s::AbstractMatrix{Float64}, Gc::AbstractMatrix{Float64},
+                                    i₊::AbstractVector{Int}, n₋::Int, nₑ::Int;
+                                    tol::Float64 = 1e-10, max_bytes::Real = 2.0e9)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    n₊ = length(i₊)
+    c0 = n₋ + 1
+    nc = size(Gc, 2)
+    @assert nc == nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    if 48.0 * n₊ * n₋^3 + 16.0 * n₊ * nSE^3 > max_bytes
+        return Gc, false
+    end
+
+    Ā₊t = Matrix(transpose(Ā[i₊, :]))
+    sd = Matrix{Float64}(s)
+    hxt = Matrix(transpose(sd[1:n₋, 1:n₋]))
+    hut = Matrix(transpose(sd[1:n₋, n₋ + 2:nₑ₋]))
+    Gt = Matrix(transpose(sd[1:n₋, SE]))
+    E = collect(n₋ + 2:nₑ₋)
+
+    # Symmetric full-space forcing: each compressed column spread over its
+    # distinct permutations.
+    Gs = Matrix{Float64}(Gc)
+    @inbounds for i in 1:nₑ₋, k in 1:i, l in 1:k
+        μ = third_order_triple_multiplicity(i, k, l)
+        μ == 1 || (view(Gs, :, tidx(i, k, l)) .*= 1 / μ)
+    end
+    F = transpose(Ā) * Gs
+
+    SM = ℒ.schur(complex(Ā₊t))
+    SH = ℒ.schur(complex(hxt))
+
+    # (1,1,1)
+    j111 = tidx(c0, c0, c0)
+    lhs = -Ā₊t
+    @inbounds for i in 1:n₊
+        lhs[i, i] += 1
+    end
+    lu111 = ℒ.lu!(lhs, check = false)
+    ℒ.issuccess(lu111) || return Gc, false
+    Q111 = lu111 \ F[:, j111]
+    AQ111 = Ā₊t * Q111
+
+    # (x,1,1), with the shock columns (e,1,1) known
+    QE11 = F[:, [tidx(e, c0, c0) for e in E]]
+    Fx11 = F[:, [tidx(d, c0, c0) for d in 1:n₋]]
+    QE11hu = QE11 * hut
+    Qx11, res2 = solve_stein(Ā₊t, hxt, Ā₊t * QE11hu + Fx11, schur_M = SM, schur_H = SH)
+    Vx11 = Qx11 * hxt
+    Vx11 .+= QE11hu
+    AVx11 = Ā₊t * Vx11
+
+    # (x,x,1), with the pairs that contain a shock known
+    Qk1 = zeros(n₊, nSE * nSE)
+    @inbounds for α in 1:nSE, β in 1:nSE
+        i = SE[α]; k = SE[β]
+        (i ≤ n₋ && k ≤ n₋) && continue
+        col = view(Qk1, :, (α - 1) * nSE + β)
+        copyto!(col, view(F, :, tidx(i, k, c0)))
+        i == k && (col .+= AQ111)
+    end
+    rest1 = kron_right(Qk1, Gt, Gt)
+    Fxx1 = Matrix{Float64}(undef, n₊, n₋^2)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Fxx1, :, (a - 1) * n₋ + b), view(F, :, tidx(a, b, c0)))
+    end
+    Qxx1, res1 = solve_kron_stein(Ā₊t, hxt, Ā₊t * rest1 + Fxx1, schur_M = SM, schur_H = SH)
+    Vxx1 = kron_right(Qxx1, hxt, hxt)
+    Vxx1 .+= rest1
+
+    # (x,x,x), with the triples that contain a shock known
+    Qk0 = zeros(n₊, nSE^3)
+    @inbounds for α in 1:nSE, β in 1:nSE, γ in 1:nSE
+        i = SE[α]; k = SE[β]; l = SE[γ]
+        (i ≤ n₋ && k ≤ n₋ && l ≤ n₋) && continue
+        col = view(Qk0, :, ((α - 1) * nSE + (β - 1)) * nSE + γ)
+        copyto!(col, view(F, :, tidx(i, k, l)))
+        # (d, e, e) with d a state: V(d, e, e) = Vx11[:, d]
+        a, b, c = i, k, l
+        if a ≤ n₋ && b > c0 && b == c
+            col .+= view(AVx11, :, a)
+        elseif b ≤ n₋ && a > c0 && a == c
+            col .+= view(AVx11, :, b)
+        elseif c ≤ n₋ && a > c0 && a == b
+            col .+= view(AVx11, :, c)
+        end
+    end
+    rest0 = kron_right3(Qk0, Gt, Gt, Gt)
+    Qk0 = nothing
+    Fxxx = Matrix{Float64}(undef, n₊, n₋^3)
+    @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+        copyto!(view(Fxxx, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(F, :, tidx(a, b, c)))
+    end
+    Qxxx, res0 = solve_kron3_stein(Ā₊t, hxt, Ā₊t * rest0 + Fxxx, schur_M = SM, schur_H = SH)
+    Fxxx = nothing
+    if !(res0 < tol) || !(res1 < tol) || !(res2 < tol)
+        return Gc, false
+    end
+    Vxxx = kron_right3(Qxxx, hxt, hxt, hxt)
+    Vxxx .+= rest0
+
+    # ∂C = Gc + multiplicity · (E₊ V) on the nonzero V blocks
+    ∂C = Matrix{Float64}(Gc)
+    addV!(j, μ, v) = (@inbounds for (r, ir) in enumerate(i₊); ∂C[ir, j] += μ * v[r]; end)
+    @inbounds for a in 1:n₋, b in 1:a, c in 1:b
+        addV!(tidx(a, b, c), third_order_triple_multiplicity(a, b, c), view(Vxxx, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c))
+    end
+    @inbounds for a in 1:n₋, b in 1:a
+        addV!(tidx(a, b, c0), a == b ? 3.0 : 6.0, view(Vxx1, :, (a - 1) * n₋ + b))
+    end
+    @inbounds for d in 1:n₋
+        addV!(tidx(d, c0, c0), 3.0, view(Vx11, :, d))
+        for e in E
+            addV!(tidx(d, e, e), 3.0, view(Vx11, :, d))
+        end
+    end
+    addV!(j111, 1.0, Q111)
+    @inbounds for e in E
+        addV!(tidx(c0, e, e), 3.0, Q111)
+    end
+    return ∂C, all(isfinite, ∂C)
+end
+
+"""
+    third_order_schur_s_pullback!(∂s, L, X₊, s, n₋, nₑ)
+
+Add to `∂s` the gradient of `⟨L, X₊ B(s)⟩` with respect to `s`, with `X₊`
+fixed and `B(s)` the compressed third-order matrix of `third_order_schur_solve`
+(`s = [hx G_e; e₁ᵀ; 0]`). This is the `s`-part of `⟨∂B, B(s)⟩` with
+`∂B = X₊ᵀ L`; `B` and `∂B` are never formed. Only the state rows of `s` get a
+gradient.
+"""
+function third_order_schur_s_pullback!(∂s::AbstractMatrix{Float64}, L::AbstractMatrix{Float64},
+                                        X₊::AbstractMatrix{Float64}, s::AbstractMatrix{Float64},
+                                        n₋::Int, nₑ::Int)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    c0 = n₋ + 1
+    p = size(X₊, 1)
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    E = collect(n₋ + 2:nₑ₋)
+    G = Matrix{Float64}(s[1:n₋, SE])
+    Gt = Matrix(transpose(G))
+    Ld = L isa Matrix{Float64} ? L : Matrix{Float64}(L)
+    Xd = X₊ isa Matrix{Float64} ? X₊ : Matrix{Float64}(X₊)
+    ∂G = zeros(n₋, nSE)
+
+    # (x,x,x) columns: Z(α,β,γ) = X0 (G_α ⊗ G_β ⊗ G_γ), X0 and the spread
+    # cotangent Ls symmetric in their triple index, so ∂G = 3 · one slot.
+    if n₋ > 0
+        X0 = Matrix{Float64}(undef, p, n₋^3)
+        @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+            copyto!(view(X0, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(Xd, :, tidx(a, b, c)))
+        end
+        Ls = Matrix{Float64}(undef, p, nSE^3)
+        @inbounds for α in 1:nSE, β in 1:nSE, γ in 1:nSE
+            μ = third_order_triple_multiplicity(α, β, γ)
+            col = view(Ls, :, ((α - 1) * nSE + (β - 1)) * nSE + γ)
+            col .= view(Ld, :, tidx(SE[α], SE[β], SE[γ])) ./ μ
+        end
+        # T1[p, d, β, α] = Σ_γ Ls[p, γ, β, α] G[d, γ]
+        T1 = Vector{Float64}(undef, p * n₋ * nSE^2)
+        lsv = vec(Ls)
+        @inbounds for k in 1:nSE^2
+            ℒ.mul!(reshape(view(T1, (k - 1) * p * n₋ + 1:k * p * n₋), p, n₋),
+                   reshape(view(lsv, (k - 1) * p * nSE + 1:k * p * nSE), p, nSE), Gt)
+        end
+        Ls = nothing
+        # T2[p, d, e, α] = Σ_β T1[p, d, β, α] G[e, β]
+        T2 = Vector{Float64}(undef, p * n₋^2 * nSE)
+        @inbounds for α in 1:nSE
+            ℒ.mul!(reshape(view(T2, (α - 1) * p * n₋^2 + 1:α * p * n₋^2), p * n₋, n₋),
+                   reshape(view(T1, (α - 1) * p * n₋ * nSE + 1:α * p * n₋ * nSE), p * n₋, nSE), Gt)
+        end
+        T1 = nothing
+        ℒ.mul!(∂G, transpose(reshape(X0, p * n₋^2, n₋)), reshape(T2, p * n₋^2, nSE), 3.0, 1.0)
+        X0 = nothing; T2 = nothing
+
+        # (x,x,1) columns: Z(α,β,1) = X1 (G_α ⊗ G_β)
+        X1 = Matrix{Float64}(undef, p, n₋^2)
+        @inbounds for a in 1:n₋, b in 1:n₋
+            copyto!(view(X1, :, (a - 1) * n₋ + b), view(Xd, :, tidx(a, b, c0)))
+        end
+        L2 = Matrix{Float64}(undef, p, nSE^2)
+        @inbounds for α in 1:nSE, β in 1:nSE
+            view(L2, :, (α - 1) * nSE + β) .= view(Ld, :, tidx(SE[α], SE[β], c0)) ./ (α == β ? 1.0 : 2.0)
+        end
+        kron_right_pullback!(∂G, ∂G, L2, X1, G, G)
+
+        # (x,1,1) columns: Z(α,1,1) = (X₊(x,1,1) + Σᵢ X₊(x,eᵢ,eᵢ)) G_α
+        XQ = zeros(p, n₋)
+        @inbounds for d in 1:n₋
+            view(XQ, :, d) .+= view(Xd, :, tidx(d, c0, c0))
+            for e in E
+                view(XQ, :, d) .+= view(Xd, :, tidx(d, e, e))
+            end
+        end
+        L3 = Ld[:, [tidx(SE[α], c0, c0) for α in 1:nSE]]
+        ℒ.mul!(∂G, transpose(XQ), L3, 1.0, 1.0)
+    end
+
+    @views ∂s[1:n₋, SE] .+= ∂G
+    return ∂s
+end
+
+"""
+    third_order_schur_dZ(X₊, G, dG, n₋, nₑ)
+
+Directional derivative of `Z = X₊ B(s)` in the state rows `G = s[1:n₋, SE]`
+of `s`, along `dG`, with `X₊` fixed (compressed triple columns).
+"""
+function third_order_schur_dZ(X₊::Matrix{Float64}, G::Matrix{Float64}, dG::Matrix{Float64}, n₋::Int, nₑ::Int)
+    tidx = third_order_triple_index
+    nₑ₋ = n₋ + 1 + nₑ
+    c0 = n₋ + 1
+    p = size(X₊, 1)
+    SE = [collect(1:n₋); collect(n₋ + 2:nₑ₋)]
+    nSE = length(SE)
+    E = collect(n₋ + 2:nₑ₋)
+    nc = nₑ₋ * (nₑ₋ + 1) * (nₑ₋ + 2) ÷ 6
+    dZ = zeros(p, nc)
+    n₋ == 0 && return dZ
+
+    Y0 = Matrix{Float64}(undef, p, n₋^3)
+    @inbounds for a in 1:n₋, b in 1:n₋, c in 1:n₋
+        copyto!(view(Y0, :, ((a - 1) * n₋ + (b - 1)) * n₋ + c), view(X₊, :, tidx(a, b, c)))
+    end
+    T0 = kron_right3(Y0, dG, G, G)
+    Y0 = nothing
+    ix(α, β, γ) = ((α - 1) * nSE + (β - 1)) * nSE + γ
+    @inbounds for α in 1:nSE, β in 1:α, γ in 1:β
+        view(dZ, :, tidx(SE[α], SE[β], SE[γ])) .= view(T0, :, ix(α, β, γ)) .+ view(T0, :, ix(β, α, γ)) .+ view(T0, :, ix(γ, β, α))
+    end
+    T0 = nothing
+
+    Y1 = Matrix{Float64}(undef, p, n₋^2)
+    @inbounds for a in 1:n₋, b in 1:n₋
+        copyto!(view(Y1, :, (a - 1) * n₋ + b), view(X₊, :, tidx(a, b, c0)))
+    end
+    T1 = kron_right(Y1, dG, G)
+    @inbounds for α in 1:nSE, β in 1:α
+        view(dZ, :, tidx(SE[α], SE[β], c0)) .= view(T1, :, (α - 1) * nSE + β) .+ view(T1, :, (β - 1) * nSE + α)
+    end
+
+    YQ = zeros(p, n₋)
+    @inbounds for d in 1:n₋
+        view(YQ, :, d) .+= view(X₊, :, tidx(d, c0, c0))
+        for e in E
+            view(YQ, :, d) .+= view(X₊, :, tidx(d, e, e))
+        end
+    end
+    W2 = YQ * dG
+    @inbounds for α in 1:nSE
+        copyto!(view(dZ, :, tidx(SE[α], c0, c0)), view(W2, :, α))
+    end
+    return dZ
+end

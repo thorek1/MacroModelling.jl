@@ -57,6 +57,12 @@ end
         @test sys.pruned
         @test sys.past == collect(1:sys.nPast)
         @test sys.nStages == stages
+        if stages == 2
+            # Second-stage states enter linearly, so the curvature block holds
+            # only first-stage states and shocks.
+            @test sys.dc == sys.original_nPast + sys.nExo
+            @test sys.nc == sys.nKeep + length(sys.measurement_rows)
+        end
 
         if stages == 2
             initial_mean = MacroModelling.pruned_ivashchenko_initial_mean(sys, state)

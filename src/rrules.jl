@@ -1872,7 +1872,7 @@ function rrule(::typeof(get_loglikelihood),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)
@@ -2617,7 +2617,7 @@ function rrule(::typeof(get_irf),
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ?
-            syl_sum > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM :
+            DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM :
             sylvester_algorithm[2],
         lyapunov_algorithm = lyapunov_algorithm)
 
@@ -2768,15 +2768,33 @@ function rrule(::typeof(calculate_covariance),
     end
 
     # ── Step 5: Lyapunov ──
-    lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
+    # Without unit roots, solve on the state block and lift (see
+    # `first_order_covariance_from_states`): Y = B Y B' + CC[past, past] with
+    # B = sol[past, 1:nPast], then Σ = Ps Y Ps' + CC with Ps = sol[:, 1:nPast].
+    compact = !𝓂.caches.has_unit_roots && nPast > 0
+    if compact
+        Ps = sol[:, 1:nPast]
+        B_states = Ps[past_idx, :]
+        # Cold solve, as in `calculate_covariance`, so repeated calls give the same Σ.
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, nPast, :first_order)
+        lyap_out, lyap_pb = rrule(solve_lyapunov_equation, B_states, CC[past_idx, past_idx], lyap_ws;
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.first_order.ad.lyapunov,
+                                    verbose = opts.verbose)
+        Y_states = Matrix(lyap_out[1])
+        covar_raw = Ps * Y_states * Ps' + CC
+        covar_raw = (covar_raw + covar_raw') / 2
+    else
+        lyap_ws = ensure_lyapunov_workspace!(𝓂.workspaces, T.nVars, :first_order)
 
-    lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
-                                initial_guess = 𝓂.caches.covariance_first_order,
-                                lyapunov_algorithm = opts.lyapunov_algorithm,
-                                tol = opts.tol.first_order.ad.lyapunov,
-                                verbose = opts.verbose,
-                                has_unit_roots = 𝓂.caches.has_unit_roots)
-    covar_raw = lyap_out[1]
+        lyap_out, lyap_pb = rrule(solve_lyapunov_equation, A, CC, lyap_ws;
+                                    initial_guess = 𝓂.caches.covariance_first_order,
+                                    lyapunov_algorithm = opts.lyapunov_algorithm,
+                                    tol = opts.tol.first_order.ad.lyapunov,
+                                    verbose = opts.verbose,
+                                    has_unit_roots = 𝓂.caches.has_unit_roots)
+        covar_raw = lyap_out[1]
+    end
     solved_lyap = lyap_out[2]
 
     # Cache the Lyapunov result for reuse
@@ -2819,7 +2837,21 @@ function rrule(::typeof(calculate_covariance),
         end
 
         # Backprop through Lyapunov equation
-        if !(Δcovar isa AbstractZero)
+        if !(Δcovar isa AbstractZero) && compact
+            # Σ = (S + S')/2 with S = Ps Y Ps' + CC.
+            Σ̄ = (Δcovar + Δcovar') / 2
+            # ∂Ps from both Ps factors; Ȳ = Ps' Σ̄ Ps.
+            ∂Ps = Σ̄ * Ps * Y_states' + Σ̄' * Ps * Y_states
+            Ȳ = Ps' * Σ̄ * Ps
+            lyap_grad = lyap_pb((Ȳ, NoTangent()))
+            ∂Ps[past_idx, :] .+= lyap_grad[2]          # B = Ps[past, :]
+            ΔCC = Matrix(Σ̄)
+            ΔCC[past_idx, past_idx] .+= lyap_grad[3]    # CC[past, past]
+
+            ΔC = (ΔCC + ΔCC') * C
+            ∂sol_total[:, 1:nPast] .+= ∂Ps
+            ∂sol_total[:, nPast+1:end] .+= ΔC
+        elseif !(Δcovar isa AbstractZero)
             lyap_grad = lyap_pb((Δcovar, NoTangent()))
             ΔA  = lyap_grad[2]   # ∂A
             ΔCC = lyap_grad[3]   # ∂CC
@@ -3917,18 +3949,28 @@ function rrule(::typeof(calculate_third_order_moments),
         # ── Standard Lyapunov solve (compressed) ──
         ŝ_to_ŝ₃ = [A_UU spzeros(N_upper, N_lower); A_LU A_LL]
 
-        A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-        C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
-
         N_total = N_upper + N_lower
-        lyap_ws_3rd = Lyapunov_workspace(N_total)
-        lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
-                                    ŝ_to_ŝ₃, C, lyap_ws_3rd,
-                                    lyapunov_algorithm = opts.lyapunov_algorithm,
-                                    tol = opts.tol.third_order.ad.lyapunov,
-                                    verbose = opts.verbose)
-        Σᶻ₃ = lyap_out[1]
-        info = lyap_out[2]
+        struct_pb_iter = nothing
+        lyap_pb_iter = nothing
+        info = false
+        if T === Float64 && PRUNED_THIRD_ORDER_STRUCTURED_COVARIANCE[]
+            Σᶻ₃, info, struct_pb_iter = solve_pruned_third_order_covariance_structured_with_pullback(
+                                    ŝ_to_ŝ₃, ê_to_ŝ₃, Γ₃, Eᴸᶻ, s_to_s₁, Σ̂ᶻ₁, Σ̂ᶻ₂, nˢ,
+                                    D₂ˢ, L₂ˢ, D₃ˢ, L₃ˢ, opts)
+            info || (struct_pb_iter = nothing)
+        end
+        if !info
+            A_cross = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+            C = sparse_ABAt(ê_to_ŝ₃, Γ₃) + A_cross + A_cross'
+            lyap_ws_3rd = Lyapunov_workspace(N_total)
+            lyap_out, lyap_pb_iter = rrule(solve_lyapunov_equation,
+                                        ŝ_to_ŝ₃, C, lyap_ws_3rd,
+                                        lyapunov_algorithm = opts.lyapunov_algorithm,
+                                        tol = opts.tol.third_order.ad.lyapunov,
+                                        verbose = opts.verbose)
+            Σᶻ₃ = lyap_out[1]
+            info = lyap_out[2]
+        end
 
         if !info
             return zero_4(), zero_pb
@@ -3999,6 +4041,7 @@ function rrule(::typeof(calculate_third_order_moments),
             Σʸ₃tmp = Σʸ₃tmp,
             μˢ₃δμˢ₁ = μˢ₃δμˢ₁,
             lyap_pb = lyap_pb_iter,
+            struct_pb = struct_pb_iter,
             N_upper = N_upper,
             N_lower = N_lower,
             D₂ˢ = D₂ˢ,
@@ -4017,7 +4060,7 @@ function rrule(::typeof(calculate_third_order_moments),
     end
 
     # Convert to typed vector for type stability in pullback
-    if n_iters > 0
+    if n_iters > 0 && all(x -> typeof(x) === typeof(iter_data[1]), iter_data)
         iter_data = convert(Vector{typeof(iter_data[1])}, iter_data)
     end
     iter_data_typed = iter_data
@@ -4108,9 +4151,15 @@ function rrule(::typeof(calculate_third_order_moments),
             Nu = d.N_upper;  Nl = d.N_lower
             ru_i = 1:Nu;  rl_i = (Nu+1):(Nu+Nl)
 
-            lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
-            ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[2]
-            ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[3]
+            ∂Σ̂ᶻ₁_struct = nothing
+            ∂Σ̂ᶻ₂_struct = nothing
+            if d.struct_pb !== nothing
+                ∂ŝ_to_ŝ₃, ∂C_lyap, ∂Σ̂ᶻ₁_struct, ∂Σ̂ᶻ₂_struct = d.struct_pb(∂Σᶻ₃)
+            else
+                lyap_grad = d.lyap_pb((∂Σᶻ₃, NoTangent()))
+                ∂ŝ_to_ŝ₃ = lyap_grad[2] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[2]
+                ∂C_lyap   = lyap_grad[3] isa AbstractZero ? zeros(T, size(d.ŝ_to_ŝ₃)) : lyap_grad[3]
+            end
 
             # Backprop through C = ê * Γ₃ * ê' + M + M' where M = ê * Eᴸᶻ * ŝ'
             ∂C_sym = ∂C_lyap + ∂C_lyap'
@@ -4194,6 +4243,10 @@ function rrule(::typeof(calculate_third_order_moments),
             ∂vv₂_l = zeros(T, size(vv₂))
             ∂Σ̂ᶻ₁  = zeros(T, n, n)
             ∂Σ̂ᶻ₂  = zeros(T, size(d.Σ̂ᶻ₂))
+            if ∂Σ̂ᶻ₁_struct !== nothing
+                ∂Σ̂ᶻ₁ .+= ∂Σ̂ᶻ₁_struct
+                ∂Σ̂ᶻ₂ .+= ∂Σ̂ᶻ₂_struct
+            end
             ∂Δ̂μˢ₂_l = zeros(T, n)
 
             # Block boundary arrays
@@ -6096,30 +6149,50 @@ function rrule(::typeof(calculate_second_order_solution),
 
     # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
 
+    # State-block Schur path (see second_order_schur.jl) for the forward solve
+    # and the adjoint solve in the pullback. It never forms B.
+    schur_used_2nd = false
+    Ā_schur = zeros(0, 0)
+    s_schur = zeros(0, 0)
+    Z_schur = zeros(0, 0)
+    if S === Float64 && opts.sylvester_algorithm² == :schur && n₋ > 0
+        Ā_schur = Matrix{Float64}(A[:, i₊])
+        s_schur = Matrix{Float64}(𝐒₁₋╱𝟏ₑ)
+        𝐒₂, schur_used_2nd, Z_schur = second_order_schur_solve(Ā_schur, s_schur, Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                        tol = opts.tol.second_order.ad.sylvester.acceptance_tol)
+        if opts.verbose println("Second order solution: state-block Schur solve - solved: $schur_used_2nd") end
+    end
+
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
+    B = schur_used_2nd ? spzeros(S, 0, 0) : compressed_kron²(𝐒₁₋╱𝟏ₑ, sparse_preallocation = ℂ.tmp_sparse_prealloc1) + M₂.𝛔c₂
 
     # end # timeit_debug    
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
+    sylv_alg_2nd = opts.sylvester_algorithm² == :schur ? schur_fallback_sylvester_algorithm(size(B, 2)) : opts.sylvester_algorithm²
 
     # Doubling power-cache: enable capture so the pullback's adjoint solve can
     # reuse A^(2^k), B^(2^k) from this forward pass.
-    cache_eligible_2nd = opts.sylvester_algorithm² == :doubling
-    if cache_eligible_2nd
+    cache_eligible_2nd = !schur_used_2nd && sylv_alg_2nd == :doubling
+    pow_iters_captured_2nd = 0
+    if schur_used_2nd
+        solved = true
+    else
+        if cache_eligible_2nd
+            ℂ.sylvester_workspace.pow_iters = 0
+            ℂ.sylvester_workspace.pow_capture = true
+            ℂ.sylvester_workspace.pow_transposed = true
+        end
+        𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                            initial_guess = initial_guess,
+                                            sylvester_algorithm = sylv_alg_2nd,
+                                            preconditioner = opts.sylvester_preconditioner,
+                                            tol = opts.tol.second_order.ad.sylvester,
+                                            verbose = opts.verbose)
+        ℂ.sylvester_workspace.pow_capture = false
+        pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
         ℂ.sylvester_workspace.pow_iters = 0
-        ℂ.sylvester_workspace.pow_capture = true
-        ℂ.sylvester_workspace.pow_transposed = true
     end
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                        initial_guess = initial_guess,
-                                        sylvester_algorithm = opts.sylvester_algorithm²,
-                                        preconditioner = opts.sylvester_preconditioner,
-                                        tol = opts.tol.second_order.ad.sylvester,
-                                        verbose = opts.verbose)
-    ℂ.sylvester_workspace.pow_capture = false
-    pow_iters_captured_2nd = ℂ.sylvester_workspace.pow_iters
-    ℂ.sylvester_workspace.pow_iters = 0
     𝐒₂_stable = copy(𝐒₂)
 
     # end # timeit_debug
@@ -6141,9 +6214,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐂₂t = M₂.𝐂₂ᵀ
 
-    Bt = choose_matrix_format(B', density_threshold = 1.0)
-    At = choose_matrix_format(A', density_threshold = 1.0)
-    𝐒₂_stable_t = choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
+    Bt = schur_used_2nd ? B : choose_matrix_format(B', density_threshold = 1.0)
+    At = schur_used_2nd ? A : choose_matrix_format(A', density_threshold = 1.0)
+    𝐒₂_stable_t = schur_used_2nd ? 𝐒₂_stable : choose_matrix_format(𝐒₂_stable', density_threshold = 1.0)
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
@@ -6202,22 +6275,29 @@ function rrule(::typeof(calculate_second_order_solution),
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
         
-        ws = ℂ.sylvester_workspace
-        cache_valid = cache_eligible_2nd &&
-                      pow_iters_captured_2nd >= 1 &&
-                      ws.pow_transposed
-        saved_capture = ws.pow_capture
-        if cache_valid
-            ws.pow_iters = pow_iters_captured_2nd
-            ws.pow_capture = false
+        solved = false
+        if schur_used_2nd
+            ∂C, solved = second_order_schur_adjoint(Ā_schur, s_schur, Matrix{Float64}(∂𝐒₂), i₊, n₋, nₑ,
+                                                    tol = opts.tol.second_order.ad.sylvester.acceptance_tol)
         end
-        ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
-                                              sylvester_algorithm = opts.sylvester_algorithm²,
-                                              preconditioner = opts.sylvester_preconditioner,
-                                              tol = opts.tol.second_order.ad.sylvester,
-                                              verbose = opts.verbose)
-        ws.pow_capture = saved_capture
-        ws.pow_iters = 0
+        if !solved && !schur_used_2nd   # B was not formed on the Schur path
+            ws = ℂ.sylvester_workspace
+            cache_valid = cache_eligible_2nd &&
+                          pow_iters_captured_2nd >= 1 &&
+                          ws.pow_transposed
+            saved_capture = ws.pow_capture
+            if cache_valid
+                ws.pow_iters = pow_iters_captured_2nd
+                ws.pow_capture = false
+            end
+            ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₂, ws,
+                                                  sylvester_algorithm = sylv_alg_2nd,
+                                                  preconditioner = opts.sylvester_preconditioner,
+                                                  tol = opts.tol.second_order.ad.sylvester,
+                                                  verbose = opts.verbose)
+            ws.pow_capture = saved_capture
+            ws.pow_iters = 0
+        end
 
         if !solved
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -6229,18 +6309,30 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C = choose_matrix_format(∂C) # Dense
 
-        ∂A = ∂C * Bt * 𝐒₂_stable_t
+        if schur_used_2nd
+            # Structured form of the two products below, without B:
+            #   ∂A[:, i₊] = ∂C (𝐒₂[i₊, :] B)'  with  𝐒₂[i₊, :] B = Z_schur,
+            #   ⟨∂B, B(s)⟩ = ⟨Ā' ∂C 𝐂₂', 𝐒₂[i₊, :] 𝐔₂ (s ⊗ s)⟩.
+            # Only the i₊ columns of ∂A reach ∇₁₊ and spinv.
+            ∂A = zeros(S, n, n)
+            ∂A[:, i₊] = ∂C * Z_schur'
+            L_full = (Ā_schur' * ∂C) * 𝐂₂t
+            Y_full = 𝐒₂_stable[i₊, :] * M₂.𝐔₂
+            kron_right_pullback!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, L_full, Y_full, s_schur, s_schur)
+        else
+            ∂A = ∂C * Bt * 𝐒₂_stable_t
 
-        ∂B = 𝐒₂_stable_t * At * ∂C
+            ∂B = 𝐒₂_stable_t * At * ∂C
 
-        # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-        ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
+            # B = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
+            ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂B * 𝐂₂t
 
-        # end # timeit_debug
+            # end # timeit_debug
 
-        # @timeit_debug timer "Kron adjoint" begin
+            # @timeit_debug timer "Kron adjoint" begin
 
-        fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+            fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+        end
 
         # end # timeit_debug
 
@@ -8087,10 +8179,11 @@ function rrule(::typeof(calculate_third_order_solution),
     # --- B matrix -----------------------------------------------------------------
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
 
-    B = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
-                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7)
-
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
+    # Built only when the generic Sylvester solver needs it (not on the
+    # state-block Schur path).
+    build_B₃() = compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔,
+                                       sparse_preallocation = ℂ.tmp_sparse_prealloc7) +
+                 compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.third_order.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)
 
     # --- 𝐗₃ (C-matrix ingredients) -----------------------------------------------
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:]; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
@@ -8142,21 +8235,41 @@ function rrule(::typeof(calculate_third_order_solution),
     C = spinv * 𝐗₃
 
     # --- solve Sylvester  A·𝐒₃·B + C = 𝐒₃ ----------------------------------------
-    cache_eligible_3rd = opts.sylvester_algorithm³ == :doubling
-    if cache_eligible_3rd
-        ℂ.sylvester_workspace.pow_iters = 0
-        ℂ.sylvester_workspace.pow_capture = true
-        ℂ.sylvester_workspace.pow_transposed = true
+    # State-block Schur path (third_order_schur.jl) for the forward and the
+    # adjoint solve; otherwise the generic solver.
+    schur_used_3rd = false
+    Ā_schur3 = zeros(0, 0)
+    s_schur3 = zeros(0, 0)
+    Z_schur3 = zeros(0, 0)
+    if S === Float64 && opts.sylvester_algorithm³ == :schur && n₋ > 0
+        Ā_schur3 = Matrix{Float64}(A[:, i₊])
+        s_schur3 = Matrix{Float64}(𝐒₁₋╱𝟏ₑ)
+        𝐒₃, schur_used_3rd, Z_schur3 = third_order_schur_solve(Ā_schur3, s_schur3, Matrix{Float64}(C), i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
+        if opts.verbose println("Third order solution: state-block Schur solve - solved: $schur_used_3rd") end
     end
-    𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
-                                        initial_guess = initial_guess_sylv,
-                                        sylvester_algorithm = opts.sylvester_algorithm³,
-                                        preconditioner = opts.sylvester_preconditioner,
-                                        tol = opts.tol.third_order.ad.sylvester,
-                                        verbose = opts.verbose)
-    ℂ.sylvester_workspace.pow_capture = false
-    pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
-    ℂ.sylvester_workspace.pow_iters = 0
+    B = schur_used_3rd ? spzeros(S, 0, 0) : build_B₃()
+    sylv_alg_3rd = opts.sylvester_algorithm³ == :schur ? schur_fallback_sylvester_algorithm(size(C, 2)) : opts.sylvester_algorithm³
+    cache_eligible_3rd = !schur_used_3rd && sylv_alg_3rd == :doubling
+    pow_iters_captured_3rd = 0
+    if schur_used_3rd
+        solved = true
+    else
+        if cache_eligible_3rd
+            ℂ.sylvester_workspace.pow_iters = 0
+            ℂ.sylvester_workspace.pow_capture = true
+            ℂ.sylvester_workspace.pow_transposed = true
+        end
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, ℂ.sylvester_workspace,
+                                            initial_guess = initial_guess_sylv,
+                                            sylvester_algorithm = sylv_alg_3rd,
+                                            preconditioner = opts.sylvester_preconditioner,
+                                            tol = opts.tol.third_order.ad.sylvester,
+                                            verbose = opts.verbose)
+        ℂ.sylvester_workspace.pow_capture = false
+        pow_iters_captured_3rd = ℂ.sylvester_workspace.pow_iters
+        ℂ.sylvester_workspace.pow_iters = 0
+    end
 
     𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false, tol = opts.tol.third_order.droptol)
     𝐒₃_stable = copy(𝐒₃)
@@ -8190,7 +8303,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     # Materialized transposes of forward-pass intermediates
     At = choose_matrix_format(A')
-    Bt = choose_matrix_format(B')
+    Bt = schur_used_3rd ? B : choose_matrix_format(B')
     ∇₂t = choose_matrix_format(∇₂')
     ∇₃t = choose_matrix_format(∇₃')
     D_ab_t = choose_matrix_format(D_ab')
@@ -8227,22 +8340,31 @@ function rrule(::typeof(calculate_third_order_solution),
         end
 
         # --- adjoint Sylvester:  Aᵀ ∂C_adj Bᵀ + ∂𝐒₃ = ∂C_adj --------------------
-        ws = ℂ.sylvester_workspace
-        cache_valid = cache_eligible_3rd &&
-                      pow_iters_captured_3rd >= 1 &&
-                      ws.pow_transposed
-        saved_capture = ws.pow_capture
-        if cache_valid
-            ws.pow_iters = pow_iters_captured_3rd
-            ws.pow_capture = false
+        slvd = false
+        if schur_used_3rd
+            ∂C_adj, slvd = third_order_schur_adjoint(Ā_schur3, s_schur3, Matrix{Float64}(∂𝐒₃), i₊, n₋, nₑ,
+                                                    tol = opts.tol.third_order.ad.sylvester.acceptance_tol)
         end
-        ∂C_adj, slvd = solve_sylvester_equation(At, Bt, ∂𝐒₃, ws,
-                                              sylvester_algorithm = opts.sylvester_algorithm³,
-                                              preconditioner = opts.sylvester_preconditioner,
-                                              tol = opts.tol.third_order.ad.sylvester,
-                                              verbose = opts.verbose)
-        ws.pow_capture = saved_capture
-        ws.pow_iters = 0
+        if !slvd
+            # Schur adjoint failed: the generic solver needs B
+            Bt_adj = schur_used_3rd ? choose_matrix_format(build_B₃()') : Bt
+            ws = ℂ.sylvester_workspace
+            cache_valid = cache_eligible_3rd &&
+                          pow_iters_captured_3rd >= 1 &&
+                          ws.pow_transposed
+            saved_capture = ws.pow_capture
+            if cache_valid
+                ws.pow_iters = pow_iters_captured_3rd
+                ws.pow_capture = false
+            end
+            ∂C_adj, slvd = solve_sylvester_equation(At, Bt_adj, ∂𝐒₃, ws,
+                                                  sylvester_algorithm = sylv_alg_3rd,
+                                                  preconditioner = opts.sylvester_preconditioner,
+                                                  tol = opts.tol.third_order.ad.sylvester,
+                                                  verbose = opts.verbose)
+            ws.pow_capture = saved_capture
+            ws.pow_iters = 0
+        end
         if !slvd
             return (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
         end
@@ -8253,6 +8375,10 @@ function rrule(::typeof(calculate_third_order_solution),
         # Dense workspace temporaries (overwritten by mul! each call)
         ∂𝐗₃           = ℂ.∂𝐗₃_3rd
         ∂A             = ℂ.∂A_3rd
+        if !schur_used_3rd
+            nc₃ = size(C, 2)
+            size(ℂ.∂B_sylv_3rd) == (nc₃, nc₃) || (ℂ.∂B_sylv_3rd = zeros(S, nc₃, nc₃))
+        end
         ∂B_from_sylv   = ℂ.∂B_sylv_3rd
         ∂out2          = ℂ.∂out2_3rd
         mul_tmp        = ℂ.mul_tmp_3rd
@@ -8281,11 +8407,17 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # --- gradient of A, B, C from 𝐒₃ = A·𝐒₃·B + C ---------------------------
         # ∂A = ∂C_adj * B' * 𝐒₃_stable' — use ∂𝐗₃ as temp for intermediate
-        ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
-        ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
-        # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
-        ℒ.mul!(∂𝐗₃, At, ∂C_adj)
-        ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
+        if schur_used_3rd
+            # 𝐒₃[i₊, :] B = Z_schur3; only the i₊ columns of ∂A reach ∇₁₊ and spinv.
+            fill!(∂A, zero(S))
+            ∂A[:, i₊] = ∂C_adj * Z_schur3'
+        else
+            ℒ.mul!(∂𝐗₃, ∂C_adj, Bt)
+            ℒ.mul!(∂A, ∂𝐗₃, 𝐒₃_stable')
+            # ∂B_from_sylv = 𝐒₃_stable' * A' * ∂C_adj — reuse ∂𝐗₃ as temp
+            ℒ.mul!(∂𝐗₃, At, ∂C_adj)
+            ℒ.mul!(∂B_from_sylv, 𝐒₃_stable', ∂𝐗₃)
+        end
         # ∂B_from_sylv = sparse(𝐒₃_stable' * ∂𝐗₃)
         # ∂𝐗₃ = spinv' * ∂C_adj (overwrite temp with real value)
         # ℒ.mul!(∂𝐗₃, sxpinv', ∂C_adj)
@@ -8457,10 +8589,16 @@ function rrule(::typeof(calculate_third_order_solution),
         ℒ.axpy!(1, ∂𝐒₁₊╱𝟎_tmp, ∂𝐒₁₊╱𝟎₃)
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_permuted_mixed_kron(𝐒₁₋╱𝟏ₑ, 𝛔) ---
-        compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
+        if schur_used_3rd
+            # ⟨∂B, B(s)⟩ with ∂B = 𝐒₃[i₊, :]ᵀ Āᵀ ∂C, from the block structure (no B, no ∂B)
+            third_order_schur_s_pullback!(∂𝐒₁₋╱𝟏ₑ₃, Ā_schur3' * Matrix{Float64}(∂C_adj),
+                                          Matrix{Float64}(𝐒₃_stable[i₊, :]), s_schur3, n₋, nₑ)
+        else
+            compressed_permuted_mixed_kron_pullback_∂A!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ, M₂.𝛔; tol = opts.tol.third_order.droptol)
 
-        # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
-        compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
+            # --- ∂𝐒₁₋╱𝟏ₑ : from B via compressed_kron³(𝐒₁₋╱𝟏ₑ) ---
+            compressed_kron³_pullback!(∂𝐒₁₋╱𝟏ₑ₃, ∂B_from_sylv, 𝐒₁₋╱𝟏ₑ; tol = opts.tol.third_order.droptol)
+        end
 
         # --- ∂𝐒₁₋╱𝟏ₑ : from out2 terms a,b via tmpkron2 = kron(B=𝛔, A=𝐒₁₋╱𝟏ₑ) ---
         # Fused: nabla2_kron_S1S2_t * ∂out2 in blocks + identity/(2,1,3) permuted ∂A
@@ -8528,6 +8666,10 @@ function rrule(::typeof(solve_sylvester_equation),
     # The solver overloads populate 𝕊ℂ.𝐀_pow / 𝐁_pow during forward iteration so
     # the pullback can skip squaring. With pow_transposed=true, powers are stored
     # in transposed form directly, saving a post-hoc transpose pass.
+    # (:schur means :doubling for a generic Sylvester equation.)
+    if sylvester_algorithm == :schur
+        sylvester_algorithm = schur_fallback_sylvester_algorithm(size(B, 2))
+    end
     cache_eligible = sylvester_algorithm == :doubling
     if cache_eligible
         𝕊ℂ.pow_iters = 0
@@ -17905,7 +18047,7 @@ function rrule(::typeof(get_statistics),
                                     verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
@@ -18504,7 +18646,7 @@ function rrule(::typeof(get_solution),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     estimation = true
 
@@ -19582,7 +19724,7 @@ function rrule(::typeof(get_loglikelihood),
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.constants.post_model_macro.nPast_not_future_and_mixed + 1 + 𝓂.constants.post_model_macro.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? DEFAULT_THIRD_ORDER_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     observables = get_and_check_observables(𝓂.constants.post_model_macro, data)

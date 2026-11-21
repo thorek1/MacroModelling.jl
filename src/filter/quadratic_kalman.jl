@@ -352,7 +352,9 @@ end
 function quadratic_kalman_G(sys, z::AbstractVector{<:Real})
     ā = sys.Ea * vcat(sys.P * view(z, sys.r1), one(eltype(z)))
     ū = sys.PS1 * ā
-    G2 = sys.S2 * compressed_pair_mixed_matrix(ā, sys.S) / 2
+    # x₂ = ½ S₂ c(aug) with c(a) = [aᵢ²; 2aᵢaⱼ]. The ε-linear part of c(ā + Sε)
+    # is 2 · compressed_pair_mixed_matrix(ā, S) ε, so the ½ cancels.
+    G2 = sys.S2 * compressed_pair_mixed_matrix(ā, sys.S)
     Gq = sys.pair_reorder * raw_pair_mixed_matrix(ū, sys.V)
     return vcat(sys.G1, G2, Gq)
 end
@@ -803,7 +805,8 @@ function run_quadratic_kalman(sys,
                               on_failure_loglikelihood::Real = -Inf,
                               workspaces = nothing,
                               lyapunov_algorithm::Symbol = :doubling,
-                              initial_covariance_out::Union{Nothing,Base.RefValue} = nothing)
+                              initial_covariance_out::Union{Nothing,Base.RefValue} = nothing,
+                              reduce_state::Bool = true)
     nz = sys.nz
     𝒜, c, 𝒞, QH = sys.𝒜, sys.c, sys.𝒞, sys.QH
     n_obs, nT = size(data_in_deviations)
@@ -822,24 +825,171 @@ function run_quadratic_kalman(sys,
         Matrix{Tv}(ℒ.Diagonal(collect(measurement_error)))
     end
 
-    z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
-
     # The first-order block supplies the only covariance needed by the
     # state-dependent loading at the stationary initialization.
     g0, Λ = quadratic_kalman_affine_G(sys)
-    Pz = sys.P * [Matrix{Tv}(ℒ.I(sys.nr)) zeros(Tv, sys.nr, nz - sys.nr)]
-    Σ, Σ1 = quadratic_kalman_initial_covariance(sys, z̄, g0, Λ, Pz;
+
+    # Run the recursion on the reachable part of the pair block when it is
+    # smaller. The result is the same likelihood (see
+    # `quadratic_kalman_reduced_system`).
+    reduced = reduce_state ? quadratic_kalman_reduced_system(sys, g0, Λ) : nothing
+    fsys, g0, Λ, Wq = reduced === nothing ? (sys, g0, Λ, nothing) : reduced
+    nz = fsys.nz
+    𝒜, c, 𝒞, QH = fsys.𝒜, fsys.c, fsys.𝒞, fsys.QH
+
+    z̄ = (Matrix{Tv}(ℒ.I(nz)) - 𝒜) \ c
+    Pz = fsys.P * [Matrix{Tv}(ℒ.I(fsys.nr)) zeros(Tv, fsys.nr, nz - fsys.nr)]
+    Σ, Σ1 = quadratic_kalman_initial_covariance(fsys, z̄, g0, Λ, Pz;
                                                 workspaces = workspaces,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
     # The reverse pass needs this exact matrix again. Handing it back lets the
     # pullback skip a second identical Lyapunov solve (a residual check on an
-    # exact guess instead of a full doubling run).
-    initial_covariance_out === nothing || (initial_covariance_out[] = Σ)
+    # exact guess instead of a full doubling run). The pullback runs on the
+    # same (possibly reduced) system.
+    if initial_covariance_out !== nothing && eltype(Σ) === Float64
+        initial_covariance_out[] = Σ
+    end
 
     return quadratic_kalman_recursion(𝒜, c, QH, g0, Λ, Hm, Matrix(data_in_deviations),
                                       𝒞, Pz, z̄, Σ, nz, sys.nExo,
                                       presample_periods, on_failure_loglikelihood)
+end
+
+# Reachable pair block (exact state reduction, as in the Rust port).
+#
+# From the first period on, the first-order past state is
+# x₁ₚ = PS1 [x₁ₚ₋₁; 1; ε], so it stays in U = range(PS1): A·range(PS1) ⊂ range(A)
+# for the past-state columns A of PS1. The pair block q = vech(x₁ₚ x₁ₚ') then
+# stays in range(Wq) with Wq an orthonormal basis of {vech(U S U') : S = S'}.
+# The q rows of the transition, the constant, the shock loadings and the
+# constant noise all map into range(Wq), and so do the stationary mean and
+# covariance that start the filter. With W = blkdiag(I, I, Wq) the filter on
+# z̃ = W'z gives the same likelihood as the filter on z, with a pair block of
+# d(d+1)/2 instead of nPast(nPast+1)/2 coordinates (d = rank PS1).
+#
+# The basis is built with generic QR, so ForwardDiff duals follow the
+# parameter dependence of the subspace. Returns `nothing` when the rank is full
+# or the check below fails; the caller then runs the full system.
+function quadratic_kalman_reduced_system(sys, g0, Λ; rank_tolerance::Real = 1e-10,
+                                         check_tolerance::Real = 1e-9)
+    nPast, nr, nz, nq, nExo = sys.nPast, sys.nr, sys.nz, sys.nq, sys.nExo
+    nPast > 1 || return nothing
+    M = sys.PS1
+    pivoted = ℒ.qr(primal.(M), ℒ.ColumnNorm())
+    Rdiag = abs.(ℒ.diag(pivoted.R))
+    isempty(Rdiag) && return nothing
+    scale = maximum(Rdiag)
+    scale > 0 || return nothing
+    d = count(>(rank_tolerance * scale), Rdiag)
+    d < nPast || return nothing
+    cols = pivoted.p[1:d]
+    qrU = ℒ.qr(M[:, cols])
+    U = Matrix(qrU.Q)[:, 1:d]
+    K = sys.pair_reorder * raw_pair_power_matrix(U)
+    nq̃ = d * (d + 1) ÷ 2
+    qrK = ℒ.qr(K)
+    Wq = Matrix(qrK.Q)[:, 1:nq̃]
+
+    r12 = 1:2nr
+    rq = sys.rq
+    nz̃ = 2nr + nq̃
+    rq̃ = 2nr+1:nz̃
+    Tv = promote_type(eltype(sys.𝒜), eltype(Wq), eltype(g0), eltype(Λ))
+
+    # Exactness check: every map into the pair block must stay in range(Wq).
+    leak(X) = maximum(abs, primal.(X - Wq * (Wq' * X)); init = 0.0)
+    size_of(X) = max(1.0, maximum(abs, primal.(X); init = 0.0))
+    G0 = reshape(g0, nz, nExo)
+    Λ3 = reshape(Λ, nz, nExo * nPast)
+    pair_rows_ok = leak(sys.𝒜[rq, :] * blockdiag_rows(Wq, nr, nz)) <= check_tolerance * size_of(sys.𝒜[rq, :]) &&
+                   leak(sys.c[rq]) <= check_tolerance * size_of(sys.c[rq]) &&
+                   leak(sys.QH[rq, rq]) <= check_tolerance * size_of(sys.QH[rq, rq]) &&
+                   leak(G0[rq, :]) <= check_tolerance * size_of(G0[rq, :]) &&
+                   leak(Λ3[rq, :]) <= check_tolerance * size_of(Λ3[rq, :])
+    pair_rows_ok || return nothing
+
+    𝒜̃ = zeros(Tv, nz̃, nz̃)
+    𝒜̃[r12, r12] = sys.𝒜[r12, r12]
+    𝒜̃[r12, rq̃] = sys.𝒜[r12, rq] * Wq
+    𝒜̃[rq̃, r12] = Wq' * sys.𝒜[rq, r12]
+    𝒜̃[rq̃, rq̃] = Wq' * sys.𝒜[rq, rq] * Wq
+    c̃ = vcat(sys.c[r12], Wq' * sys.c[rq])
+    QH̃ = zeros(Tv, nz̃, nz̃)
+    QH̃[r12, r12] = sys.QH[r12, r12]
+    QH̃[r12, rq̃] = sys.QH[r12, rq] * Wq
+    QH̃[rq̃, r12] = Wq' * sys.QH[rq, r12]
+    QH̃[rq̃, rq̃] = Wq' * sys.QH[rq, rq] * Wq
+    QH̃ = (QH̃ + QH̃') / 2
+    𝒞̃ = hcat(sys.𝒞[:, r12], zeros(eltype(sys.𝒞), size(sys.𝒞, 1), nq̃))
+    g̃0 = vec(vcat(G0[r12, :], Wq' * G0[rq, :]))
+    Λ̃ = reshape(vcat(Λ3[r12, :], Wq' * Λ3[rq, :]), nz̃ * nExo, nPast)
+
+    rsys = merge(sys, (; 𝒜 = 𝒜̃, c = c̃, QH = QH̃, 𝒞 = 𝒞̃, nz = nz̃, nq = nq̃, rq = rq̃))
+    # basis data for the reverse pass (`quadratic_kalman_lift_cotangents!`)
+    basis = (; cols = cols, U = U, RU = Matrix(qrU.R), RK = Matrix(qrK.R))
+    return rsys, g̃0, Λ̃, Wq, basis
+end
+
+# Thin-QR pullback for a cotangent of Q only: A = Q R, Ā = (Q̄ + Q copyltu(M)) R⁻ᵀ
+# with M = -Q̄ᵀ Q and copyltu(M) = tril(M) + tril(M, -1)ᵀ.
+function thin_qr_q_pullback(Q::AbstractMatrix, R::AbstractMatrix, Q̄::AbstractMatrix)
+    M = -(Q̄' * Q)
+    C = ℒ.tril(M) + ℒ.tril(M, -1)'
+    return (Q̄ + Q * C) / ℒ.UpperTriangular(R)'
+end
+
+# Lift the cotangents of the reduced system (𝒜̃ = W'𝒜W, c̃ = W'c, QH̃ = sym(W'QH W),
+# g̃0 = vec(W'G0), Λ̃ = W'Λ3, W = blkdiag(I, I, Wq)) back to the full system, and add
+# the part that flows through the basis Wq(PS1) to P̄S1.
+function quadratic_kalman_lift_cotangents!(P̄S1, sys, reduced, g0, Λ, 𝒜̃̄, c̃̄, Q̃̄H, g̃̄0, Λ̃̄)
+    rsys, _, _, Wq, basis = reduced
+    nr, nz, nE, nP = sys.nr, sys.nz, sys.nExo, sys.nPast
+    nz̃ = rsys.nz
+    W = blockdiag_rows(Wq, nr, nz)
+    𝒜 = Matrix{Float64}(sys.𝒜); QH = Matrix{Float64}(sys.QH)
+    G0 = reshape(g0, nz, nE)
+    Λ3 = reshape(Λ, nz, nE * nP)
+
+    𝒜̄ = W * 𝒜̃̄ * W'
+    W̄ = 𝒜 * W * 𝒜̃̄' + 𝒜' * W * 𝒜̃̄
+    c̄ = W * c̃̄
+    W̄ .+= sys.c * c̃̄'
+    Q̄s = (Q̃̄H + Q̃̄H') / 2
+    Q̄H = W * Q̄s * W'
+    W̄ .+= QH * W * Q̄s' + QH' * W * Q̄s
+    G̃̄ = reshape(g̃̄0, nz̃, nE)
+    ḡ0 = vec(W * G̃̄)
+    W̄ .+= G0 * G̃̄'
+    Λ̃̄3 = reshape(Λ̃̄, nz̃, nE * nP)
+    Λ̄ = reshape(W * Λ̃̄3, nz * nE, nP)
+    W̄ .+= Λ3 * Λ̃̄3'
+
+    # Wq = thin Q of K = pair_reorder * raw_pair_power_matrix(U), U = thin Q of PS1[:, cols]
+    W̄q = W̄[sys.rq, 2nr+1:end]
+    K̄ = thin_qr_q_pullback(Wq, basis.RK, W̄q)
+    Ū = zeros(size(basis.U))
+    raw_pair_power_matrix_pullback!(Ū, basis.U, sys.pair_reorder' * K̄)
+    X̄ = thin_qr_q_pullback(basis.U, basis.RU, Ū)
+    @views P̄S1[:, basis.cols] .+= X̄
+    return 𝒜̄, c̄, Q̄H, ḡ0, Λ̄
+end
+
+# W restricted to the columns that multiply the pair rows of 𝒜: blkdiag(I, I, Wq).
+function blockdiag_rows(Wq, nr::Int, nz::Int)
+    nq̃ = size(Wq, 2)
+    W = zeros(eltype(Wq), nz, 2nr + nq̃)
+    @inbounds for i in 1:2nr
+        W[i, i] = one(eltype(Wq))
+    end
+    W[2nr+1:end, 2nr+1:end] = Wq
+    return W
+end
+
+function quadratic_kalman_lift_covariance(sys, Σ̃, Wq)
+    W = blockdiag_rows(primal.(Wq), sys.nr, sys.nz)
+    Σ = W * primal.(Σ̃) * W'
+    return (Σ + Σ') / 2
 end
 
 function quadratic_kalman_filter_data_with_model(𝓂::ℳ,
@@ -1109,30 +1259,38 @@ the recursion. Verified against ForwardDiff to ~1e-15 in the test suite.
 function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_periods, ∂ll;
                                    workspaces = nothing,
                                    lyapunov_algorithm::Symbol = :doubling,
-                                   initial_covariance::AbstractMatrix{<:AbstractFloat} = zeros(0, 0))
-    nr, nP, nE, na, nq, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nq, sys.nz
-    r1, r2, rq = sys.r1, sys.r2, sys.rq
-    g0, Λ = quadratic_kalman_affine_G(sys)
-    Pz = qkf_Pz(sys)
+                                   initial_covariance::AbstractMatrix{<:AbstractFloat} = zeros(0, 0),
+                                   reduce_state::Bool = true)
+    # Same reachable pair block as the forward pass: the recursion and the
+    # initialisation adjoints run on the reduced system, and the cotangents
+    # are lifted back to the full system below (including the dependence of
+    # the basis Wq on PS1).
+    g0_full, Λ_full = quadratic_kalman_affine_G(sys)
+    reduced = reduce_state ? quadratic_kalman_reduced_system(sys, g0_full, Λ_full) : nothing
+    fsys = reduced === nothing ? sys : reduced[1]
+    nr, nP, nE, na, nq, nz = fsys.nr, fsys.nPast, fsys.nExo, fsys.na, fsys.nq, fsys.nz
+    r1, r2, rq = fsys.r1, fsys.r2, fsys.rq
+    g0, Λ = reduced === nothing ? (g0_full, Λ_full) : (reduced[2], reduced[3])
+    Pz = qkf_Pz(fsys)
 
-    z0 = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜) \ sys.c
-    Σ0, Σ1 = quadratic_kalman_initial_covariance(sys, z0, g0, Λ, Pz;
+    z0 = (Matrix{Float64}(ℒ.I(nz)) - fsys.𝒜) \ fsys.c
+    Σ0, Σ1 = quadratic_kalman_initial_covariance(fsys, z0, g0, Λ, Pz;
                                                   workspaces = workspaces,
                                                   lyapunov_algorithm = lyapunov_algorithm,
                                                   initial_guess = initial_covariance)
     G0 = reshape(g0 + Λ * (Pz * z0), nz, nE)
 
-    R = last(rrule(quadratic_kalman_recursion, sys.𝒜, sys.c, sys.QH, g0, Λ, Hm,
-                   Matrix(data_in_deviations), sys.𝒞, Pz, z0, Σ0, nz, nE,
+    R = last(rrule(quadratic_kalman_recursion, fsys.𝒜, fsys.c, fsys.QH, g0, Λ, Hm,
+                   Matrix(data_in_deviations), fsys.𝒞, Pz, z0, Σ0, nz, nE,
                    presample_periods, -Inf))(∂ll)
     𝒜̄ = copy(R[2]); c̄ = copy(R[3]); Q̄H = copy(R[4])
     ḡ0 = copy(R[5]); Λ̄ = copy(R[6]); Ȳ = copy(R[8])
     z̄0 = copy(R[11]); Σ̄0 = copy(R[12])
 
     # Σ0 = 𝒜Σ0𝒜' + Q0  ⇒  X solves X = 𝒜'X𝒜 + Σ̄0
-    X = qkf_lyapunov(Matrix(sys.𝒜'), (Σ̄0 + Σ̄0') / 2; workspaces = workspaces,
+    X = qkf_lyapunov(Matrix(fsys.𝒜'), (Σ̄0 + Σ̄0') / 2; workspaces = workspaces,
                      lyapunov_algorithm = lyapunov_algorithm)
-    𝒜̄ .+= 2 .* (X * sys.𝒜 * Σ0)
+    𝒜̄ .+= 2 .* (X * fsys.𝒜 * Σ0)
     Q̄0 = (X + X') / 2
     Ḡ0 = 2 .* (Q̄0 * G0); Q̄H .+= Q̄0
     vG0 = vec(Ḡ0); ḡ0 .+= vG0; Λ̄ .+= vG0 * (Pz * z0)'
@@ -1142,7 +1300,7 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
     # state-dependent loading correction as the recursion.  Differentiate its
     # Lyapunov equation separately; this keeps the pullback analytical and
     # avoids differentiating through a nonlinear covariance iteration.
-    Pa0 = sys.P * Σ1 * sys.P'
+    Pa0 = fsys.P * Σ1 * fsys.P'
     P̄a0 = zeros(nP, nP)
     @inbounds for j in 1:nE
         rows = (j - 1) * nz + 1:j * nz
@@ -1151,17 +1309,26 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
         P̄a0 .+= L' * Q̄0 * L
     end
     P̄a0 = (P̄a0 + P̄a0') / 2
-    Σ̄1 = sys.P' * P̄a0 * sys.P
-    A1 = Matrix(view(sys.𝒜, r1, r1))
+    Σ̄1 = fsys.P' * P̄a0 * fsys.P
+    A1 = Matrix(view(fsys.𝒜, r1, r1))
     X1 = qkf_lyapunov(A1', Σ̄1; workspaces = workspaces,
                       lyapunov_algorithm = lyapunov_algorithm)
     Ā1_initial = 2 .* (X1 * A1 * Σ1)
-    Ḡ1_initial = 2 .* ((X1 + X1') / 2 * sys.G1)
-    λ = (Matrix{Float64}(ℒ.I(nz)) - sys.𝒜)' \ z̄0
+    Ḡ1_initial = 2 .* ((X1 + X1') / 2 * fsys.G1)
+    λ = (Matrix{Float64}(ℒ.I(nz)) - fsys.𝒜)' \ z̄0
     c̄ .+= λ; 𝒜̄ .+= λ * z0'
 
+    P̄S1 = zeros(size(sys.PS1))
+    if reduced !== nothing
+        𝒜̄, c̄, Q̄H, ḡ0, Λ̄ = quadratic_kalman_lift_cotangents!(P̄S1, sys, reduced, g0_full, Λ_full,
+                                                              𝒜̄, c̄, Q̄H, ḡ0, Λ̄)
+    end
+    nr, nP, nE, na, nq, nz = sys.nr, sys.nPast, sys.nExo, sys.na, sys.nq, sys.nz
+    r1, r2, rq = sys.r1, sys.r2, sys.rq
+
+
     S̄1 = zeros(size(sys.S1)); S̄2 = zeros(size(sys.S2))
-    P̄S1 = zeros(size(sys.PS1)); V̄ = zeros(size(sys.V))
+    V̄ = zeros(size(sys.V))
 
     Ā1 = 𝒜̄[r1, r1] + 𝒜̄[r2, r2]
     S̄1 .+= (Ā1 + Ā1_initial) * sys.EaP'
@@ -1198,7 +1365,7 @@ function quadratic_kalman_pullback(sys, data_in_deviations, Hm, presample_period
         ā = sys.Ea * vcat(sys.P * view(z, r1), 1.0)
         ū = sys.PS1 * ā
         S̄1 .+= Ḡ[r1, :] * sys.S'
-        S̄2 .+= Ḡ[r2, :] * compressed_pair_mixed_matrix(ā, sys.S)' / 2
+        S̄2 .+= Ḡ[r2, :] * compressed_pair_mixed_matrix(ā, sys.S)'
         ū̄ = zeros(nP); V̄local = zeros(size(sys.V))
         raw_pair_mixed_pullback!(ū̄, V̄local, ū, sys.V,
                                  sys.pair_reorder' * Ḡ[rq, :])

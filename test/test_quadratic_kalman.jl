@@ -121,6 +121,25 @@ import Zygote
         @test rel(pred[2sys.nr+1:end], aq) < tol
     end
 
+    @testset "shock loading is the exact derivative of the pruned recursion" begin
+        # The innovation's linear-in-ε loading G(z) must be the derivative of
+        # the pruned one-step map at ε = 0. A factor error here leaves the
+        # conditional mean intact but biases the innovation covariance.
+        Random.seed!(11)
+        x1 = randn(sys.nr) * 0.05
+        x2 = randn(sys.nr) * 0.005
+        z  = vcat(x1, x2, compressed_pair(sys.P * x1))
+        step(ε) = begin
+            aug1 = sys.Ea * vcat(sys.P * x1, 1.0) + sys.S * ε
+            n1 = sys.S1 * aug1
+            n2 = sys.S1 * (sys.Ea * vcat(sys.P * x2, 0.0)) +
+                 sys.S2 * MacroModelling.compressed_kron²_power(aug1) / 2
+            vcat(n1, n2, compressed_pair(sys.P * n1))
+        end
+        G = MacroModelling.quadratic_kalman_G(sys, z)
+        @test G ≈ ForwardDiff.jacobian(step, zeros(sys.nExo)) rtol = 1e-10 atol = 1e-12
+    end
+
     @testset "matches the particle filter on a nonlinear model" begin
         # the particle filter is reliable here: two observables, so the weights do
         # not degenerate, and 60,000 particles put its Monte-Carlo error well below
@@ -213,6 +232,59 @@ import Zygote
         @test rel(ct[8], ForwardDiff.gradient(x -> f(A0, c0, QH0, g0, L0, Hm0, x, z00, S00), Y0)) < 1e-10
         @test rel(ct[11], ForwardDiff.gradient(x -> f(A0, c0, QH0, g0, L0, Hm0, Y0, x, S00), z00)) < 1e-10
         @test rel(ct[12], ForwardDiff.gradient(x -> f(A0, c0, QH0, g0, L0, Hm0, Y0, z00, x), S00)) < 1e-10
+    end
+
+    @testset "reachable pair-block reduction is exact" begin
+        # zz copies z, so the first-order past state has rank 3 of 4 and the
+        # pair block can drop 4 of its 10 coordinates.
+        @model RBC_qkf_rank begin
+            1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0] + ϕ * (zz[-1] - z[-1])
+            q[0] = exp(z[0]) * k[-1]^α * exp(g[0])
+            z[0] = ρz * z[-1] + std_z * eps_z[x]
+            zz[0] = z[0]
+            g[0] = ρg * g[-1] + std_g * eps_g[x]
+        end
+        @parameters RBC_qkf_rank begin
+            std_z = 0.02
+            std_g = 0.02
+            ρz = 0.4
+            ρg = 0.6
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+            ϕ = 0.01
+        end
+        Random.seed!(2024)
+        rdata = simulate(RBC_qkf_rank, periods = 40, algorithm = :pruned_second_order)(obs, :, :simulate)
+        pr = RBC_qkf_rank.parameter_values
+        MacroModelling.solve!(RBC_qkf_rank, algorithm = :pruned_second_order, dynamics = true, opts = opts)
+        _, _, 𝐒r, _, _ = MacroModelling.get_relevant_steady_state_and_state_update(
+                            Val(:pruned_second_order), pr, RBC_qkf_rank, opts = opts)
+        ssnr = RBC_qkf_rank.constants.post_complete_parameters.SS_and_pars_names
+        oir = convert(Vector{Int}, indexin(obs, ssnr))
+        NSSSr = get_steady_state(RBC_qkf_rank, derivatives = false)
+        Yr = collect(rdata) .- [NSSSr(v) for v in obs]
+        sysr = MacroModelling.build_quadratic_kalman_system(RBC_qkf_rank, 𝐒r[1], 𝐒r[2], oir)
+        g0r, Λr = MacroModelling.quadratic_kalman_affine_G(sysr)
+        reduced = MacroModelling.quadratic_kalman_reduced_system(sysr, g0r, Λr)
+        @test reduced !== nothing
+        @test reduced[1].nz < sysr.nz
+        mev = 1e-4
+        full_ll = MacroModelling.run_quadratic_kalman(sysr, Yr; measurement_error = fill(mev, 2),
+                                                      reduce_state = false)
+        reduced_ll = MacroModelling.run_quadratic_kalman(sysr, Yr; measurement_error = fill(mev, 2))
+        @test isfinite(full_ll)
+        @test isapprox(reduced_ll, full_ll, rtol = 1e-10)
+
+        # ForwardDiff differentiates the subspace basis; Zygote uses the full
+        # system in its hand-written pullback. Both must agree.
+        fr(x) = get_loglikelihood(RBC_qkf_rank, rdata, x; algorithm = :pruned_second_order,
+                                  filter = :quadratic_kalman, measurement_error = mev)
+        gr = ForwardDiff.gradient(fr, pr)
+        gzr = Zygote.gradient(fr, pr)[1]
+        @test all(isfinite, gr)
+        @test maximum(abs.(gzr .- gr) ./ max.(abs.(gr), 1.0)) < 1e-7
     end
 
     @testset "reduces to the Kalman filter on a linear model" begin
